@@ -27,11 +27,9 @@
         resolvconf = {
             enable = true;
 	    extraOptions = [
-	        "search tail546fb.ts.net homenet"
-	        "nameserver 100.100.100.100"
-	        "nameserver 9.9.9.9"
-	        "nameserver 1.1.1.1"
-	        "options edns0"
+	        "\n edns0"
+	        "\nnameserver 9.9.9.9"
+	        "\nnameserver 1.1.1.1"
             ];
         };
     };
