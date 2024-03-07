@@ -13,4 +13,4 @@ build: commit
 	nixos-rebuild build --flake .#
 
 commit:
-	git commit -am "$$(date +%Y-%m-%d-%H-%M-%S)"
+	[ "$$(git status --porcelain)" ] && git commit -am "$$(date +%Y-%m-%d-%H-%M-%S)"

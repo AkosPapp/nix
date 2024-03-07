@@ -55,7 +55,7 @@
 
 
     services.ssh.enable = true;
-    services.openssh.settings.PermitRootLogin = "prohibit-password";
+    services.openssh.settings.PermitRootLogin = lib.mkForce "prohibit-password";
     virtualisation.podman.enable = true;
     services.tailscale.enable = true;
 
