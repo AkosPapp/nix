@@ -6,7 +6,7 @@ generate:
 	@./generate-modules.sh
 
 switch: commit
-	$(if [ "$(whoami)" != "root" ]; then echo -e "sudo "; fi;) nixos-rebuild switch --flake .#	
+	$$(if [ "$$(whoami)" != "root" ]; then echo -e "sudo "; fi;) nixos-rebuild switch --flake .#	
 	#nixos-rebuild switch --flake .#
 
 build: commit
