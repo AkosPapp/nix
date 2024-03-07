@@ -78,6 +78,7 @@
                 killall
                 bc
                 fuse
+                wireguard-tools
 
 # nvim
                 neovim
