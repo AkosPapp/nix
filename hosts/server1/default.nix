@@ -1,0 +1,65 @@
+# Edit this configuration file to define what should be installed on
+# your system. Help is available in the configuration.nix(5) man page, on
+# https://search.nixos.org/options and in the NixOS manual (`nixos-help`).
+
+{ config, lib, pkgs, ... }:
+
+{
+    imports =
+        [ # Include the results of the hardware scan.
+        ./hardware-configuration.nix
+        ];
+
+# networking
+    networking = {
+        hostName = "server1";
+        hostId = "007f0200";
+        interfaces = {
+            enp3s0.ipv4.addresses = [{
+                address = "10.1.1.1";
+                prefixLength = 8;
+            }];
+        };
+        defaultGateway = {
+            address = "10.0.0.1";
+            interface = "enp3s0";
+        };
+        resolvconf = {
+            enable = true;
+#extraOptions = [
+#	"search tail546fb.ts.net homenet"
+#	"nameserver 100.100.100.100"
+#	"nameserver 1.1.1.1"
+#	"options edns0"
+#];
+        };
+    };
+
+    services.xserver.enable = false;
+    boot.plymouth.enable = false;
+    sound.enable = false;
+
+    environment.systemPackages = with pkgs; [
+        vim 
+            wget
+            tmux
+    ];
+
+
+# garbage cleaning
+    nix.gc = {
+        automatic = true;
+        dates = "weekly";
+        options = "--delete-older-than 7d";
+    };
+
+
+    services.ssh.enable = true;
+    services.openssh.settings.PermitRootLogin = "prohibit-password";
+    virtualisation.podman.enable = true;
+    services.tailscale.enable = true;
+
+    system.stateVersion = "23.11";
+
+}
+
