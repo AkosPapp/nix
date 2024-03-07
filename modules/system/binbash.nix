@@ -17,7 +17,7 @@ with lib;
         system.activationScripts.binbash = if config.environment.binbash
             then ''
             mkdir -m 0755 -p /bin
-            ln -s /bin/sh /bin/bash || true
+            [ -f /bin/bash ] || ln -s /bin/sh /bin/bash
             ''
             else ''
                 rm -f /bin/bash
