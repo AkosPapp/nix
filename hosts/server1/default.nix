@@ -56,7 +56,7 @@
 
     services.ssh.enable = true;
     services.openssh.settings.PermitRootLogin = lib.mkForce "prohibit-password";
-    virtualisation.podman.enable = true;
+    virtualisation.docker.enable = true;
     services.tailscale.enable = true;
 
     system.stateVersion = "23.11";
