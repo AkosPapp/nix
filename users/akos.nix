@@ -20,6 +20,7 @@
         environment.binbash = true;
         programs.zsh.enable = true;
         programs.dwm.enable = true;
+        fonts.nerdfonts.enable = true;
         virtualisation.docker.enable = true;
         programs.virt-manager.enable = true;
         virtualisation.virtualbox.enable = true;
