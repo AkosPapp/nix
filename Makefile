@@ -28,7 +28,7 @@ build: commit
 
 commit:
 	@echo "Committing the changes..."
-	@[ "$$(git status --porcelain)" ] && git commit -am "$$(date +%Y-%m-%d-%H-%M-%S)"
+	@[ "$$(git status --porcelain)" ] && git commit -am "$$(date +%Y-%m-%d-%H-%M-%S)" || echo "No changes to commit!"
 
 sync: commit
 	@echo "Syncing the changes..."
