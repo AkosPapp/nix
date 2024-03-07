@@ -1,16 +1,10 @@
-# Edit this configuration file to define what should be installed on
-# your system. Help is available in the configuration.nix(5) man page, on
-# https://search.nixos.org/options and in the NixOS manual (`nixos-help`).
-
 { config, lib, pkgs, ... }:
-
 {
-    imports =
-        [ # Include the results of the hardware scan.
+    imports = [
         ./hardware-configuration.nix
-        ];
+    ];
 
-# networking
+
     networking = {
         hostName = "server1";
         hostId = "007f0200";
@@ -26,8 +20,12 @@
         };
         resolvconf = {
             enable = true;
-	    extraConfig = "nameserver 9.9.9.9";
         };
+	nameservers = [
+		"100.100.100.100"
+		"9.9.9.9"
+		"1.1.1.1"
+	];
     };
 
     services.xserver.enable = false;
