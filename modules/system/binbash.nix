@@ -20,8 +20,7 @@ with lib;
             [ -f /bin/bash ] || ln -s /bin/sh /bin/bash
             ''
             else ''
-                rm -f /bin/bash
-                rmdir -p /bin || true
+            [ -f /bin/bash ] && rm -f /bin/bash
             '';
 
     };
