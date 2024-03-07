@@ -3,6 +3,7 @@
     networking.firewall.enable = true;
     environment.systemPackages = with pkgs; [
         vim
-            git
+        git
+	gnumake
     ];
 }

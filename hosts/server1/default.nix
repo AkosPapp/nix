@@ -26,10 +26,7 @@
         };
         resolvconf = {
             enable = true;
-	    extraConfig = [
-	        "nameserver 9.9.9.9"
-	        "nameserver 1.1.1.1"
-            ];
+	    extraConfig = "nameserver 9.9.9.9"
         };
     };
 
