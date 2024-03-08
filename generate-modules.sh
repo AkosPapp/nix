@@ -1,5 +1,6 @@
 #!/bin/sh
 OUTPUT="generated.nix"
+NIX_CONFIGS="nixos-configurations.nix"
 
 # imports
 echo "{ imports = [" > $OUTPUT
@@ -15,10 +16,16 @@ find profiles -type f -name "*.nix" >> $OUTPUT
 
 # finish imports
 echo "];" >> $OUTPUT
+echo "}" >> $OUTPUT
 
 # hosts
-#for host in $(ls hosts); do
-#  echo "  $(basename $host .nix) = import ./hosts/$host;" >> $OUTPUT
-#done
-
-echo "}" >> $OUTPUT
+echo "{ nixpkgs, system, ... }: {" > $NIX_CONFIGS
+for host in $(ls hosts); do
+    echo "
+    $(basename $host) = nixpkgs.lib.nixosSystem {
+        specialArgs = { inherit system; };
+        modules = [ ./${OUTPUT} ./hosts/${host} ];
+    };
+    " >> $NIX_CONFIGS
+done
+echo "}" >> $NIX_CONFIGS
