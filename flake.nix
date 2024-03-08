@@ -15,18 +15,8 @@
             system = system;
             config = { allowUnfree = true; };
         };
-        CONFIG = import ./generated.nix;
     in {
-        nixosConfigurations = {
-            laptop = nixpkgs.lib.nixosSystem {
-                specialArgs = { inherit system; };
-                modules = [ CONFIG ./hosts/laptop ];
-            };
-            server1 = nixpkgs.lib.nixosSystem {
-                specialArgs = { inherit system; };
-                modules = [ CONFIG ./hosts/server1 ];
-            };
-        }; 
+        nixosConfigurations = import ./nixos-configurations.nix { inherit pkgs system; };
     };
 
 }

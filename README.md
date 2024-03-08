@@ -1,26 +1,34 @@
-# My Custom Nixos Configuration
-this configurations system is designed to be extreamly modular.
-it is meant to be used on multiple systems without any modification.
+# My Custom NixOS Configuration
+
+This configuration system is designed to be extremely modular and versatile, enabling its use across multiple systems without any modifications.
 
 ## Structure
-the config is split up into multiple peaces
+The configuration is divided into several pieces:
+
 ### Modules
-custom nixos modules that can enable any nixos options.
-any module can be enabled with the nixos config: `config.MODULES.<module mane>.enable = true;`
+Custom NixOS modules that can enable various NixOS options. Each module can be enabled using the NixOS configuration syntax:
+```nix
+config.MODULES.<module-name>.enable = true;
+```
+
 ### Users
-contains configurations for every user.
-each user can enable custom modules and change and nixos option.
-users can be enabled with `config.USERS.<user name>.enable = true;`
+Contains configurations for each user. Users can enable custom modules and modify NixOS options according to their preferences. Users can be enabled as follows:
+```nix
+config.USERS.<user-name>.enable = true;
+```
+
 ### Profiles
-can combine multiple Users or Modules to make configurations easier.
-profiles can be enable with `config.PROFILES.<profile name>.enable = true;`
+Profiles allow combining multiple users or modules to streamline configurations. They can be enabled using the following syntax:
+```nix
+config.PROFILES.<profile-name>.enable = true;
+```
+
 ### Hosts
-configuration for every phisical machiene.
-contains hardware configuration and can enable Modules, Users and Profiles
+Configuration for each physical machine, including hardware specifications. Host configurations can enable modules, users, and profiles as needed.
 
 ## Build System
-a Makefile is used to simplify rebuilding, switching and git operations.
-run `make help` for help
-
-`
+A Makefile is utilized to simplify rebuilding, switching, and git operations. For assistance, run:
+```bash
+make help
+```
 
