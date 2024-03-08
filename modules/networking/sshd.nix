@@ -8,7 +8,7 @@
         };
     };
 
-    config = lib.mkIf options.MODULES.networking.sshd.enable {
+    config = lib.mkIf config.MODULES.networking.sshd.enable {
         security.pam.enableSSHAgentAuth = true;
         programs.ssh.forwardX11 = true;
         services.openssh = {
