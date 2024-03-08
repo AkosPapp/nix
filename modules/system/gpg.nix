@@ -2,7 +2,7 @@
 {
     options = {
         MODULES.system.gpg.enable = lib.mkOption {
-            type = with lib.types; bool;
+            type = lib.types.bool;
             default = true;
             description = "Enable GnuPG";
         };
