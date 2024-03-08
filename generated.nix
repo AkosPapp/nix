@@ -16,6 +16,4 @@ modules/networking/sshd.nix
 modules/networking/tailscale.nix
 profiles/global.nix
 ];
-  laptop = import ./hosts/laptop;
-  server1 = import ./hosts/server1;
 }

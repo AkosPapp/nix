@@ -17,8 +17,8 @@ find profiles -type f -name "*.nix" >> $OUTPUT
 echo "];" >> $OUTPUT
 
 # hosts
-for host in $(ls hosts); do
-  echo "  $(basename $host .nix) = import ./hosts/$host;" >> $OUTPUT
-done
+#for host in $(ls hosts); do
+#  echo "  $(basename $host .nix) = import ./hosts/$host;" >> $OUTPUT
+#done
 
 echo "}" >> $OUTPUT

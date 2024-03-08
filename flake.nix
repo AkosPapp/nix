@@ -20,11 +20,11 @@
         nixosConfigurations = {
             laptop = nixpkgs.lib.nixosSystem {
                 specialArgs = { inherit system; };
-                modules = [ CONFIG.laptop ];
+                modules = [ CONFIG ./hosts/laptop ];
             };
             server1 = nixpkgs.lib.nixosSystem {
                 specialArgs = { inherit system; };
-                modules = [ CONFIG.server1 ];
+                modules = [ CONFIG ./hosts/server1 ];
             };
         }; 
     };
