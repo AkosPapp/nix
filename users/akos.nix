@@ -27,7 +27,7 @@
             virtualisation.docker.enable = true;
             virtualisation.virtualbox.enable = true;
             virtualisation.virt-manager.enable = true;
-            windowManager.dwm.enable = true;
+            wm.dwm.enable = true;
         };
 
 # Allow unfree packages
