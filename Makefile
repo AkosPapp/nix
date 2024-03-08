@@ -18,19 +18,22 @@ generate:
 	@echo "Generating the code..."
 	@./generate-modules.sh
 
-switch: commit
+switch: stage
 	@echo "Switching to the new configuration..."
-	@$$([ "$$(whoami)" != "root" ] && echo -e "sudo") nixos-rebuild switch --flake .#	
+	@$$([ "$$(whoami)" != "root" ] && echo -e "sudo") nixos-rebuild switch --flake .# && make commit
 
-switch--show-trace: commit
+switch--show-trace: stage
 	@echo "Switching to the new configuration..."
-	@$$([ "$$(whoami)" != "root" ] && echo -e "sudo") nixos-rebuild switch --flake .# --show-trace
+	@$$([ "$$(whoami)" != "root" ] && echo -e "sudo") nixos-rebuild switch --flake .# --show-trace && make commit
 
-build: commit
+build: stage
 	@echo "Building the new configuration..."
-	@nixos-rebuild build --flake .#
+	@nixos-rebuild build --flake .# && make commit
 
-commit:
+stage:
+	@git add .
+
+commit: stage
 	@echo "Committing the changes..."
 	@[ "$$(git status --porcelain)" ] && git commit -am "$$(date +%Y-%m-%d-%H-%M-%S)" || echo "No changes to commit!"
 
