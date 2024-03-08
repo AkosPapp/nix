@@ -40,7 +40,7 @@
         services.picom.enable = true;
         services.xserver.windowManager.dwm.enable = true;
         programs.dwmblocks.enable = true;
-        MODULES.wm.dwmbocks.enable = true;
+        MODULES.wm.dwmblocks.enable = true;
         programs.slock.enable = true;
 
     };
