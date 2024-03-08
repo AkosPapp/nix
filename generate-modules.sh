@@ -21,4 +21,4 @@ for host in $(ls hosts); do
   echo "  $(basename $host .nix) = import ./hosts/$host;" >> $OUTPUT
 done
 
-echo "};" >> $OUTPUT
+echo "}" >> $OUTPUT
