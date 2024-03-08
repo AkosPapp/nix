@@ -1,14 +1,14 @@
 {config, pkgs, options, lib, ... }:
 {
     options = {
-        services.ssh.enable = lib.mkOption {
+        MODULES.networking.sshd.enable = lib.mkOption {
             type = lib.types.bool;
-            default = true;
+            default = false;
             description = "Enable the OpenSSH daemon.";
         };
     };
 
-    config = lib.mkIf config.services.ssh.enable {
+    config = lib.mkIf options.MODULES.networking.sshd.enable {
         security.pam.enableSSHAgentAuth = true;
         programs.ssh.forwardX11 = true;
         services.openssh = {

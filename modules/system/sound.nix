@@ -1,8 +1,14 @@
 {config, pkgs, lib, ... }:
 {
-# Enable sound with pipewire.
-    config = lib.mkIf config.sound.enable {
-        #hardware.pulseaudio.enable = false;
+    options = {
+        MODULES.system.sound.enable = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Enable sound support";
+        };
+    };
+    config = lib.mkIf config.MODULES.system.sound.enable {
+        sound.enable = true;
         security.rtkit.enable = true;
         services.pipewire = {
             enable = true;

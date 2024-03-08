@@ -1,14 +1,14 @@
 {config, pkgs, lib, ... }:
 {
     options = {
-        fonts.nerdfonts.enable = lib.mkOption {
+        MODULES.fonts.nerdfonts.enable = lib.mkOption {
             type = lib.types.bool;
             default = false;
             description = "Enable Nerd Fonts";
         };
     };
 
-    config = lib.mkIf config.fonts.nerdfonts.enable {
+    config = lib.mkIf config.MODULES.fonts.nerdfonts.enable {
         fonts.packages = with pkgs; [
             jetbrains-mono
                 nerdfonts

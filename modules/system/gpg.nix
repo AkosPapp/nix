@@ -1,14 +1,14 @@
 {config, pkgs, options, lib, ... }:
 {
     options = {
-        programs.gpg.enable = lib.mkOption {
+        MODULES.system.gpg.enable = lib.mkOption {
             type = with lib.types; bool;
             default = true;
             description = "Enable GnuPG";
         };
     };
 
-    config = lib.mkIf config.programs.gpg.enable {
+    config = lib.mkIf config.MODULES.system.gpg.enable {
         services.dbus.packages = with pkgs; [
             pass-secret-service
                 gcr

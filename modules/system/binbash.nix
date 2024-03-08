@@ -5,7 +5,7 @@ with lib;
 {
 
     options = {
-        environment.binbash = mkOption {
+        MODULES.system.binbash = mkOption {
             default = false;
             type = types.bool;
             description = "Include a /bin/bash in the system.";
@@ -14,7 +14,7 @@ with lib;
 
     config = {
 
-        system.activationScripts.binbash = if config.environment.binbash
+        system.activationScripts.binbash = if config.MODULES.system.binbash
             then ''
             mkdir -m 0755 -p /bin
             [ -f /bin/bash ] || ln -s /bin/sh /bin/bash

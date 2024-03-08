@@ -1,9 +1,18 @@
 {config, pkgs, lib, ... }:
 {
-# tailscale
-    config = lib.mkIf config.services.tailscale.enable {
-        networking.firewall.allowedUDPPorts = [ 41641 ];
-        networking.firewall.allowedTCPPorts = [ 41641 ];
+    options = {
+        MODULES.networking.tailscale.enable = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = "Enable Tailscale VPN";
+        };
+    };
+
+    config = lib.mkIf config.MODULES.networking.tailscale.enable {
+        services.tailscale = {
+            enable = true;
+            openFirewall = true;
+        };
         networking.firewall.checkReversePath = "loose";
     };
 }

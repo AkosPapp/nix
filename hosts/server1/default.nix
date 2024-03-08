@@ -18,19 +18,11 @@
             address = "10.0.0.1";
             interface = "enp3s0";
         };
-        resolvconf = {
-            enable = true;
-        };
-	nameservers = [
-		"100.100.100.100"
-		"9.9.9.9"
-		"1.1.1.1"
-	];
+        #resolvconf = {
+        #    enable = true;
+        #};
     };
 
-    services.xserver.enable = false;
-    boot.plymouth.enable = false;
-    sound.enable = false;
 
     environment.systemPackages = with pkgs; [
         vim 
@@ -47,10 +39,7 @@
     };
 
 
-    services.ssh.enable = true;
-    services.openssh.settings.PermitRootLogin = lib.mkForce "prohibit-password";
-    virtualisation.docker.enable = true;
-    services.tailscale.enable = true;
+    MODULES.virtualisation.docker.enable = true;
 
     system.stateVersion = "23.11";
 

@@ -1,14 +1,14 @@
 {config, pkgs, lib, ... }:
 {
     options = {
-        users.akos.enable = lib.mkOption {
+        USERS.akos.enable = lib.mkOption {
             default = false;
             type = lib.types.bool;
             description = "Enable the user akos";
         };
     };
 
-    config = lib.mkIf config.users.akos.enable {
+    config = lib.mkIf config.USERS.akos.enable {
         users.users.akos = {
             isNormalUser = true;
             shell = pkgs.zsh;
@@ -17,28 +17,24 @@
             hashedPassword = "$y$j9T$gEhP/0Jlrlwb4ndmLs06L1$7qkdPdgqjCrEH8bAQvJqRn/Mj4m5X9GCRAyM33z0mdA";
         };
 
-        environment.binbash = true;
-        programs.zsh.enable = true;
-        programs.dwm.enable = true;
-        fonts.nerdfonts.enable = true;
-        virtualisation.docker.enable = true;
-        programs.virt-manager.enable = true;
-        virtualisation.virtualbox.enable = true;
-        sound.enable = true;
-        services.tailscale.enable = true;
-        programs.steam.enable = true;
-        programs.gpg.enable = true;
-
-
+        MODULES = {
+            fonts.nerdfonts.enable = true;
+            games.steam.enable = true;
+            system.binbash.enable = true;
+            system.bluetooth.enable = true;
+            system.gpg.enable = true;
+            system.sound.enable = true;
+            virtualisation.docker.enable = true;
+            virtualisation.virtualbox.enable = true;
+            virtualisation.virt-manager.enable = true;
+            windowManager.dwm.enable = true;
+        };
 
 # Allow unfree packages
         nixpkgs.config.allowUnfree = true;
         nixpkgs.config.permittedInsecurePackages = [
             "electron-25.9.0"
         ];
-
-# List packages installed in system profile. To search, run:
-
 
         environment.systemPackages = with pkgs; [
 # helpful tools

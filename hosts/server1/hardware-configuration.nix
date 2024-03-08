@@ -4,35 +4,40 @@
 { config, lib, pkgs, modulesPath, ... }:
 
 {
-	imports =
-		[ (modulesPath + "/installer/scan/not-detected.nix")
-		];
+    imports = [ (modulesPath + "/installer/scan/not-detected.nix") ];
 
-	boot.loader.systemd-boot.enable = true;
-	boot.loader.efi.canTouchEfiVariables = false;
-	boot.initrd.availableKernelModules = [ "ahci" "xhci_pci" "usb_storage" "usbhid" "sd_mod" "rtsx_usb_sdmmc" ];
-	boot.initrd.kernelModules = [ ];
-	boot.kernelModules = [ "kvm-intel" ];
-	boot.extraModulePackages = [ ];
-	boot.supportedFilesystems = [ "zfs" ];
+    boot = {
+        plymouth.enable = false;
+        loader = {
+            systemd-boot.enable = true;
+            efi.canTouchEfiVariables = false;
+        };
+        initrd = {
+            availableKernelModules = [ "ahci" "xhci_pci" "usb_storage" "usbhid" "sd_mod" "rtsx_usb_sdmmc" ];
+            kernelModules = [ ];
+        };
+        kernelModules = [ "kvm-intel" ];
+        extraModulePackages = [ ];
+        supportedFilesystems = [ "zfs" ];
+    };
 
-	fileSystems."/" = {
-		device = "/dev/disk/by-uuid/39fffb47-4eb7-472d-8d1a-250fc52a0efe";
-		fsType = "ext4";
-	};
+    fileSystems."/" = {
+        device = "/dev/disk/by-uuid/39fffb47-4eb7-472d-8d1a-250fc52a0efe";
+        fsType = "ext4";
+    };
 
-	fileSystems."/boot" = {
-		device = "/dev/disk/by-uuid/33B3-54E4";
-		fsType = "vfat";
-	};
+    fileSystems."/boot" = {
+        device = "/dev/disk/by-uuid/33B3-54E4";
+        fsType = "vfat";
+    };
 
-	swapDevices = [
-	{ device = "/dev/disk/by-uuid/c433c9af-d971-4154-85af-7abf08dc13d4"; }
-	];
+    swapDevices = [
+    { device = "/dev/disk/by-uuid/c433c9af-d971-4154-85af-7abf08dc13d4"; }
+    ];
 
-	boot.zfs.extraPools = [ "data-pool" ];
+    boot.zfs.extraPools = [ "data-pool" ];
 
 
-	nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
-	hardware.cpu.intel.updateMicrocode = lib.mkDefault config.hardware.enableRedistributableFirmware;
+    nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
+    hardware.cpu.intel.updateMicrocode = lib.mkDefault config.hardware.enableRedistributableFirmware;
 }
