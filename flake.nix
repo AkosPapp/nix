@@ -15,7 +15,7 @@
             system = system;
             config = { allowUnfree = true; };
         };
-        CONFIG = import ./generated.nix { inherit pkgs system; };
+        CONFIG = import ./generated.nix;
     in {
         nixosConfigurations = {
             laptop = nixpkgs.lib.nixosSystem {
