@@ -20,7 +20,11 @@ generate:
 
 switch: commit
 	@echo "Switching to the new configuration..."
-	@$$(if [ "$$(whoami)" != "root" ]; then echo -e "sudo "; fi;) nixos-rebuild switch --flake .#	
+	@$$([ "$$(whoami)" != "root" ] && echo -e "sudo") nixos-rebuild switch --flake .#	
+
+switch--show-trace: commit
+	@echo "Switching to the new configuration..."
+	@$$([ "$$(whoami)" != "root" ] && echo -e "sudo") nixos-rebuild switch --flake .# --show-trace
 
 build: commit
 	@echo "Building the new configuration..."
