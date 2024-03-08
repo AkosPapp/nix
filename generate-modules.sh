@@ -1,22 +1,24 @@
 #!/bin/sh
+OUTPUT="generated.nix"
+
+# imports
+echo "{ imports = [" > $OUTPUT
 
 # users
-echo "Generating users module..."
-echo "{ imports = [" > users.nix
-find users -type f -name "*.nix" >> users.nix
-echo "]; }" >> users.nix
+find users -type f -name "*.nix" >> $OUTPUT
 
 # modules
-echo "Generating modules module..."
-echo "{ imports = [" > custom-modules.nix
-find modules -type f -name "*.nix" >> custom-modules.nix
-echo "]; }" >> custom-modules.nix
+find modules -type f -name "*.nix" >> $OUTPUT
+
+# profiles
+find profiles -type f -name "*.nix" >> $OUTPUT
+
+# finish imports
+echo "];" >> $OUTPUT
 
 # hosts
-echo "Generating hosts module..."
-echo "{ " > hosts.nix
 for host in $(ls hosts); do
-  echo "  $(basename $host .nix) = import ./hosts/$host;" >> hosts.nix
+  echo "  $(basename $host .nix) = import ./hosts/$host;" >> $OUTPUT
 done
-echo "}" >> hosts.nix
 
+echo "};" >> $OUTPUT
