@@ -142,6 +142,7 @@
                 openjdk17-bootstrap
                 rpi-imager
                 gparted
+                distrobox
 
 # user tools
                 networkmanagerapplet
