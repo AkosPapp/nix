@@ -8,7 +8,7 @@
         };
     };
 
-    config = lib.mkIf config.options.MODULES.system.locale.enable {
+    config = lib.mkIf config.MODULES.system.locale.enable {
         time.timeZone = "Europe/Vienna";
 
         i18n.defaultLocale = "en_US.UTF-8";
