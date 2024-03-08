@@ -16,6 +16,7 @@
             extraGroups = [ "dialout" "networkmanager" "wheel" "libvirtd" "docker" "input" "uinput" "plugdev" "vboxusers" ];
             hashedPassword = "$y$j9T$gEhP/0Jlrlwb4ndmLs06L1$7qkdPdgqjCrEH8bAQvJqRn/Mj4m5X9GCRAyM33z0mdA";
         };
+        programs.zsh.enable = true;
 
         MODULES = {
             fonts.nerdfonts.enable = true;
