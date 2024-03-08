@@ -16,7 +16,7 @@
             config = { allowUnfree = true; };
         };
     in {
-        nixosConfigurations = import ./nixos-configurations.nix { inherit pkgs system; };
+        nixosConfigurations = import ./nixos-configurations.nix { inherit nixpkgs pkgs system; };
     };
 
 }
