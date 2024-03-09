@@ -40,6 +40,7 @@
 
 
     MODULES.virtualisation.docker.enable = true;
+    USERS.admin.enable = true;
 
     system.stateVersion = "23.11";
 
