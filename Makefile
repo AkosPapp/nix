@@ -4,12 +4,15 @@ help:
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Targets:"
-	@echo "  generate: Generate the code"
-	@echo "  switch:   Switch to the new configuration"
-	@echo "  build:    Build the new configuration"
-	@echo "  commit:   Commit the changes"
-	@echo "  sync:     Commit and push the changes"
-	@echo "  help:     Show this help message"
+	@echo "  build:                Build the new configuration"
+	@echo "  commit:               Commit the changes"
+	@echo "  generate:             Generate the code"
+	@echo "  gen:                  Alias for generate"
+	@echo "  help:                 Show this help message"
+	@echo "  stage:                Stage the changes"
+	@echo "  switch--show-trace:   Switch to the new configuration with --show-trace"
+	@echo "  switch:               Switch to the new configuration"
+	@echo "  sync:                 Commit and push the changes"
 
 
 gen: generate
