@@ -34,7 +34,8 @@
 # Allow unfree packages
         nixpkgs.config.allowUnfree = true;
         nixpkgs.config.permittedInsecurePackages = [
-            "electron-25.9.0"
+            #"electron-25.9.0"
+            "nix-2.16.2"
         ];
 
         environment.systemPackages = with pkgs; [

@@ -22,6 +22,10 @@
                 htop-vim
         ];
         users.mutableUsers = false;
+
+        nixpkgs.config.permittedInsecurePackages = [
+            "nix-2.16.2"
+        ];
     };
 
 }
