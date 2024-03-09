@@ -21,6 +21,7 @@
                 kitty
                 htop-vim
         ];
+        users.mutableUsers = false;
     };
 
 }
