@@ -1,4 +1,4 @@
-.PHONY: help generate gen switch build commit sync
+.PHONY: help generate gen switch build commit sync update stage switch--show-trace
 
 help:
 	@echo "Usage: make [target]"
@@ -13,34 +13,42 @@ help:
 	@echo "  switch--show-trace:   Switch to the new configuration with --show-trace"
 	@echo "  switch:               Switch to the new configuration"
 	@echo "  sync:                 Commit and push the changes"
+	@echo "  update:               Update the flake"
+	@echo ""
 
 
 gen: generate
 
 generate:
-	@echo "Generating the code..."
+	@echo "--- Generating the code ---"
 	@./generate-modules.sh
 
 switch: stage
-	@echo "Switching to the new configuration..."
+	@echo "--- Switching to the new configuration ---"
 	@$$([ "$$(whoami)" != "root" ] && echo -e "sudo") nixos-rebuild switch --flake .# && make commit
 
 switch--show-trace: stage
-	@echo "Switching to the new configuration..."
+	@echo "--- Switching to new configuration with --show-trace ---"
 	@$$([ "$$(whoami)" != "root" ] && echo -e "sudo") nixos-rebuild switch --flake .# --show-trace && make commit
 
 build: stage
-	@echo "Building the new configuration..."
+	@echo "--- Building new configuration ---"
 	@nixos-rebuild build --flake .# && make commit
 
+update:
+	@echo "--- Updating flake ---"
+	nix flake update
+
 stage:
+	@echo "--- Staging changes ---"
 	@git add .
 
 commit: stage
-	@echo "Committing the changes..."
+	@echo "--- Committing changes ---"
 	@[ "$$(git status --porcelain)" ] && git commit -am "$$(date +%Y-%m-%d-%H-%M-%S)" || echo "No changes to commit!"
 
 sync: commit
-	@echo "Syncing the changes..."
+	@echo "--- Syncing changes ---"
 	@git pull
 	@git push
+
