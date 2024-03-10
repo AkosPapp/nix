@@ -26,9 +26,22 @@
 
     environment.systemPackages = with pkgs; [
         vim 
-            wget
-            tmux
+        wget
+        tmux
+		ceph
+		ceph-client
     ];
+
+	services.ceph = {
+		enable = true;
+		global = {
+			fsid = ''a1ff9f2b-907f-403c-945e-6df604fc4fa5'';
+			publicNetwork = '' 100.0.0.0/8 '';
+			clusterNetwork = '' 100.0.0.0/8 '';
+			monInitialMembers = '' server1 '';
+			monHost = '' server1 '';
+		};
+    };
 
 
 # garbage cleaning
