@@ -40,6 +40,9 @@
 			clusterNetwork = '' 100.0.0.0/8 '';
 			monInitialMembers = '' server1 '';
 			monHost = '' server1 '';
+			authServiceRequired = "none";
+			authClusterRequired = "none";
+			authClientRequired  = "none";
 		};
     };
 
