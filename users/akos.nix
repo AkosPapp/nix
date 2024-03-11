@@ -157,6 +157,10 @@
                 discord
                 libreoffice
                 logseq
+
+# qemu
+                qemu_full
+                qemu-utils
                 ];
     };
 
