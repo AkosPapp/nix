@@ -127,6 +127,7 @@
                 clippy
                 dprint
                 rust-analyzer
+                rustc
 # POSIX
                 shellcheck
 # dev tools
