@@ -1,4 +1,4 @@
-{config, pkgs, lib, ... }:
+{config, pkgs, lib, nixpkgs, ... }:
 {
     options = {
         PROFILES.global.enable = lib.mkOption {

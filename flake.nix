@@ -14,10 +14,17 @@
         pkgs-unstable = import nixpkgs-unstable { inherit system; };
         pkgs = import nixpkgs {
             system = system;
-            config = { allowUnfree = true; };
+            config = {
+                allowUnfree = true;
+                permittedInsecurePackages = [
+                    "nix-2.16.2"
+                ];
+            };
         };
     in {
-        nixosConfigurations = import ./nixos-configurations.nix { inherit nixpkgs pkgs-unstable pkgs system; };
+        nixosConfigurations = import ./nixos-configurations.nix {
+            inherit nixpkgs system pkgs pkgs-unstable;
+            };
     };
 
 }

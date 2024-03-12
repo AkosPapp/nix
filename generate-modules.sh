@@ -19,11 +19,11 @@ echo "];" >> $OUTPUT
 echo "}" >> $OUTPUT
 
 # hosts
-echo "{ nixpkgs, system, ... }: {" > $NIX_CONFIGS
+echo "{ nixpkgs, system, pkgs, pkgs-unstable, ... }: {" > $NIX_CONFIGS
 for host in $(ls hosts); do
     echo "
     $(basename $host) = nixpkgs.lib.nixosSystem {
-        specialArgs = { inherit system; };
+        specialArgs = { inherit system pkgs pkgs-unstable; };
         modules = [ ./${OUTPUT} ./hosts/${host} ];
     };
     " >> $NIX_CONFIGS
