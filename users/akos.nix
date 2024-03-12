@@ -1,4 +1,4 @@
-{config, pkgs, lib, ... }:
+{config, pkgs, lib, pkgs-unstable, ... }:
 {
     options = {
         USERS.akos.enable = lib.mkOption {
@@ -127,7 +127,7 @@
                 clippy
                 dprint
                 rust-analyzer
-                rustc
+                pkgs-unstable.rustc
 # POSIX
                 shellcheck
 # dev tools
