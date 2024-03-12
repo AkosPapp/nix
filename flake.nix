@@ -8,16 +8,16 @@
 #home-manager.inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    outputs = { nixpkgs, ... }:
+    outputs = { nixpkgs, nixpkgs-unstable, ... }:
     let
-        nixpkgs-unstable = import nixpkgs-unstable { inherit system; };
         system = "x86_64-linux";
+        pkgs-unstable = import nixpkgs-unstable { inherit system; };
         pkgs = import nixpkgs {
             system = system;
             config = { allowUnfree = true; };
         };
     in {
-        nixosConfigurations = import ./nixos-configurations.nix { inherit nixpkgs nixpkgs-unstable pkgs system; };
+        nixosConfigurations = import ./nixos-configurations.nix { inherit nixpkgs pkgs-unstable pkgs system; };
     };
 
 }
