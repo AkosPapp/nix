@@ -9,11 +9,14 @@
     };
 
     config = lib.mkIf config.MODULES.wm.dwm.enable {
-        nixpkgs.overlays = [
-            (final: prev: {
-             dwm = prev.dwm.overrideAttrs (old: { src = ./dwm ;});
-             })
-        ];
+        services.xserver.windowManager.dwm.package = pkgs.dwm.overrideAttrs {
+            src = /home/akos/Programs/dwm-flexipatch;
+        };
+        #nixpkgs.overlays = [
+        #    (final: prev: {
+        #    dwm = prev.dwm.overrideAttrs (old: { src = ./dwm ;});
+        #    })
+        #];
         environment.systemPackages = with pkgs; [
             sxhkd
                 rofi
