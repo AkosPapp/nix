@@ -13,7 +13,7 @@
         ];
         nixpkgs.overlays = [
             (final: prev: {
-             dwmblocks = prev.dwmblocks.overrideAttrs (old: { src = /home/akos/Programs/dwmblocks ;});
+             dwmblocks = prev.dwmblocks.overrideAttrs (old: { src = ./dwmblocks ;});
              })
         ];
     };

@@ -11,7 +11,7 @@
     config = lib.mkIf config.MODULES.wm.dwm.enable {
         nixpkgs.overlays = [
             (final: prev: {
-             dwm = prev.dwm.overrideAttrs (old: { src = /home/akos/Programs/dwm-flexipatch ;});
+             dwm = prev.dwm.overrideAttrs (old: { src = ./dwm ;});
              })
         ];
         environment.systemPackages = with pkgs; [
