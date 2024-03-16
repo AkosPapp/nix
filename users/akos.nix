@@ -50,6 +50,7 @@
                 graphviz
 
 # system tools
+                usbutils
                 sshpass
                 sshfs
                 lm_sensors
