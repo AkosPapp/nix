@@ -160,6 +160,7 @@
                 libreoffice
                 logseq
                 freecad
+                librecad
 
 # qemu
                 qemu_full

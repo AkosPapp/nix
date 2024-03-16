@@ -20,7 +20,7 @@
 # Enable CUPS to print documents.
     services.printing = {
         enable = true;
-        drivers = with pkgs; [ gutenprint canon-cups-ufr2 cups-filters ];
+        drivers = with pkgs; [ gutenprint canon-cups-ufr2 cups-filters  samsung-unified-linux-driver  ];
     };
     services.avahi = {
         enable = true;
