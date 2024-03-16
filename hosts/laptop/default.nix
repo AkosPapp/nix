@@ -19,6 +19,7 @@
 
 # Enable CUPS to print documents.
     services.printing.enable = true;
+    services.printing.drivers = [ pkgs.gutenprint ];
 
 
     nix.settings.experimental-features = [ "nix-command" "flakes" ];
