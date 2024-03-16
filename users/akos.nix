@@ -158,6 +158,7 @@
                 discord
                 libreoffice
                 logseq
+                freecad
 
 # qemu
                 qemu_full
