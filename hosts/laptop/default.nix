@@ -26,15 +26,15 @@
         enable = true;
         nssmdns = true;
     };
-    services.printing.browsing = true;
-    services.printing.browsedConf = ''
-        BrowseDNSSDSubTypes _cups,_print
-        BrowseLocalProtocols all
-        BrowseRemoteProtocols all
-        CreateIPPPrinterQueues All
+    #services.printing.browsing = true;
+    #services.printing.browsedConf = ''
+    #    BrowseDNSSDSubTypes _cups,_print
+    #    BrowseLocalProtocols all
+    #    BrowseRemoteProtocols all
+    #    CreateIPPPrinterQueues All
 
-        BrowseProtocols all
-        '';
+    #    BrowseProtocols all
+    #    '';
 
 
     nix.settings.experimental-features = [ "nix-command" "flakes" ];
