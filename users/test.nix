@@ -9,15 +9,6 @@
     };
 
 
-    imports = [
-        home-manager.nixosModules.home-manager
-        {
-            home-manager.useGlobalPkgs = true;
-            home-manager.useUserPackages = true;
-        }
-    ]; 
-
-
     config = lib.mkIf config.USERS.test.enable {
         home-manager.useGlobalPkgs = true;
 

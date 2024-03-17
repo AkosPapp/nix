@@ -24,7 +24,13 @@ for host in $(ls hosts); do
     echo "
     $(basename $host) = nixpkgs.lib.nixosSystem {
         specialArgs = { inherit system pkgs pkgs-unstable home-manager; };
-        modules = [ ./${OUTPUT} ./hosts/${host} ];
+        modules = [ ./${OUTPUT} ./hosts/${host}
+        home-manager.nixosModules.home-manager
+        {
+            home-manager.useGlobalPkgs = true;
+            home-manager.useUserPackages = true;
+        }
+        ];
     };
     " >> $NIX_CONFIGS
 done
