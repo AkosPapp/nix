@@ -22,6 +22,10 @@
         enable = true;
         drivers = with pkgs; [ gutenprint canon-cups-ufr2 cups-filters  samsung-unified-linux-driver  ];
     };
+
+    environment.systemPackages = with pkgs; [
+        hplip
+    ];
     # services.avahi = {
     #     enable = true;
     #     nssmdns = true;
