@@ -1,5 +1,6 @@
 { imports = [
 users/admin.nix
+users/test.nix
 users/akos.nix
 modules/virtualization/virtualbox.nix
 modules/virtualization/docker.nix

@@ -19,7 +19,7 @@ echo "];" >> $OUTPUT
 echo "}" >> $OUTPUT
 
 # hosts
-echo "{ nixpkgs, system, pkgs, pkgs-unstable, ... }: {" > $NIX_CONFIGS
+echo "{ nixpkgs, system, pkgs, pkgs-unstable, home-manager, ... }: {" > $NIX_CONFIGS
 for host in $(ls hosts); do
     echo "
     $(basename $host) = nixpkgs.lib.nixosSystem {
