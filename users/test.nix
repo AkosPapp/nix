@@ -9,20 +9,20 @@
     };
 
 
-    imports = [
-        home-manager.nixosModules.home-manager
-        {
-            home-manager.useGlobalPkgs = true;
-            home-manager.useUserPackages = true;
-            home-manager.users.test = import ./home.nix;
+    #imports = if config.USERS.test.enable then [
+    #    home-manager.nixosModules.home-manager
+    #    {
+    #        home-manager.useGlobalPkgs = true;
+    #        home-manager.useUserPackages = true;
+    #        home-manager.users.test = import ./home.nix;
+    #
+# Op#tionally, use home-manager.extraSpecialArgs to pass
+# ar#guments to home.nix
+    #    }
+    #]
+    #else [];
 
-# Optionally, use home-manager.extraSpecialArgs to pass
-# arguments to home.nix
-        }
-    ];
     config = lib.mkIf config.USERS.test.enable {
-
-#home-manager.users.test = import ./home.nix;
 
         users.users.test = {
             isNormalUser = true;
