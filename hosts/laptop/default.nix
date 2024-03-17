@@ -17,41 +17,9 @@
     };
 
 
-# Enable CUPS to print documents.
-    services.printing = {
-        enable = true;
-        drivers = with pkgs; [ gutenprint canon-cups-ufr2 cups-filters  samsung-unified-linux-driver  ];
-    };
-
-    environment.systemPackages = with pkgs; [
-        hplipWithPlugin
-        xsane
-        dbus
-        cups-pk-helper
-        avahi
-        libjpeg
-        libthreadar
-        libusb1
-        sane-airscan
-        libtool
-        python311Packages.notify2
-        sane-backends
-    ];
-    # services.avahi = {
-    #     enable = true;
-    #     nssmdns = true;
-    # };
-    # services.printing.browsing = true;
-    # services.printing.browsedConf = ''
-    #     BrowseDNSSDSubTypes _cups,_print
-    #     BrowseLocalProtocols all
-    #     BrowseRemoteProtocols all
-    #     CreateIPPPrinterQueues All
-    #     BrowseProtocols all
-    #     '';
-
 
     nix.settings.experimental-features = [ "nix-command" "flakes" ];
+    MODULES.system.printing.enable = true;
 
     nix.gc = {
         automatic = true;
