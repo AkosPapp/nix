@@ -1,4 +1,4 @@
-{config, pkgs, lib, nixpkgs, ... }:
+{config, pkgs, lib, home-manager, ... }:
 {
     options = {
         PROFILES.global.enable = lib.mkOption {

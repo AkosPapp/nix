@@ -1,4 +1,4 @@
-{config, pkgs, lib, pkgs-unstable, ... }:
+{config, pkgs, lib, pkgs-unstable, home-manager, ... }:
 {
     options = {
         USERS.test.enable = lib.mkOption {
@@ -8,7 +8,22 @@
         };
     };
 
+
+    imports = [
+        home-manager.nixosModules.home-manager
+        {
+            home-manager.useGlobalPkgs = true;
+            home-manager.useUserPackages = true;
+            home-manager.users.test = import ./home.nix;
+
+# Optionally, use home-manager.extraSpecialArgs to pass
+# arguments to home.nix
+        }
+    ];
     config = lib.mkIf config.USERS.test.enable {
+
+#home-manager.users.test = import ./home.nix;
+
         users.users.test = {
             isNormalUser = true;
             shell = pkgs.zsh;
@@ -17,6 +32,7 @@
             hashedPassword = "$y$j9T$gEhP/0Jlrlwb4ndmLs06L1$7qkdPdgqjCrEH8bAQvJqRn/Mj4m5X9GCRAyM33z0mdA";
         };
         programs.zsh.enable = true;
+
 
         MODULES = {
             fonts.nerdfonts.enable = true;
