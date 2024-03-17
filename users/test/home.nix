@@ -11,9 +11,9 @@
         zsh = {
             enable = true;
             autocd = true;
-            autosuggestion = {
-                enable = true;
-            };
+            #autosuggestion = {
+            #    enable = true;
+            #};
         };
         git = {
             enable = true;
