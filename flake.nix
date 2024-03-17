@@ -8,7 +8,7 @@
         home-manager.inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    outputs = { nixpkgs, nixpkgs-unstable, ... }:
+    outputs = { nixpkgs, nixpkgs-unstable, home-manager, ... }:
         let
         system = "x86_64-linux";
     pkgs-unstable = import nixpkgs-unstable { inherit system; };
@@ -23,7 +23,7 @@
     };
     in {
         nixosConfigurations = import ./nixos-configurations.nix {
-            inherit nixpkgs system pkgs pkgs-unstable;
+            inherit nixpkgs system pkgs pkgs-unstable home-manager;
         };
     };
 
