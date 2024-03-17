@@ -22,19 +22,18 @@
         enable = true;
         drivers = with pkgs; [ gutenprint canon-cups-ufr2 cups-filters  samsung-unified-linux-driver  ];
     };
-    services.avahi = {
-        enable = true;
-        nssmdns = true;
-    };
-    #services.printing.browsing = true;
-    #services.printing.browsedConf = ''
-    #    BrowseDNSSDSubTypes _cups,_print
-    #    BrowseLocalProtocols all
-    #    BrowseRemoteProtocols all
-    #    CreateIPPPrinterQueues All
-
-    #    BrowseProtocols all
-    #    '';
+    # services.avahi = {
+    #     enable = true;
+    #     nssmdns = true;
+    # };
+    # services.printing.browsing = true;
+    # services.printing.browsedConf = ''
+    #     BrowseDNSSDSubTypes _cups,_print
+    #     BrowseLocalProtocols all
+    #     BrowseRemoteProtocols all
+    #     CreateIPPPrinterQueues All
+    #     BrowseProtocols all
+    #     '';
 
 
     nix.settings.experimental-features = [ "nix-command" "flakes" ];
