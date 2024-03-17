@@ -24,7 +24,18 @@
     };
 
     environment.systemPackages = with pkgs; [
-        hplip
+        hplipWithPlugin
+        xsane
+        dbus
+        cups-pk-helper
+        avahi
+        libjpeg
+        libthreadar
+        libusb1
+        sane-airscan
+        libtool
+        python311Packages.notify2
+        sane-backends
     ];
     # services.avahi = {
     #     enable = true;
