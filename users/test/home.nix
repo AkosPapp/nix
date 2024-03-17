@@ -7,9 +7,21 @@
     home.username = "test";
     home.homeDirectory = "/home/test";
 
-    programs.zsh.enable = true;
-    programs.zsh.autocd = true;
-    programs.zsh.autosuggestion.enable = true;
+    programs = {
+        zsh = {
+            enable = true;
+            autocd = true;
+            autosuggestion = {
+                enable = true;
+            };
+        };
+        git = {
+            enable = true;
+            userName = "Papp Akos";
+            userEmail = "qq557703@gmail.com";
+            lfs.enable = true;
+        };
+    };
 # This value determines the Home Manager release that your
 # configuration is compatible with. This helps avoid breakage
 # when a new Home Manager release introduces backwards
