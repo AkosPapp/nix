@@ -6,7 +6,9 @@ NIX_CONFIGS="nixos-configurations.nix"
 echo "{ imports = [" > $OUTPUT
 
 # users
-find users -type f -name "*.nix" >> $OUTPUT
+for user in $(ls users); do
+    echo "users/${user}" >> $OUTPUT
+done
 
 # modules
 find modules -type f -name "*.nix" >> $OUTPUT

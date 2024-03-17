@@ -1,7 +1,7 @@
 { imports = [
-users/admin.nix
-users/test.nix
-users/akos.nix
+users/admin
+users/akos
+users/test
 modules/virtualization/virtualbox.nix
 modules/virtualization/docker.nix
 modules/virtualization/virt-manager.nix
