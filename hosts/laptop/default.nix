@@ -30,7 +30,7 @@
     system.stateVersion = "23.11";
 
     USERS.akos.enable = true;
-    USERS.test.enable = false;
+    USERS.test.enable = true;
     services.znapzend.enable = true;
 
     services.xserver.displayManager.sddm.enable = true;
