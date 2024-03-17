@@ -9,29 +9,27 @@
     };
 
 
-    #imports = if config.USERS.test.enable then [
-    #    home-manager.nixosModules.home-manager
-    #    {
-    #        home-manager.useGlobalPkgs = true;
-    #        home-manager.useUserPackages = true;
-    #        home-manager.users.test = import ./home.nix;
-    #
-# Op#tionally, use home-manager.extraSpecialArgs to pass
-# ar#guments to home.nix
-    #    }
-    #]
-    #else [];
+    imports = [
+        home-manager.nixosModules.home-manager
+        {
+            home-manager.useGlobalPkgs = true;
+            home-manager.useUserPackages = true;
+        }
+    ]; 
+
 
     config = lib.mkIf config.USERS.test.enable {
+        home-manager.useGlobalPkgs = true;
 
         users.users.test = {
             isNormalUser = true;
             shell = pkgs.zsh;
             description = "Papp Akos";
-            extraGroups = [ "dialout" "networkmanager" "wheel" "libvirtd" "docker" "input" "uinput" "plugdev" "vboxusers" ];
+            extraGroups = [];
             hashedPassword = "$y$j9T$gEhP/0Jlrlwb4ndmLs06L1$7qkdPdgqjCrEH8bAQvJqRn/Mj4m5X9GCRAyM33z0mdA";
         };
         programs.zsh.enable = true;
+
 
 
         MODULES = {
