@@ -6,7 +6,9 @@
     home.username = "test";
     home.homeDirectory = "/home/test";
 
+    programs.zsh.enable = true;
     programs.zsh.autocd = true;
+    programs.zsh.autosuggestion.enable = true;
 # This value determines the Home Manager release that your
 # configuration is compatible with. This helps avoid breakage
 # when a new Home Manager release introduces backwards
