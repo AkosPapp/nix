@@ -159,6 +159,7 @@
                 discord
                 libreoffice
                 logseq
+                obsidian
                 freecad
                 librecad
 

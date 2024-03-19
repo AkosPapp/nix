@@ -4,8 +4,15 @@
     inputs = {
         nixpkgs.url = "nixpkgs/nixos-23.11";
         nixpkgs-unstable.url = "nixpkgs/nixos-unstable";
-        home-manager.url = "github:nix-community/home-manager/release-23.11";
-        home-manager.inputs.nixpkgs.follows = "nixpkgs";
+        home-manager = {
+            url = "github:nix-community/home-manager/release-23.11";
+            inputs.nixpkgs.follows = "nixpkgs";
+        };
+        nixvim = {
+            url = "github:nix-community/nixvim";
+# If using a stable channel you can use `url = "github:nix-community/nixvim/nixos-<version>"`
+            inputs.nixpkgs.follows = "nixpkgs";
+        };
     };
 
     outputs = { nixpkgs, nixpkgs-unstable, home-manager, ... }:
@@ -18,6 +25,7 @@
             allowUnfree = true;
             permittedInsecurePackages = [
                 "nix-2.16.2"
+                "electron-25.9.0"
             ];
         };
     };
