@@ -1,38 +1,35 @@
 { config, pkgs, ... }:
 
 {
-    imports = [ ./hardware-configuration.nix ];
+  imports = [ ./hardware-configuration.nix ];
 
-#  # Bootloader.
-#  boot.loader.efi.efiSysMountPoint = "/boot/efi";
+  #  # Bootloader.
+  #  boot.loader.efi.efiSysMountPoint = "/boot/efi";
 
-    networking = {
-        networkmanager.enable = true;
-        hostId = "68bf4e0e";
-        hostName = "laptop";
-        extraHosts =
-            ''
-            127.0.0.1 localhost 
-            '';
-    };
+  networking = {
+    networkmanager.enable = true;
+    hostId = "68bf4e0e";
+    hostName = "laptop";
+    extraHosts = ''
+      127.0.0.1 localhost 
+    '';
+  };
 
+  nix.settings.experimental-features = [ "nix-command" "flakes" ];
+  MODULES.system.printing.enable = true;
 
+  nix.gc = {
+    automatic = true;
+    dates = "weekly";
+    options = "--delete-older-than 7d";
+  };
 
-    nix.settings.experimental-features = [ "nix-command" "flakes" ];
-    MODULES.system.printing.enable = true;
+  system.stateVersion = "23.11";
 
-    nix.gc = {
-        automatic = true;
-        dates = "weekly";
-        options = "--delete-older-than 7d";
-    };
+  USERS.akos.enable = true;
+  USERS.test.enable = true;
+  services.znapzend.enable = true;
 
-    system.stateVersion = "23.11";
-
-    USERS.akos.enable = true;
-    USERS.test.enable = true;
-    services.znapzend.enable = true;
-
-    services.xserver.displayManager.sddm.enable = true;
+  services.xserver.displayManager.sddm.enable = true;
 }
 
