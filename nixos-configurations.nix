@@ -1,7 +1,6 @@
-{ nixpkgs, system, pkgs, pkgs-unstable, home-manager, ... }: {
-
+{ nixpkgs, home-manager, ... }@args: {
     laptop = nixpkgs.lib.nixosSystem {
-        specialArgs = { inherit system pkgs pkgs-unstable home-manager; };
+        specialArgs = args;
         modules = [ ./generated.nix ./hosts/laptop
         home-manager.nixosModules.home-manager
         {
@@ -13,7 +12,7 @@
     
 
     server1 = nixpkgs.lib.nixosSystem {
-        specialArgs = { inherit system pkgs pkgs-unstable home-manager; };
+        specialArgs = args;
         modules = [ ./generated.nix ./hosts/server1
         home-manager.nixosModules.home-manager
         {
