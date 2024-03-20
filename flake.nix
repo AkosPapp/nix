@@ -25,11 +25,13 @@
             allowUnfree = true;
             permittedInsecurePackages = [
                 "nix-2.16.2"
-                "electron-25.9.0"
+                    "electron-25.9.0"
             ];
         };
     };
     in {
+        formatter.x86_64-linux = nixpkgs.linux.nixfmt;
+
         nixosConfigurations = import ./nixos-configurations.nix {
             inherit nixpkgs system pkgs pkgs-unstable home-manager;
         };

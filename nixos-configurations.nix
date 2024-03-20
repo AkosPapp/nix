@@ -1,4 +1,5 @@
 { nixpkgs, home-manager, ... }@args: {
+
     laptop = nixpkgs.lib.nixosSystem {
         specialArgs = args;
         modules = [ ./generated.nix ./hosts/laptop
