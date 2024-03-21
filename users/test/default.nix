@@ -1,4 +1,9 @@
-{ config, pkgs, lib, pkgs-unstable, home-manager, ... }: {
+{ config, pkgs, lib, pkgs-unstable, home-manager, nixvim, ... }: {
+
+  imports = [
+    # nixvim.homeManagerModules.nixvim
+    nixvim.nixosModules.nixvim
+  ];
   options = {
     USERS.test.enable = lib.mkOption {
       default = false;
@@ -32,6 +37,18 @@
       virtualisation.virtualbox.enable = true;
       virtualisation.virt-manager.enable = true;
       wm.dwm.enable = true;
+    };
+
+    programs.nixvim = {
+      enable = true;
+      colorschemes.dracula.enable = true;
+      colorschemes.base16.package = pkgs-unstable.vimPlugins.base16-nvim;
+      plugins = {
+        treesitter = {
+          enable = true;
+          indent = true;
+        };
+      };
     };
 
     # Allow unfree packages
