@@ -1,6 +1,5 @@
 {
   description = "My Nixos Configuration";
-
   inputs = {
     nixpkgs.url = "nixpkgs/nixos-23.11";
     nixpkgs-unstable.url = "nixpkgs/nixos-unstable";
@@ -14,8 +13,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
-
-  outputs = { nixpkgs, nixpkgs-unstable, home-manager, ... }:
+  outputs = { nixpkgs, nixpkgs-unstable, home-manager, nixvim, ... }:
     let
       system = "x86_64-linux";
       pkgs-unstable = import nixpkgs-unstable { inherit system; };
@@ -28,10 +26,8 @@
       };
     in {
       formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt;
-
       nixosConfigurations = import ./nixos-configurations.nix {
-        inherit nixpkgs system pkgs pkgs-unstable home-manager;
+        inherit nixpkgs system pkgs pkgs-unstable home-manager nixvim;
       };
     };
-
 }
