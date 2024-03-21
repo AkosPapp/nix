@@ -40,13 +40,15 @@
     };
 
     programs.nixvim = {
-      enable = true;
+      enable = false;
       colorschemes.dracula.enable = true;
-      colorschemes.base16.package = pkgs-unstable.vimPlugins.base16-nvim;
       plugins = {
         treesitter = {
           enable = true;
           indent = true;
+        };
+        lsp = {
+            enable = true;
         };
       };
     };
