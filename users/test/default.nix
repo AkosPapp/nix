@@ -47,9 +47,8 @@
           enable = true;
           indent = true;
         };
-        lsp = {
-            enable = true;
-        };
+        lsp = { enable = true; };
+        #obsidian.enable = true;
       };
     };
 
