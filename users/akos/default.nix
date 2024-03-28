@@ -99,11 +99,11 @@
       valgrind
       nodejs_18
 
-# typst
-typst
-typstfmt
-typst-lsp
-typst-live
+      # typst
+      typst
+      typstfmt
+      typst-lsp
+      typst-live
 
       # python
       (python311.withPackages (ps:
