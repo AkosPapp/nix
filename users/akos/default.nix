@@ -100,10 +100,11 @@
       nodejs_18
 
       # typst
-      typst
-      typstfmt
-      typst-lsp
-      typst-live
+      pkgs-unstable.typst
+      pkgs-unstable.typstfmt
+      pkgs-unstable.typst-lsp
+      pkgs-unstable.typst-live
+      pkgs-unstable.typst-preview
 
       # python
       (python311.withPackages (ps:
