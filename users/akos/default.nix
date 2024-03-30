@@ -105,6 +105,9 @@
       pkgs-unstable.typst-lsp
       pkgs-unstable.typst-live
       pkgs-unstable.typst-preview
+      pkgs-unstable.prettypst
+      #pkgs-unstable.tinymist
+      #tinymist
 
       # python
       (python311.withPackages (ps:
