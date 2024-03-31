@@ -23,6 +23,7 @@
 
   services.ceph = {
     enable = true;
+    client.enable = true;
     global = {
       fsid = "a1ff9f2b-907f-403c-945e-6df604fc4fa5";
       publicNetwork = "100.0.0.0/8 ";
@@ -40,6 +41,10 @@
     mon = {
       enable = true;
       daemons = [ "server1" ];
+    };
+    osd = {
+      enable = true;
+      daemons = [ "5d57f23a-2104-4dbb-86c0-ff376f22f022" ];
     };
   };
 
