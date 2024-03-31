@@ -37,6 +37,10 @@
       enable = true;
       daemons = [ "mgr1" ];
     };
+    mon = {
+      enable = true;
+      daemons = [ "server1" ];
+    };
   };
 
   # garbage cleaning
