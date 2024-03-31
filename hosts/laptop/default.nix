@@ -15,7 +15,6 @@
     '';
   };
 
-  nix.settings.experimental-features = [ "nix-command" "flakes" ];
   MODULES.system.printing.enable = true;
 
   nix.gc = {

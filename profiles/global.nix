@@ -21,6 +21,7 @@
       htop-vim
     ];
     users.mutableUsers = false;
+    nix.settings.experimental-features = [ "nix-command" "flakes" ];
   };
 
 }
