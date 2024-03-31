@@ -106,7 +106,7 @@
       pkgs-unstable.typst-live
       pkgs-unstable.typst-preview
       pkgs-unstable.prettypst
-      #pkgs-unstable.tinymist
+      pkgs-unstable.tinymist
       #tinymist
 
       # python
