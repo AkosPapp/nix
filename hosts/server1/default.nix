@@ -33,6 +33,10 @@
       authClusterRequired = "none";
       authClientRequired = "none";
     };
+    mgr = {
+      enable = true;
+      daemons = [ "mgr1" ];
+    };
   };
 
   # garbage cleaning
