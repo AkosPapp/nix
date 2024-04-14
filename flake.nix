@@ -24,10 +24,11 @@
           permittedInsecurePackages = [ "nix-2.16.2" "electron-25.9.0" ];
         };
       };
+      my-nixvim = import modules/nixvim;
     in {
       formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt;
       nixosConfigurations = import ./nixos-configurations.nix {
-        inherit nixpkgs system pkgs pkgs-unstable home-manager nixvim;
+        inherit nixpkgs system pkgs pkgs-unstable home-manager nixvim my-nixvim;
       };
     };
 }
