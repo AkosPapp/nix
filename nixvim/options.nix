@@ -1,18 +1,4 @@
-{...}:{
-# Import all your configuration modules here
-    imports = [
-
-        ./dap.nix
-            ./dracula.nix
-            ./indent-blankline.nix
-            ./lsp.nix
-            ./nvim-tree.nix
-            ./oil.nix
-            ./rainbow-delimiters.nix
-            ./telescope.nix
-            ./treesitter.nix
-            ./undotree.nix
-    ];
+{
 
     opts = {
 # line numbers
@@ -55,7 +41,6 @@
         action = ":Ex";
     }
 
-
     {
         mode = "n";
         key = "<leader>pn";
@@ -65,26 +50,26 @@
     {
         mode = "n";
         key = "<leader>y";
-        action = "\"+y";
+        action = ''"+y'';
     }
 
     {
         mode = "n";
         key = "<leader>yy";
-        action = "\"+yy";
+        action = ''"+yy'';
 
     }
 
     {
         mode = "n";
         key = "<leader>p";
-        action = "\"+p";
+        action = ''"+p'';
     }
 
     {
         mode = "n";
         key = "<leader>P";
-        action = "\"+P";
+        action = ''"+P'';
     }
 
     {
@@ -113,4 +98,4 @@
         action = "gg=G<CO>";
     }
     ];
-      }
+}

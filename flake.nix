@@ -10,7 +10,7 @@
     nixvim = {
       url = "github:nix-community/nixvim/nixos-23.11";
       # If using a stable channel you can use `url = "github:nix-community/nixvim/nixos-<version>"`
-      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.nixpkgs.follows = "nixpkgs-unstable";
     };
   };
   outputs = { nixpkgs, nixpkgs-unstable, home-manager, nixvim, ... }:
@@ -24,7 +24,7 @@
           permittedInsecurePackages = [ "nix-2.16.2" "electron-25.9.0" ];
         };
       };
-      my-nixvim = import modules/nixvim;
+      my-nixvim = import ./nixvim/default.nix { pkgs = pkgs-unstable; inherit pkgs-unstable; };
     in {
       formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt;
       nixosConfigurations = import ./nixos-configurations.nix {

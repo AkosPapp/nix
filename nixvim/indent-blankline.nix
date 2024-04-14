@@ -1,9 +1,7 @@
 {
-    plugins.indent-blankline = {
-        enable = true;
-    };
+  plugins.indent-blankline = { enable = true; };
 
-    extraConfigLuaPost = ''
+  extraConfigLuaPost = ''
         local highlight = {
             "RainbowRed",
             "RainbowYellow",
@@ -28,6 +26,6 @@
                 end)
 
         require("ibl").setup { indent = { highlight = highlight } }
-    '';
+  '';
 
 }
