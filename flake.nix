@@ -44,6 +44,10 @@
       nixosConfigurations = import ./nixos-configurations.nix {
         inherit nixpkgs system pkgs pkgs-unstable home-manager nixvim my-nixvim;
       };
+      packages = {
+        # Lets you run `nix run .` to start nixvim
+        default = nvim;
+      };
 
     };
 }
