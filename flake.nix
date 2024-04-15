@@ -7,17 +7,12 @@
       url = "github:nix-community/home-manager/release-23.11";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    nixvim = {
-      url = "github:nix-community/nixvim/nixos-23.11";
-      # If using a stable channel you can use `url = "github:nix-community/nixvim/nixos-<version>"`
-      inputs.nixpkgs.follows = "nixpkgs-unstable";
-    };
     my-nixvim = {
-        url = "github:PPAPSONKA/nixvim";
-        flake = true;
+      url = "github:PPAPSONKA/nixvim";
+      flake = true;
     };
   };
-  outputs = { nixpkgs, nixpkgs-unstable, home-manager, nixvim, my-nixvim, ... }:
+  outputs = { nixpkgs, nixpkgs-unstable, home-manager, my-nixvim, ... }:
     let
       system = "x86_64-linux";
       pkgs-unstable = import nixpkgs-unstable { inherit system; };
@@ -31,7 +26,7 @@
     in {
       formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt;
       nixosConfigurations = import ./nixos-configurations.nix {
-        inherit nixpkgs system pkgs pkgs-unstable home-manager nixvim my-nixvim;
+        inherit nixpkgs system pkgs pkgs-unstable home-manager my-nixvim;
       };
     };
 }

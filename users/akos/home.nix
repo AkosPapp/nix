@@ -1,26 +1,23 @@
-{ config, pkgs, lib, pkgs-unstable, my-nixvim, nixvim, system, ... }: {
-    imports = [
-    nixvim.homeManagerModules.nixvim
-    ];
+{ config, pkgs, lib, pkgs-unstable, my-nixvim, system, ... }: {
 
   # Home Manager needs a bit of information about you and the
   # paths it should manage.
-  home.username = "test";
-  home.homeDirectory = "/home/test";
+  home.username = "akos";
+  home.homeDirectory = "/home/akos";
   home.packages = [ my-nixvim.packages.${system}.default ];
 
   programs = {
     zsh = {
-      enable = true;
+      enable = false;
       autocd = true;
       #autosuggestion = {
       #    enable = true;
       #};
     };
     git = {
-      enable = true;
+      enable = false;
       userName = "Papp Akos";
-      userEmail = "qq557703@gmail.com";
+      userEmail = "qq557702@gmail.com";
       lfs.enable = true;
     };
   };
