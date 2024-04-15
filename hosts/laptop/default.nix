@@ -28,6 +28,10 @@
   USERS.akos.enable = true;
   services.znapzend.enable = true;
 
-  services.xserver.displayManager.sddm.enable = true;
+  services.xserver.displayManager.sddm = {
+      enable = true;
+      theme = "Dracula";
+  };
+
 }
 
