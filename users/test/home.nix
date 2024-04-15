@@ -1,9 +1,13 @@
-{ config, pkgs, lib, pkgs-unstable, ... }: {
+{ config, pkgs, lib, pkgs-unstable, my-nixvim, nixvim, system, ... }: {
+    imports = [
+    nixvim.homeManagerModules.nixvim
+    ];
 
   # Home Manager needs a bit of information about you and the
   # paths it should manage.
   home.username = "test";
   home.homeDirectory = "/home/test";
+  home.packages = [ my-nixvim.packages.${system}.default ];
 
   programs = {
     zsh = {

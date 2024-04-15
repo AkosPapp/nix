@@ -12,8 +12,12 @@
       # If using a stable channel you can use `url = "github:nix-community/nixvim/nixos-<version>"`
       inputs.nixpkgs.follows = "nixpkgs-unstable";
     };
+    my-nixvim = {
+        url = "github:PPAPSONKA/nixvim";
+        flake = true;
+    };
   };
-  outputs = { nixpkgs, nixpkgs-unstable, home-manager, nixvim, ... }:
+  outputs = { nixpkgs, nixpkgs-unstable, home-manager, nixvim, my-nixvim, ... }:
     let
       system = "x86_64-linux";
       pkgs-unstable = import nixpkgs-unstable { inherit system; };
@@ -24,30 +28,10 @@
           permittedInsecurePackages = [ "nix-2.16.2" "electron-25.9.0" ];
         };
       };
-      my-nixvim = import ./nixvim/default.nix {
-        pkgs = pkgs-unstable;
-        inherit pkgs-unstable;
-      };
-      nixvimLib = nixvim.lib.${system};
-      nixvim' = nixvim.legacyPackages.${system};
-      nixvimModule = {
-        inherit pkgs;
-        module = my-nixvim; # import the module directly
-        # You can use `extraSpecialArgs` to pass additional arguments to your module files
-        extraSpecialArgs = {
-          # inherit (inputs) foo;
-        };
-      };
-      nvim = nixvim'.makeNixvimWithModule nixvimModule;
     in {
       formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt;
       nixosConfigurations = import ./nixos-configurations.nix {
         inherit nixpkgs system pkgs pkgs-unstable home-manager nixvim my-nixvim;
       };
-      packages = {
-        # Lets you run `nix run .` to start nixvim
-        default = nvim;
-      };
-
     };
 }
