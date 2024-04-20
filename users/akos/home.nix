@@ -24,19 +24,17 @@
     services.dwm-status = { 
         enable = true;
         order = ["audio" "backlight" "battery" "cpu_load" "network" "time"];
-        #extraConfig = ''
-        #{
-        #    separator = " | ";
+        extraConfig = {
+            separator = " | ";
 
-        #    battery = {
-        #        notifier_levels = [ 2 5 10 15 20 ];
-        #    };
+            battery = {
+                notifier_levels = [ 2 5 10 15 20 ];
+            };
 
-        #    time = {
-        #        format = "%H:%M";
-        #    };
-        #}
-        #'';
+            time = {
+                format = "%H:%M";
+            };
+        } ;
     };
 # This value determines the Home Manager release that your
 # configuration is compatible with. This helps avoid breakage
