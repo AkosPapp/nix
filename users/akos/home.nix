@@ -23,7 +23,8 @@
     };
     services.dwm-status = { 
         enable = true;
-        order = ["audio" "backlight" "battery" "cpu_load" "network" "time"];
+        order = ["battery"];
+        #order = ["audio" "backlight" "battery" "cpu_load" "network" "time"];
         extraConfig = {
             separator = " | ";
 
