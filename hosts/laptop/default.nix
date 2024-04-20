@@ -29,8 +29,8 @@
   services.znapzend.enable = true;
 
   services.xserver.displayManager.sddm = {
-      enable = true;
-      theme = "Dracula";
+    enable = true;
+    theme = "Dracula";
   };
 
 }
