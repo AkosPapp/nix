@@ -23,13 +23,13 @@
     };
     services.dwm-status = { 
         enable = true;
-        order = ["battery"];
+        order = ["battery" "cpu_load" "network" "time"];
         #order = ["audio" "backlight" "battery" "cpu_load" "network" "time"];
         extraConfig = {
             separator = " | ";
 
             battery = {
-                notifier_levels = [ 2 5 10 15 20 ];
+                notifier_levels = [ 0 1 2 3 4 5 10 15 20 ];
             };
 
             time = {
