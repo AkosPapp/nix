@@ -57,6 +57,7 @@
       httm
       mpv
       tmux
+      zellij
       fd
       fzf
       rsync
