@@ -35,6 +35,10 @@ build: stage
 	@echo "--- Building new configuration ---"
 	@nixos-rebuild build --flake .# && make commit
 
+iso: stage
+	@echo "--- Building ISO ---"
+	@nix build .#nixosConfigurations.iso.config.system.build.isoImage && make commit
+
 update:
 	@echo "--- Updating flake ---"
 	nix flake update

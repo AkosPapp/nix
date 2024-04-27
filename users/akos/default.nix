@@ -93,19 +93,6 @@
       fuse
       wireguard-tools
 
-      # nvim
-      neovim
-      xclip
-      tree-sitter
-      lua-language-server
-      cmake-language-server
-      lldb
-      gdb
-      nil
-      nixd
-      valgrind
-      nodejs_18
-
       # typst
       pkgs-unstable.typst
       pkgs-unstable.typstfmt
