@@ -11,11 +11,6 @@
       url = "github:PPAPSONKA/nixvim";
       flake = true;
     };
-    disko = {
-      url = "github:nix-community/disko";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
   };
   outputs = { nixpkgs, nixpkgs-unstable, home-manager, my-nixvim, disko, ... }:
     let

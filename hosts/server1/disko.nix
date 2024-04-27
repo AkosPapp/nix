@@ -1,5 +1,4 @@
-{ disko }: {
-  imports = [ disko.nixosModules.disko ];
+{
   disko.devices = {
     disk = {
       main = {
@@ -81,7 +80,7 @@
         };
         mountpoint = "/data-pool";
         postCreateHook =
-          "zfs list -t snapshot -H -o name | grep -E '^data-pool@blank$' || zfs snapshot zroot@blank";
+          "zfs list -t snapshot -H -o name | grep -E '^data-pool@blank$' || zfs snapshot data-pool@blank";
         datasets = { }; # datasets
       };
     }; # zpool

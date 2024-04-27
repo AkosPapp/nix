@@ -1,5 +1,5 @@
 { config, lib, pkgs, ... }: {
-  imports = [ ./hardware-configuration.nix ./disko.nix ];
+  imports = [ ./hardware-configuration.nix ];
 
   networking = {
     hostName = "server1";
