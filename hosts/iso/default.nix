@@ -18,6 +18,9 @@
   environment.systemPackages = with pkgs; [
     firefox
     my-nixvim.packages.${system}.default
+    rsync
+    sanoid
+    lz4
   ];
 
 }

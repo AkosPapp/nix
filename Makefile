@@ -56,3 +56,16 @@ sync: commit
 	@git pull
 	@git push
 
+install-remote:
+	@if [ "$(IP)" = "" ]; then \
+		echo "IP not set"; \
+		echo "Usage: make IP=<ip> CONFIG=<config> install-remote"; \
+	else \
+		if [ "$(CONFIG)" = "" ]; then \
+			echo "CONFIG not set"; \
+			echo "Usage: make IP=<ip> CONFIG=<config> install-remote"; \
+		else \
+			echo "Uploading Flake"; \
+			rsync -auzv ./* root@$(IP):/tmp/nixconfig --exclude .git --exclude result; \
+		fi \
+	fi

@@ -32,8 +32,7 @@
     fsType = "vfat";
   };
 
-  swapDevices =
-    [{ device = "/dev/disk/by-uuid/c433c9af-d971-4154-85af-7abf08dc13d4"; }];
+  swapDevices = [{ device = "/dev/disk/by-partlabel/disk-main-swap"; }];
 
   boot.zfs.extraPools = [ "data-pool" ];
 
