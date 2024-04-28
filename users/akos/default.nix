@@ -92,6 +92,7 @@
       bc
       fuse
       wireguard-tools
+      sanoid
 
       # typst
       pkgs-unstable.typst
