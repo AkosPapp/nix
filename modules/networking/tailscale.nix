@@ -1,4 +1,4 @@
-{ config, pkgs, lib, ... }: {
+{ config, pkgs, pkgs-unstable, lib, ... }: {
   options = {
     MODULES.networking.tailscale.enable = lib.mkOption {
       type = lib.types.bool;
@@ -11,6 +11,7 @@
     services.tailscale = {
       enable = true;
       openFirewall = true;
+      package = pkgs-unstable.tailscale;
     };
     networking.firewall.checkReversePath = "loose";
   };
