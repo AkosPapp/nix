@@ -35,10 +35,9 @@
   swapDevices = [{ device = "/dev/disk/by-partlabel/disk-main-swap"; }];
 
   boot.zfs = {
-      extraPools = [ "data-pool" ];
-      forceImportAll = true;
+    extraPools = [ "data-pool" ];
+    forceImportAll = true;
   };
-
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
   hardware.cpu.intel.updateMicrocode =
