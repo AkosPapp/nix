@@ -61,6 +61,8 @@
   MODULES.virtualisation.docker.enable = true;
   USERS.admin.enable = true;
 
+  services.openssh.PermitRootLogin = lib.mkForce "prohibit-password";
+
   system.stateVersion = "23.11";
 
 }
