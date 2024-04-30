@@ -9,16 +9,16 @@
 
   config = lib.mkIf config.MODULES.wm.dwm.enable {
     services.xserver.windowManager.dwm.package = pkgs.dwm.overrideAttrs {
-      src = /home/akos/Programs/dwm-flexipatch;
-      #pkgs.fetchFromGitHub {
-      #  owner = "PPAPSONKA";
-      #  repo = "dwm";
-      #  rev = "d0e8c140b7464f9be3ee28a8c720de72a9f7103f";
+      src = #/home/akos/Programs/dwm-flexipatch;
+      pkgs.fetchFromGitHub {
+        owner = "PPAPSONKA";
+        repo = "dwm";
+        rev = "d0e8c140b7464f9be3ee28a8c720de72a9f7103f";
 
 
-      #  sha256 = "sha256-MdX11bIXxm7Zg0PUwHFmSEUs9GKKWvHuq9z87nT+Iiw=";
+        sha256 = "sha256-ZQsEmi0+exI5to28gDQDj51s/KghgFrfFM9iEcA2Za4=";
 
-      #};
+      };
     };
     #nixpkgs.overlays = [
     #    (final: prev: {
