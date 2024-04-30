@@ -8,20 +8,18 @@
   };
 
   config = lib.mkIf config.MODULES.wm.dwm.enable {
-    #services.xserver.windowManager.dwm.package = pkgs.dwm.overrideAttrs {
-    #  src = pkgs.fetchFromGitHub {
-    #    #owner = "PPAPSONKA";
-    #    #repo = "dwm";
-    #    #rev = "d0e8c140b7464f9be3ee28a8c720de72a9f7103f";
+    services.xserver.windowManager.dwm.package = pkgs.dwm.overrideAttrs {
+      src = /home/akos/Programs/dwm-flexipatch;
+      #pkgs.fetchFromGitHub {
+      #  owner = "PPAPSONKA";
+      #  repo = "dwm";
+      #  rev = "d0e8c140b7464f9be3ee28a8c720de72a9f7103f";
 
-    #    owner = "bakkeby";
-    #    repo = "dwm-flexipatch";
-    #    rev = "a18f3ef370110c85d9001aced4b0cb1c96a075bf";
 
-    #    sha256 = "sha256-MdX11bIXxm7Zg0PUwHFmSEUs9GKKWvHuq9z87nT+Iiw=";
+      #  sha256 = "sha256-MdX11bIXxm7Zg0PUwHFmSEUs9GKKWvHuq9z87nT+Iiw=";
 
-    #  };
-    #};
+      #};
+    };
     #nixpkgs.overlays = [
     #    (final: prev: {
     #    dwm = prev.dwm.overrideAttrs (old: { src = ./dwm ;});
