@@ -17,26 +17,40 @@
               };
             };
             zfs = {
-              size = "100%";
+              end = "-32G";
               content = {
                 type = "zfs";
                 pool = "zroot";
               };
             };
+            plainSwap = {
+              size = "100%";
+              content = {
+                type = "swap";
+                resumeDevice = true; # resume from hiberation from this device
+              };
+            };
           };
         };
       };
-      y = {
+      y = { # FIXTHIS
         type = "disk";
-        device = "/dev/sdy";
+        device = "/dev/sdy"; # FIXTHIS
         content = {
           type = "gpt";
           partitions = {
             zfs = {
-              size = "100%";
+              end = "-32G";
               content = {
                 type = "zfs";
                 pool = "zroot";
+              };
+            };
+            swap = {
+              size = "100%";
+              content = {
+                type = "swap";
+                resumeDevice = true; # resume from hiberation from this device
               };
             };
           };
@@ -46,22 +60,31 @@
     zpool = {
       zroot = {
         type = "zpool";
-        mode = "mirror";
+        mode = "stripe";
         rootFsOptions = {
           compression = "off";
           "com.sun:auto-snapshot" = "false";
         };
         mountpoint = "none";
-        postCreateHook = "zfs list -t snapshot -H -o name | grep -E '^zroot@blank$' || zfs snapshot zroot@blank";
+        postCreateHook =
+          "zfs list -t snapshot -H -o name | grep -E '^zroot@blank$' || zfs snapshot zroot@blank";
 
         datasets = {
-          "persistent/home" = {
-            type = "zfs_fs";
-            mountpoint = "/home";
-          };
           root = {
             type = "zfs_fs";
             mountpoint = "/";
+          };
+          nix = {
+            type = "zfs_fs";
+            mountpoint = "/nix";
+          };
+          "persist" = {
+            type = "zfs_fs";
+            mountpoint = "none";
+          };
+          "persist/home" = {
+            type = "zfs_fs";
+            mountpoint = "/home";
           };
         };
       };

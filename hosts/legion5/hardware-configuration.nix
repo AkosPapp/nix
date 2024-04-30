@@ -12,28 +12,24 @@
       initrd = {
         availableKernelModules =
           [ "nvme" "xhci_pci" "usbhid" "usb_storage" "sd_mod" ];
-        kernelModules = [ ];
+        kernelModules = [ "nvidia" ];
       };
       kernelModules = [ "kvm-amd" ];
-      #extraModulePackages = [ ];
+      extraModulePackages = [ config.boot.kernelPackages.nvidia_x11 ];
       supportedFilesystems = [ "zfs" ];
-      zfs.extraPools = [ "home" ];
-      zfs.forceImportRoot = false;
-    };
-    #boot.zfs.allowHibernation = true;
-
-    fileSystems."/" = {
-      device = "/dev/disk/by-uuid/b8b720e7-e6cd-4413-b11e-fc632f5ee6a0";
-      fsType = "ext4";
+      zfs.extraPools = [ "zroot" ];
+      zfs.forceImportRoot = true;
     };
 
     fileSystems."/boot" = {
-      device = "/dev/disk/by-uuid/B04A-ACB1";
+      device = "/dev/disk/by-partlabel/disk-samsung980-ESP";
       fsType = "vfat";
     };
 
-    swapDevices =
-      [{ device = "/dev/disk/by-uuid/82d5dd31-7de1-4c3c-96fe-994453eff873"; }];
+    swapDevices = [
+      { device = "/dev/disk/by-partlabel/disk-samsung980-swap"; }
+      { device = "/dev/disk/by-partlabel/disk-samsung980-swap"; } # FIXTHIS
+    ];
 
     networking.useDHCP = lib.mkDefault true;
     nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
