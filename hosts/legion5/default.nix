@@ -30,8 +30,12 @@
 
   services.xserver.displayManager.sddm = {
     enable = true;
-    theme = "Dracula";
   };
+
+  
+    environment.systemPackages = with pkgs; [
+    lenovo-legion
+];
 
   # Enable OpenGL
   hardware.opengl = {
