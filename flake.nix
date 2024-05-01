@@ -11,8 +11,12 @@
       url = "github:PPAPSONKA/nixvim";
       flake = true;
     };
+    sops-nix = {
+      url = "github:Mic92/sops-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
-  outputs = { nixpkgs, nixpkgs-unstable, home-manager, my-nixvim, disko, ... }:
+  outputs = { nixpkgs, nixpkgs-unstable, home-manager, my-nixvim, disko, sops-nix, ... }:
     let
       system = "x86_64-linux";
       pkgs-unstable = import nixpkgs-unstable { inherit system; };
@@ -26,7 +30,7 @@
     in {
       formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt;
       nixosConfigurations = import ./nixos-configurations.nix {
-        inherit nixpkgs system pkgs pkgs-unstable home-manager my-nixvim disko;
+        inherit nixpkgs system pkgs pkgs-unstable home-manager my-nixvim disko sops-nix;
       };
     };
 }
