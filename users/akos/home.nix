@@ -20,6 +20,10 @@
       userEmail = "qq557702@gmail.com";
       lfs.enable = true;
     };
+    zellij = {
+      enable = true;
+      enableZshIntegration = true;
+    };
   };
   services.dwm-status = {
     enable = true;
