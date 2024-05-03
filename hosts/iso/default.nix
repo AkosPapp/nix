@@ -1,5 +1,7 @@
-{ pkgs, modulesPath, my-nixvim, ... }: {
-  imports = [ "${modulesPath}/installer/cd-dvd/installation-cd-minimal.nix" ];
+{ pkgs, modulesPath, my-nixvim, system, ... }: {
+  imports = [
+  "${modulesPath}/installer/cd-dvd/installation-cd-minimal.nix"
+  ];
   nixpkgs.hostPlatform = "x86_64-linux";
   systemd.services.sshd.wantedBy = pkgs.lib.mkForce [ "multi-user.target" ];
   services.openssh.settings.PermitRootLogin = pkgs.lib.mkForce "yes";
@@ -22,6 +24,25 @@
     rsync
     sanoid
     lz4
+
   ];
 
+  home-manager = {
+    useGlobalPkgs = true;
+    users.nixos.home = {
+      username = "nixos";
+      homeDirectory = "/home/nixos";
+      packages = [ my-nixvim.packages.${system}.default ];
+      stateVersion = "23.11";
+    };
+    users.root.home = {
+      username = "root";
+      homeDirectory = "/root";
+      packages = [ my-nixvim.packages.${system}.default ];
+      stateVersion = "23.11";
+    };
+  };
+
+  sops.defaultSopsFile = ../../secrets/example.yaml;
+  #sops.secrets."repos.PPAPSONKA.nix.deploy-key.iso.private" = {};
 }

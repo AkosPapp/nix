@@ -15,7 +15,10 @@
         kernelModules = [ "nvidia" ];
       };
       kernelModules = [ "kvm-amd" ];
-      extraModulePackages = [ config.boot.kernelPackages.nvidia_x11 config.boot.kernelPackages.lenovo-legion-module ];
+      extraModulePackages = [
+        config.boot.kernelPackages.nvidia_x11
+        config.boot.kernelPackages.lenovo-legion-module
+      ];
       supportedFilesystems = [ "zfs" ];
       zfs.extraPools = [ "zroot" ];
       zfs.forceImportRoot = true;

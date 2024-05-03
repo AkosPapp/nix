@@ -28,14 +28,9 @@
   USERS.akos.enable = true;
   services.znapzend.enable = true;
 
-  services.xserver.displayManager.sddm = {
-    enable = true;
-  };
+  services.xserver.displayManager.sddm = { enable = true; };
 
-  
-    environment.systemPackages = with pkgs; [
-    lenovo-legion
-];
+  environment.systemPackages = with pkgs; [ lenovo-legion ];
 
   # Enable OpenGL
   hardware.opengl = {
