@@ -1,7 +1,5 @@
 { pkgs, modulesPath, my-nixvim, system, ... }: {
-  imports = [
-  "${modulesPath}/installer/cd-dvd/installation-cd-minimal.nix"
-  ];
+  imports = [ "${modulesPath}/installer/cd-dvd/installation-cd-minimal.nix" ];
   nixpkgs.hostPlatform = "x86_64-linux";
   systemd.services.sshd.wantedBy = pkgs.lib.mkForce [ "multi-user.target" ];
   services.openssh.settings.PermitRootLogin = pkgs.lib.mkForce "yes";

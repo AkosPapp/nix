@@ -24,15 +24,37 @@
       zfs.forceImportRoot = true;
     };
 
+    fileSystems."/" = {
+      device = "zroot/root";
+      fsType = "zfs";
+    };
+
+    fileSystems."/nix" = {
+      device = "zroot/nix";
+      fsType = "zfs";
+    };
+
+    fileSystems."/etc/NetworkManager/system-connections" = {
+      device = "zroot/persist/system-connections";
+      fsType = "zfs";
+    };
+
+    fileSystems."/home" = {
+      device = "zroot/persist/home";
+      fsType = "zfs";
+    };
+
     fileSystems."/boot" = {
       device = "/dev/disk/by-partlabel/disk-samsung980-ESP";
       fsType = "vfat";
+      options = [ "fmask=0022" "dmask=0022" ];
     };
 
-    swapDevices = [
-      { device = "/dev/disk/by-partlabel/disk-samsung980-swap"; }
-      { device = "/dev/disk/by-partlabel/disk-samsung980-swap"; } # FIXTHIS
-    ];
+    swapDevices = [{
+      device = "/dev/disk/by-partlabel/disk-samsung980-swap";
+    }
+    #{ device = "/dev/disk/by-partlabel/disk-samsung980-swap"; } # FIXTHIS
+      ];
 
     networking.useDHCP = lib.mkDefault true;
     nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";

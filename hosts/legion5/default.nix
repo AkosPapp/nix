@@ -17,6 +17,9 @@
 
   MODULES.system.printing.enable = true;
 
+  users.users.root.hashedPassword =
+        "$y$j9T$gEhP/0Jlrlwb4ndmLs06L1$7qkdPdgqjCrEH8bAQvJqRn/Mj4m5X9GCRAyM33z0mdA";
+
   nix.gc = {
     automatic = true;
     dates = "weekly";
@@ -72,6 +75,11 @@
 
     # Optionally, you may need to select the appropriate driver version for your specific GPU.
     package = config.boot.kernelPackages.nvidiaPackages.stable;
+    prime = {
+      sync.enable = true;
+      nvidiaBusId = "PCI:1:0:0";
+      amdgpuBusId = "PCI:5:0:0";
+    };
   };
 
 }
