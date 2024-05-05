@@ -29,7 +29,6 @@
   system.stateVersion = "23.11";
 
   USERS.akos.enable = true;
-  services.znapzend.enable = true;
 
   services.xserver.displayManager.sddm = { enable = true; };
 
@@ -79,6 +78,17 @@
       sync.enable = true;
       nvidiaBusId = "PCI:1:0:0";
       amdgpuBusId = "PCI:5:0:0";
+    };
+  };
+
+  services.znapzend = {
+    enable = true;
+    pure = true;
+    features.compressed = true;
+    zetup."rpool/persist" = {
+      recursive = true;
+      plan = "1h=>1min,1d=>1h,1m=>1d";
+      enable = true;
     };
   };
 
