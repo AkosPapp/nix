@@ -85,7 +85,7 @@
     enable = true;
     pure = true;
     features.compressed = true;
-    zetup."rpool/persist" = {
+    zetup."zroot/persist" = {
       recursive = true;
       plan = "1h=>1min,1d=>1h,1m=>1d";
       enable = true;
