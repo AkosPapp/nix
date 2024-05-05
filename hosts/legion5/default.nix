@@ -18,7 +18,7 @@
   MODULES.system.printing.enable = true;
 
   users.users.root.hashedPassword =
-        "$y$j9T$gEhP/0Jlrlwb4ndmLs06L1$7qkdPdgqjCrEH8bAQvJqRn/Mj4m5X9GCRAyM33z0mdA";
+    "$y$j9T$gEhP/0Jlrlwb4ndmLs06L1$7qkdPdgqjCrEH8bAQvJqRn/Mj4m5X9GCRAyM33z0mdA";
 
   nix.gc = {
     automatic = true;

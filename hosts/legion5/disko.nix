@@ -23,7 +23,7 @@
                 pool = "zroot";
               };
             };
-            plainSwap = {
+            swap = {
               size = "100%";
               content = {
                 type = "swap";
@@ -33,9 +33,10 @@
           };
         };
       };
-      y = { # FIXTHIS
+      samsung-pm9a1 = { # FIXTHIS
         type = "disk";
-        device = "/dev/sdy"; # FIXTHIS
+        device =
+          "/dev/disk/by-id/nvme-SAMSUNG_MZVL21T0HCLR-00BL2_S64NNF0X101746"; # FIXTHIS
         content = {
           type = "gpt";
           partitions = {
