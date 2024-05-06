@@ -154,6 +154,7 @@
       rpi-imager
       gparted
       distrobox
+      perf-tools
 
       # user tools
       networkmanagerapplet
@@ -182,6 +183,9 @@
       qemu_full
       qemu-utils
     ];
+
+    # perf
+    boot.extraModulePackages = [ config.boot.kernelPackages.perf ];
 
     boot.binfmt.emulatedSystems =
       [ "aarch64-linux" "armv6l-linux" "armv7l-linux" ];
