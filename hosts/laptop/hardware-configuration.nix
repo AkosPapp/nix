@@ -20,7 +20,7 @@
       zfs.extraPools = [ "home" ];
       zfs.forceImportRoot = false;
     };
-    #boot.zfs.allowHibernation = true;
+    boot.zfs.allowHibernation = true;
 
     fileSystems."/" = {
       device = "/dev/disk/by-uuid/b8b720e7-e6cd-4413-b11e-fc632f5ee6a0";
