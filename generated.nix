@@ -2,6 +2,7 @@
   imports = [
     users/admin
     users/akos
+    modules/hardware/perifirals/mice/razer.nix
     modules/virtualization/virtualbox.nix
     modules/virtualization/docker.nix
     modules/virtualization/virt-manager.nix

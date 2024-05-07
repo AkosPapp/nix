@@ -22,6 +22,7 @@
         "uinput"
         "plugdev"
         "vboxusers"
+        "openrazer"
       ];
       hashedPassword =
         "$y$j9T$gEhP/0Jlrlwb4ndmLs06L1$7qkdPdgqjCrEH8bAQvJqRn/Mj4m5X9GCRAyM33z0mdA";
@@ -45,6 +46,7 @@
       virtualisation.virtualbox.enable = true;
       virtualisation.virt-manager.enable = true;
       wm.dwm.enable = true;
+      hardware.perifirals.mice.razer.enable = true;
     };
 
     # Allow unfree packages
