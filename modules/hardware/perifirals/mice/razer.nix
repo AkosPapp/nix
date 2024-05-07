@@ -15,7 +15,10 @@
       keyStatistics = false;
       enable = true;
       devicesOffOnScreensaver = true;
+
     };
+
+    environment.systemPackages = with pkgs; [ polychromatic ];
   };
 
 }
