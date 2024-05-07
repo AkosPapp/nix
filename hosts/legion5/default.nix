@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ config, pkgs, lib, ... }:
 
 {
   imports = [ ./hardware-configuration.nix ];
@@ -92,5 +92,19 @@
     };
   };
 
+  #services.zfs = {
+  #  autoScrub = {
+  #    enable = true;
+  #    interval = "weekly";
+  #  };
+  #  trim = {
+  #    enable = true;
+  #    interval = "daily";
+  #  };
+  #};
+
+  virtualisation.docker.enableNvidia = true;
+
+  services.power-profiles-daemon.enable = true;
 }
 
