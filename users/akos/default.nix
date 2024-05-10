@@ -131,6 +131,7 @@
 
       # git
       gitFull
+      act
       gh
 
       # c++

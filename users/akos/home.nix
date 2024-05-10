@@ -41,6 +41,7 @@
   # configuration is compatible with. This helps avoid breakage
   # when a new Home Manager release introduces backwards
   # incompatible changes.
+  gtk.font.size = 18;
 
   # You can update Home Manager without changing this value. See
   # the Home Manager release notes for a list of state version
