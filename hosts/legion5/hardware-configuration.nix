@@ -22,8 +22,12 @@
         config.boot.kernelPackages.lenovo-legion-module
       ];
       supportedFilesystems = [ "zfs" ];
-      zfs.extraPools = [ "zroot" ];
-      zfs.forceImportRoot = true;
+      zfs = {
+        extraPools = [ "zroot" ];
+        forceImportRoot = false;
+        allowHibernation = true;
+      };
+      resumeDevice = "/dev/disk/by-partlabel/disk-samsung980-swap";
     };
 
     fileSystems."/" = {
