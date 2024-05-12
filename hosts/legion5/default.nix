@@ -81,6 +81,11 @@
     };
   };
 
+  services.logind = {
+    powerKey = "hibernate";
+    lidSwitch = "hibernate";
+  };
+
   services.znapzend = {
     enable = true;
     pure = true;
