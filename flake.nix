@@ -15,6 +15,7 @@
       url = "github:Mic92/sops-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    nixos-hardware.url = "github:NixOS/nixos-hardware/master";
   };
   outputs = { nixpkgs, nixpkgs-unstable, home-manager, my-nixvim, disko
     , sops-nix, ... }:
@@ -25,7 +26,7 @@
         system = system;
         config = {
           allowUnfree = true;
-          permittedInsecurePackages = [ "nix-2.16.2" "electron-25.9.0" ];
+          permittedInsecurePackages = [ "electron-25.9.0" ];
         };
       };
     in {
