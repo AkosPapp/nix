@@ -3,6 +3,7 @@
 {
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
+    nixos-hardware.nixosModules.lenovo-legion-16ach6h-hybrid
   ];
 
   config = {
