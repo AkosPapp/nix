@@ -59,16 +59,16 @@
     };
   };
 
-  #services.zfs = {
-  #  autoScrub = {
-  #    enable = true;
-  #    interval = "weekly";
-  #  };
-  #  trim = {
-  #    enable = true;
-  #    interval = "daily";
-  #  };
-  #};
+  services.zfs = {
+    autoScrub = {
+      enable = true;
+      interval = "weekly";
+    };
+    trim = {
+      enable = true;
+      interval = "daily";
+    };
+  };
 
   virtualisation.docker.enableNvidia = true;
 
