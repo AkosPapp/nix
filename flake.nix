@@ -18,7 +18,7 @@
     nixos-hardware.url = "github:NixOS/nixos-hardware/master";
   };
   outputs = { nixpkgs, nixpkgs-unstable, home-manager, my-nixvim, disko
-    , sops-nix, ... }:
+    , sops-nix, nixos-hardware, ... }@inputs:
     let
       system = "x86_64-linux";
       pkgs-unstable = import nixpkgs-unstable { inherit system; };
@@ -33,7 +33,7 @@
       formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt;
       nixosConfigurations = import ./nixos-configurations.nix {
         inherit nixpkgs system pkgs pkgs-unstable home-manager my-nixvim disko
-          sops-nix;
+          sops-nix nixos-hardware;
       };
     };
 }
