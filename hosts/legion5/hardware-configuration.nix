@@ -1,4 +1,4 @@
-{ config, lib, pkgs, modulesPath, nixos-hardware, ... }:
+{ config, lib, modulesPath, nixos-hardware, ... }:
 
 {
   imports = [
@@ -15,11 +15,9 @@
       initrd = {
         availableKernelModules =
           [ "nvme" "xhci_pci" "usbhid" "usb_storage" "sd_mod" ];
-        kernelModules = [ "nvidia" ];
       };
       kernelModules = [ "kvm-amd" ];
       #kernelPackages = pkgs.linuxPackages_latest;
-      kernelParams = [ "amdgpu.sg_display=0" ];
       extraModulePackages = [
         config.boot.kernelPackages.nvidia_x11
         config.boot.kernelPackages.lenovo-legion-module
