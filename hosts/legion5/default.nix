@@ -41,8 +41,6 @@
     driSupport32Bit = true;
   };
 
-  hardware.nvidia.prime.amdgpuBusId = "PCI:6:0:0";
-
   services.logind = {
     powerKey = "hibernate";
     lidSwitch = "hibernate";
