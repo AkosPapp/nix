@@ -69,6 +69,7 @@
   };
 
   services.autorandr.profiles = {
+    enable = true;
     default = {
       fingerprint = {
         eDP-1-0 =
