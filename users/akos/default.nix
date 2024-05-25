@@ -181,6 +181,7 @@
       obsidian
       freecad
       librecad
+      wireshark
 
       # qemu
       qemu_full
