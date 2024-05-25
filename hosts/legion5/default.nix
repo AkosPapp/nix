@@ -32,9 +32,7 @@
 
   services.xserver.displayManager.sddm = { enable = true; };
 
-  environment.systemPackages = with pkgs; [
-    lenovo-legion
-  ];
+  environment.systemPackages = with pkgs; [ lenovo-legion ];
 
   # Enable OpenGL
   hardware.opengl = {
@@ -44,8 +42,8 @@
   };
 
   services.logind = {
-    powerKey = "hibernate";
-    lidSwitch = "hibernate";
+    powerKey = "suspend";
+    lidSwitch = "suspend";
   };
 
   services.znapzend = {
@@ -67,6 +65,27 @@
     trim = {
       enable = true;
       interval = "daily";
+    };
+  };
+
+  services.autorandr.profiles = {
+    default = {
+      fingerprint = {
+        eDP-1-0 =
+          "00ffffffffffff000e6f001600000000001e0104b522167803ee95a3544c99260f5054000000010101010101010101010101010101016e6e00a0a04084603020360059d710000018000000fd0c3ca51f1f4e010a202020202020000000fe0043534f542054330a2020202020000000fe004d4e473030374441312d310a20020202031d00e3058000e60605016a6a246d1a000002033ca500046a246a240000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff7013790000030114ac2f0185ff099f002f001f003f0683000200050000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003790";
+      };
+      config = {
+        eDP-1-0 = {
+          enable = true;
+          crtc = 0;
+          primary = true;
+          position = "0x0";
+          mode = "2560x1600";
+          gamma = "1.0:1.0:1.0";
+          rate = "165.00";
+          dpi = 189;
+        };
+      };
     };
   };
 
