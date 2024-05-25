@@ -34,7 +34,6 @@
 
   environment.systemPackages = with pkgs; [
     lenovo-legion
-    bumblebee
   ];
 
   # Enable OpenGL
