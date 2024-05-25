@@ -32,7 +32,10 @@
 
   services.xserver.displayManager.sddm = { enable = true; };
 
-  environment.systemPackages = with pkgs; [ lenovo-legion ];
+  environment.systemPackages = with pkgs; [
+    lenovo-legion
+    bumblebee
+  ];
 
   # Enable OpenGL
   hardware.opengl = {

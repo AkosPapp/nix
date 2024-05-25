@@ -49,9 +49,6 @@
       hardware.perifirals.mice.razer.enable = true;
     };
 
-    # Allow unfree packages
-    nixpkgs.config.allowUnfree = true;
-
     environment.systemPackages = with pkgs; [
       # helpful tools
       starship
