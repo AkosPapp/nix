@@ -67,6 +67,7 @@
     hardware.cpu.amd.updateMicrocode =
       lib.mkDefault config.hardware.enableRedistributableFirmware;
 
+    powerManagement.cpuFreqGovernor = "performance";
     hardware.nvidia = {
 
       # Modesetting is required.
