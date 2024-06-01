@@ -31,13 +31,13 @@
       username = "nixos";
       homeDirectory = "/home/nixos";
       packages = [ my-nixvim.packages.${system}.default ];
-      stateVersion = "23.11";
+      stateVersion = "24.05";
     };
     users.root.home = {
       username = "root";
       homeDirectory = "/root";
       packages = [ my-nixvim.packages.${system}.default ];
-      stateVersion = "23.11";
+      stateVersion = "24.05";
     };
   };
 
