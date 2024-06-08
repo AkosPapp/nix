@@ -1,19 +1,28 @@
-{ config, lib, pkgs, ... }: {
-  imports = [ ./hardware-configuration.nix ];
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: {
+  imports = [./hardware-configuration.nix];
 
   networking = {
     hostName = "server1";
     hostId = "007f0200";
     interfaces = {
       enp3s0.ipv4 = {
-        addresses = [{
-          address = "10.1.1.1";
-          prefixLength = 8;
-        }];
-        routes = [{
-          address = "10.0.0.0";
-          prefixLength = 8;
-        }];
+        addresses = [
+          {
+            address = "10.1.1.1";
+            prefixLength = 8;
+          }
+        ];
+        routes = [
+          {
+            address = "10.0.0.0";
+            prefixLength = 8;
+          }
+        ];
       };
     };
     defaultGateway = {
@@ -22,7 +31,7 @@
     };
   };
 
-  environment.systemPackages = with pkgs; [ vim wget tmux ceph ceph-client ];
+  environment.systemPackages = with pkgs; [vim wget tmux ceph ceph-client];
 
   services.ceph = {
     enable = true;
@@ -39,15 +48,15 @@
     };
     mgr = {
       enable = true;
-      daemons = [ "mgr1" ];
+      daemons = ["mgr1"];
     };
     mon = {
       enable = true;
-      daemons = [ "server1" ];
+      daemons = ["server1"];
     };
     osd = {
       enable = true;
-      daemons = [ "5d57f23a-2104-4dbb-86c0-ff376f22f022" ];
+      daemons = ["5d57f23a-2104-4dbb-86c0-ff376f22f022"];
     };
   };
 
@@ -64,6 +73,4 @@
   services.openssh.PermitRootLogin = lib.mkForce "prohibit-password";
 
   system.stateVersion = "24.05";
-
 }
-

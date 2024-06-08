@@ -1,4 +1,9 @@
-{ config, pkgs, lib, ... }: {
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}: {
   options = {
     MODULES.virtualisation.virt-manager.enable = lib.mkOption {
       type = lib.types.bool;
@@ -11,6 +16,6 @@
     programs.virt-manager.enable = true;
     virtualisation.libvirtd.enable = true;
     programs.dconf.enable = true;
-    environment.systemPackages = with pkgs; [ virt-manager libvirt qemu ];
+    environment.systemPackages = with pkgs; [virt-manager libvirt qemu];
   };
 }

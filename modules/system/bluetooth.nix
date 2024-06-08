@@ -1,5 +1,10 @@
-{ config, pkgs, options, lib, ... }: {
-
+{
+  config,
+  pkgs,
+  options,
+  lib,
+  ...
+}: {
   options = {
     MODULES.system.bluetooth.enable = lib.mkOption {
       type = lib.types.bool;
@@ -11,6 +16,6 @@
   config = lib.mkIf config.MODULES.system.bluetooth.enable {
     services.blueman.enable = true;
     hardware.bluetooth.enable = true;
-    environment.systemPackages = with pkgs; [ bluez bluez-tools ];
+    environment.systemPackages = with pkgs; [bluez bluez-tools];
   };
 }

@@ -1,4 +1,12 @@
-{ config, pkgs, lib, pkgs-unstable, home-manager, my-nixvim, ... }@inputs: {
+{
+  config,
+  pkgs,
+  lib,
+  pkgs-unstable,
+  home-manager,
+  my-nixvim,
+  ...
+} @ inputs: {
   options = {
     USERS.akos.enable = lib.mkOption {
       default = false;
@@ -24,8 +32,7 @@
         "vboxusers"
         "openrazer"
       ];
-      hashedPassword =
-        "$y$j9T$gEhP/0Jlrlwb4ndmLs06L1$7qkdPdgqjCrEH8bAQvJqRn/Mj4m5X9GCRAyM33z0mdA";
+      hashedPassword = "$y$j9T$gEhP/0Jlrlwb4ndmLs06L1$7qkdPdgqjCrEH8bAQvJqRn/Mj4m5X9GCRAyM33z0mdA";
     };
     programs.zsh.enable = true;
     programs.kdeconnect.enable = true;
@@ -186,13 +193,10 @@
     ];
 
     # perf
-    boot.extraModulePackages = [ config.boot.kernelPackages.perf ];
+    boot.extraModulePackages = [config.boot.kernelPackages.perf];
 
-    boot.binfmt.emulatedSystems =
-      [ "aarch64-linux" "armv6l-linux" "armv7l-linux" ];
+    boot.binfmt.emulatedSystems = ["aarch64-linux" "armv6l-linux" "armv7l-linux"];
 
     networking.firewall.enable = false;
-
   };
-
 }

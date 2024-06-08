@@ -1,10 +1,17 @@
-{ config, pkgs, lib, pkgs-unstable, my-nixvim, system, ... }: {
-
+{
+  config,
+  pkgs,
+  lib,
+  pkgs-unstable,
+  my-nixvim,
+  system,
+  ...
+}: {
   # Home Manager needs a bit of information about you and the
   # paths it should manage.
   home.username = "akos";
   home.homeDirectory = "/home/akos";
-  home.packages = [ my-nixvim.packages.${system}.default ];
+  home.packages = [my-nixvim.packages.${system}.default];
 
   programs = {
     zsh = {
@@ -27,14 +34,14 @@
   };
   services.dwm-status = {
     enable = true;
-    order = [ "battery" "cpu_load" "network" "time" ];
+    order = ["battery" "cpu_load" "network" "time"];
     #order = ["audio" "backlight" "battery" "cpu_load" "network" "time"];
     extraConfig = {
       separator = " | ";
 
-      battery = { notifier_levels = [ 0 1 2 3 4 5 10 15 20 ]; };
+      battery = {notifier_levels = [0 1 2 3 4 5 10 15 20];};
 
-      time = { format = "%H:%M"; };
+      time = {format = "%H:%M";};
     };
   };
   # This value determines the Home Manager release that your

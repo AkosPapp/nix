@@ -1,4 +1,9 @@
-{ config, pkgs, lib, ... }: {
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}: {
   options = {
     MODULES.system.locale.enable = lib.mkOption {
       type = lib.types.bool;
@@ -24,10 +29,6 @@
       LC_ALL = "en_US.UTF-8";
     };
 
-    services.xserver = {
-      layout = "at";
-      xkbVariant = "";
-    };
+    services.xserver.xkb = {layout = "at";};
   };
 }
-

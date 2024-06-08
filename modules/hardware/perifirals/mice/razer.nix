@@ -1,4 +1,9 @@
-{ config, pkgs, lib, ... }: {
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}: {
   options = {
     MODULES.hardware.perifirals.mice.razer.enable = lib.mkOption {
       type = lib.types.bool;
@@ -11,14 +16,12 @@
     hardware.openrazer = {
       verboseLogging = false;
       syncEffectsEnabled = true;
-      mouseBatteryNotifier = true;
+      batteryNotifier.enable = false;
       keyStatistics = false;
       enable = true;
       devicesOffOnScreensaver = true;
-
     };
 
-    environment.systemPackages = with pkgs; [ polychromatic ];
+    environment.systemPackages = with pkgs; [polychromatic];
   };
-
 }

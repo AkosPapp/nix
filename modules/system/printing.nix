@@ -1,4 +1,9 @@
-{ config, pkgs, lib, ... }: {
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}: {
   options = {
     MODULES.system.printing.enable = lib.mkOption {
       type = lib.types.bool;
@@ -34,7 +39,7 @@
     ];
     services.avahi = {
       enable = true;
-      nssmdns = true;
+      nssmdns4 = true;
     };
   };
 }

@@ -1,4 +1,10 @@
-{ config, pkgs, options, lib, ... }: {
+{
+  config,
+  pkgs,
+  options,
+  lib,
+  ...
+}: {
   options = {
     MODULES.virtualisation.virtualbox.enable = lib.mkOption {
       type = lib.types.bool;

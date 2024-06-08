@@ -17,23 +17,38 @@
     };
     nixos-hardware.url = "github:NixOS/nixos-hardware/master";
   };
-  outputs = { nixpkgs, nixpkgs-unstable, home-manager, my-nixvim, disko
-    , sops-nix, nixos-hardware, ... }@inputs:
-    let
-      system = "x86_64-linux";
-      pkgs-unstable = import nixpkgs-unstable { inherit system; };
-      pkgs = import nixpkgs {
-        system = system;
-        config = {
-          allowUnfree = true;
-          permittedInsecurePackages = [ "electron-25.9.0" ];
-        };
-      };
-    in {
-      formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt;
-      nixosConfigurations = import ./nixos-configurations.nix {
-        inherit nixpkgs system pkgs pkgs-unstable home-manager my-nixvim disko
-          sops-nix nixos-hardware;
+  outputs = {
+    nixpkgs,
+    nixpkgs-unstable,
+    home-manager,
+    my-nixvim,
+    disko,
+    sops-nix,
+    nixos-hardware,
+    ...
+  } @ inputs: let
+    system = "x86_64-linux";
+    pkgs-unstable = import nixpkgs-unstable {inherit system;};
+    pkgs = import nixpkgs {
+      system = system;
+      config = {
+        allowUnfree = true;
       };
     };
+  in {
+    formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.alejandra;
+    nixosConfigurations = import ./nixos-configurations.nix {
+      inherit
+        nixpkgs
+        system
+        pkgs
+        pkgs-unstable
+        home-manager
+        my-nixvim
+        disko
+        sops-nix
+        nixos-hardware
+        ;
+    };
+  };
 }

@@ -1,4 +1,10 @@
-{ config, pkgs, options, lib, ... }: {
+{
+  config,
+  pkgs,
+  options,
+  lib,
+  ...
+}: {
   options = {
     MODULES.networking.sshd.enable = lib.mkOption {
       type = lib.types.bool;
@@ -8,7 +14,7 @@
   };
 
   config = lib.mkIf config.MODULES.networking.sshd.enable {
-    security.pam.enableSSHAgentAuth = true;
+    security.pam.sshAgentAuth.enable = true;
     programs.ssh.forwardX11 = true;
     services.openssh = {
       enable = true;

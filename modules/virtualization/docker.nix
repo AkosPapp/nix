@@ -1,4 +1,9 @@
-{ config, pkgs, lib, ... }: {
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}: {
   options = {
     MODULES.virtualisation.docker.enable = lib.mkOption {
       type = lib.types.bool;
@@ -12,6 +17,6 @@
       enable = true;
       rootless.enable = true;
     };
-    environment.systemPackages = with pkgs; [ docker-compose ];
+    environment.systemPackages = with pkgs; [docker-compose];
   };
 }

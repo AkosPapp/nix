@@ -68,7 +68,6 @@
           };
         };
       }; # vdev2
-
     }; # disk
     zpool = {
       data-pool = {
@@ -79,11 +78,9 @@
           "com.sun:auto-snapshot" = "false";
         };
         mountpoint = "/data-pool";
-        postCreateHook =
-          "zfs list -t snapshot -H -o name | grep -E '^data-pool@blank$' || zfs snapshot data-pool@blank";
-        datasets = { }; # datasets
+        postCreateHook = "zfs list -t snapshot -H -o name | grep -E '^data-pool@blank$' || zfs snapshot data-pool@blank";
+        datasets = {}; # datasets
       };
     }; # zpool
   }; # disko
 }
-

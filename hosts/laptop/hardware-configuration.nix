@@ -1,39 +1,60 @@
-{ config, lib, pkgs, modulesPath, ... }:
-
 {
-  imports = [ (modulesPath + "/installer/scan/not-detected.nix") ];
+  config,
+  lib,
+  pkgs,
+  modulesPath,
+  ...
+}: {
+  imports = [(modulesPath + "/installer/scan/not-detected.nix")];
 
   config = {
-
     boot = {
       loader.systemd-boot.enable = true;
       loader.efi.canTouchEfiVariables = true;
 
       initrd = {
-        availableKernelModules =
-          [ "nvme" "xhci_pci" "usbhid" "usb_storage" "sd_mod" ];
-        kernelModules = [ ];
+        availableKernelModules = ["nvme" "xhci_pci" "usbhid" "usb_storage" "sd_mod"];
+        kernelModules = [];
       };
-      kernelModules = [ "kvm-amd" ];
+      kernelModules = ["kvm-amd"];
       #extraModulePackages = [ ];
-      supportedFilesystems = [ "zfs" ];
-      zfs.extraPools = [ "home" ];
-      zfs.forceImportRoot = false;
+      supportedFilesystems = ["zfs"];
+      zfs = {
+        extraPools = ["zroot"];
+        forceImportRoot = true;
+        allowHibernation = false;
+      };
     };
-    boot.zfs.allowHibernation = true;
 
     fileSystems."/" = {
-      device = "/dev/disk/by-uuid/b8b720e7-e6cd-4413-b11e-fc632f5ee6a0";
-      fsType = "ext4";
+      device = "zroot/root";
+      fsType = "zfs";
+    };
+
+    fileSystems."/nix" = {
+      device = "zroot/nix";
+      fsType = "zfs";
+    };
+
+    fileSystems."/etc/NetworkManager/system-connections" = {
+      device = "zroot/persist/system-connections";
+      fsType = "zfs";
+    };
+
+    fileSystems."/home" = {
+      device = "zroot/persist/home";
+      fsType = "zfs";
     };
 
     fileSystems."/boot" = {
-      device = "/dev/disk/by-uuid/B04A-ACB1";
+      device = "/dev/disk/by-partlabel/disk-samsung980-ESP";
       fsType = "vfat";
+      options = ["fmask=0022" "dmask=0022"];
     };
 
-    swapDevices =
-      [{ device = "/dev/disk/by-uuid/82d5dd31-7de1-4c3c-96fe-994453eff873"; }];
+    swapDevices = [
+      {device = "/dev/disk/by-partlabel/disk-samsung980-swap";}
+    ];
 
     networking.useDHCP = lib.mkDefault true;
     nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";

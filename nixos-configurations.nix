@@ -1,5 +1,9 @@
-{ nixpkgs, home-manager, sops-nix, ... }@args: {
-
+{
+  nixpkgs,
+  home-manager,
+  sops-nix,
+  ...
+} @ args: {
   iso = nixpkgs.lib.nixosSystem {
     specialArgs = args;
     modules = [
@@ -55,5 +59,4 @@
       sops-nix.nixosModules.sops
     ];
   };
-
 }

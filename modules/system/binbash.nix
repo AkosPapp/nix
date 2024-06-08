@@ -1,9 +1,10 @@
-{ config, lib, pkgs, ... }:
-
-with lib;
-
 {
-
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+with lib; {
   options = {
     MODULES.system.binbash.enable = mkOption {
       default = false;
@@ -13,15 +14,14 @@ with lib;
   };
 
   config = {
-
     system.activationScripts.binbash =
-      if config.MODULES.system.binbash.enable then ''
+      if config.MODULES.system.binbash.enable
+      then ''
         mkdir -m 0755 -p /bin
         [ -f /bin/bash ] || ln -s /bin/sh /bin/bash
-      '' else ''
+      ''
+      else ''
         [ -f /bin/bash ] && rm -f /bin/bash
       '';
-
   };
-
 }

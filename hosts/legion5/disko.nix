@@ -33,10 +33,10 @@
           };
         };
       };
-      samsung-pm9a1 = { # FIXTHIS
+      samsung-pm9a1 = {
+        # FIXTHIS
         type = "disk";
-        device =
-          "/dev/disk/by-id/nvme-SAMSUNG_MZVL21T0HCLR-00BL2_S64NNF0X101746"; # FIXTHIS
+        device = "/dev/disk/by-id/nvme-SAMSUNG_MZVL21T0HCLR-00BL2_S64NNF0X101746"; # FIXTHIS
         content = {
           type = "gpt";
           partitions = {
@@ -67,8 +67,7 @@
           "com.sun:auto-snapshot" = "false";
         };
         mountpoint = "none";
-        postCreateHook =
-          "zfs list -t snapshot -H -o name | grep -E '^zroot@blank$' || zfs snapshot zroot@blank";
+        postCreateHook = "zfs list -t snapshot -H -o name | grep -E '^zroot@blank$' || zfs snapshot zroot@blank";
 
         datasets = {
           root = {
@@ -92,4 +91,3 @@
     };
   };
 }
-

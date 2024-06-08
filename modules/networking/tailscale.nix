@@ -1,4 +1,10 @@
-{ config, pkgs, pkgs-unstable, lib, ... }: {
+{
+  config,
+  pkgs,
+  pkgs-unstable,
+  lib,
+  ...
+}: {
   options = {
     MODULES.networking.tailscale.enable = lib.mkOption {
       type = lib.types.bool;

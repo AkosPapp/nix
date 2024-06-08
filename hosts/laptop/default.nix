@@ -1,7 +1,9 @@
-{ config, pkgs, ... }:
-
 {
-  imports = [ ./hardware-configuration.nix ];
+  config,
+  pkgs,
+  ...
+}: {
+  imports = [./hardware-configuration.nix];
 
   #  # Bootloader.
   #  boot.loader.efi.efiSysMountPoint = "/boot/efi";
@@ -11,7 +13,7 @@
     hostId = "68bf4e0e";
     hostName = "laptop";
     extraHosts = ''
-      127.0.0.1 localhost 
+      127.0.0.1 localhost
     '';
   };
 
@@ -28,10 +30,8 @@
   USERS.akos.enable = true;
   services.znapzend.enable = true;
 
-  services.xserver.displayManager.sddm = {
+  services.displayManager.sddm = {
     enable = true;
     theme = "Dracula";
   };
-
 }
-

@@ -1,4 +1,10 @@
-{ config, pkgs, lib, home-manager, ... }: {
+{
+  config,
+  pkgs,
+  lib,
+  home-manager,
+  ...
+}: {
   options = {
     PROFILES.global.enable = lib.mkOption {
       type = lib.types.bool;
@@ -20,8 +26,7 @@
       kitty
       htop-vim
     ];
-    users.mutableUsers = false;
-    nix.settings.experimental-features = [ "nix-command" "flakes" ];
+    users.mutableUsers = true;
+    nix.settings.experimental-features = ["nix-command" "flakes"];
   };
-
 }
