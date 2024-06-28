@@ -99,6 +99,7 @@
       fuse
       wireguard-tools
       sanoid
+      pkg-config
 
       # typst
       pkgs-unstable.typst
