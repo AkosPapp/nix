@@ -66,8 +66,8 @@ install-remote:
 			echo "Usage: make IP=<ip> CONFIG=<config> install-remote"; \
 		else \
 			echo "Uploading Flake"; \
-			rsync -auzv ./* root@$(IP):/tmp/nixconfig --exclude .git --exclude result; \
-			ssh root@$(IP) 'nix --experimental-features "nix-command flakes" run github:nix-community/disko -- --mode disko /tmp/nixconfig/hosts/$(CONFIG)/disko.nix'; \
+			rsync -auzv ./* root@$(IP):/tmp/nixconfig --exclude .git --exclude result && \
+			ssh root@$(IP) 'nix --experimental-features "nix-command flakes" run github:nix-community/disko -- --mode disko /tmp/nixconfig/hosts/$(CONFIG)/disko.nix' && \
 			ssh root@$(IP) 'nixos-install --flake /tmp/nixconfig#$(CONFIG)'; \
 		fi \
 	fi

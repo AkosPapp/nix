@@ -27,10 +27,10 @@
       supportedFilesystems = ["zfs"];
       zfs = {
         extraPools = ["zroot"];
-        forceImportRoot = false;
-        allowHibernation = true;
+        forceImportRoot = true;
+        allowHibernation = false;
       };
-      resumeDevice = "/dev/disk/by-partlabel/disk-samsung980-swap";
+      resumeDevice = "/dev/disk/by-partlabel/disk-samsung-pm9a1-swap";
     };
 
     fileSystems."/" = {
@@ -43,24 +43,23 @@
       fsType = "zfs";
     };
 
-    fileSystems."/etc/NetworkManager/system-connections" = {
-      device = "zroot/persist/system-connections";
-      fsType = "zfs";
-    };
+    #fileSystems."/etc/NetworkManager/system-connections" = {
+    #  device = "zroot/persist/system-connections";
+    #  fsType = "zfs";
+    #};
 
-    fileSystems."/home" = {
-      device = "zroot/persist/home";
-      fsType = "zfs";
-    };
+    #fileSystems."/home" = {
+    #  device = "zroot/persist/home";
+    #  fsType = "zfs";
+    #};
 
     fileSystems."/boot" = {
-      device = "/dev/disk/by-partlabel/disk-samsung980-ESP";
+      device = "/dev/disk/by-partlabel/disk-samsung-pm9a1-ESP";
       fsType = "vfat";
       options = ["fmask=0022" "dmask=0022"];
     };
 
     swapDevices = [
-      {device = "/dev/disk/by-partlabel/disk-samsung980-swap";}
       {device = "/dev/disk/by-partlabel/disk-samsung-pm9a1-swap";}
     ];
 
