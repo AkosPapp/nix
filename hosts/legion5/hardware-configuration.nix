@@ -43,15 +43,15 @@
       fsType = "zfs";
     };
 
-    #fileSystems."/etc/NetworkManager/system-connections" = {
-    #  device = "zroot/persist/system-connections";
-    #  fsType = "zfs";
-    #};
+    fileSystems."/etc/NetworkManager/system-connections" = {
+      device = "zroot/persist/system-connections";
+      fsType = "zfs";
+    };
 
-    #fileSystems."/home" = {
-    #  device = "zroot/persist/home";
-    #  fsType = "zfs";
-    #};
+    fileSystems."/home" = {
+      device = "zroot/persist/home";
+      fsType = "zfs";
+    };
 
     fileSystems."/boot" = {
       device = "/dev/disk/by-partlabel/disk-samsung-pm9a1-ESP";
