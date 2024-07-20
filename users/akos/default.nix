@@ -104,12 +104,7 @@
       # typst
       pkgs-unstable.typst
       pkgs-unstable.typstfmt
-      pkgs-unstable.typst-lsp
-      pkgs-unstable.typst-live
-      pkgs-unstable.typst-preview
       pkgs-unstable.prettypst
-      pkgs-unstable.tinymist
-      #tinymist
 
       # python
       (python311.withPackages (ps:
@@ -187,6 +182,7 @@
       freecad
       librecad
       wireshark
+      appimage-run
 
       # qemu
       qemu_full
@@ -199,5 +195,39 @@
     boot.binfmt.emulatedSystems = ["aarch64-linux" "armv6l-linux" "armv7l-linux"];
 
     networking.firewall.enable = false;
+
+    services.sftpgo = {
+      enable = false;
+      settings = {
+        sftpd = {
+          bindings = [
+            {
+              port = 2022;
+              address = "0.0.0.0";
+            }
+          ];
+        };
+
+        httpd = {
+          bindings = [
+            {
+              port = 8080;
+              address = "0.0.0.0";
+              enable_web_client = true;
+              enable_web_admin = true;
+            }
+          ];
+        };
+
+        webdavd = {
+          bindings = [
+            {
+              port = 8081;
+              address = "0.0.0.0";
+            }
+          ];
+        };
+      };
+    };
   };
 }
