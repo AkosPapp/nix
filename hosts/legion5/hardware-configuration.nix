@@ -105,7 +105,5 @@
       };
     };
 
-    hardware.bumblebee.enable = true;
-    hardware.bumblebee.driver = "nouveau";
   };
 }

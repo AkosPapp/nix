@@ -32,18 +32,6 @@
       enableZshIntegration = true;
     };
   };
-  services.dwm-status = {
-    enable = true;
-    order = ["battery" "cpu_load" "network" "time"];
-    #order = ["audio" "backlight" "battery" "cpu_load" "network" "time"];
-    extraConfig = {
-      separator = " | ";
-
-      battery = {notifier_levels = [0 1 2 3 4 5 10 15 20];};
-
-      time = {format = "%H:%M";};
-    };
-  };
   # This value determines the Home Manager release that your
   # configuration is compatible with. This helps avoid breakage
   # when a new Home Manager release introduces backwards
