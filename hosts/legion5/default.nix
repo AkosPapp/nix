@@ -92,7 +92,5 @@
     };
   };
 
-  virtualisation.docker.enableNvidia = true;
-
   services.power-profiles-daemon.enable = true;
 }
