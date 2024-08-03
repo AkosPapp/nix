@@ -183,6 +183,7 @@
       librecad
       wireshark
       appimage-run
+      obs-studio
 
       # qemu
       qemu_full
