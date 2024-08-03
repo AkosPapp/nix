@@ -43,6 +43,14 @@ update:
 	@echo "--- Updating flake ---"
 	nix flake update
 
+upgrade:
+	@echo "--- Upgrading flake ---"
+	make commit
+	make update
+	nix fmt
+	make switch
+	make sync
+
 stage:
 	@echo "--- Staging changes ---"
 	@git add .
