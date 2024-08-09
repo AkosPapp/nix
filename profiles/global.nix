@@ -1,8 +1,8 @@
 {
   config,
   pkgs,
+  pkgs-unstable,
   lib,
-  home-manager,
   ...
 }: {
   options = {
@@ -20,11 +20,26 @@
       system.locale.enable = true;
     };
     environment.systemPackages = with pkgs; [
-      neovim
-      git
       gnumake
       kitty
       htop-vim
+
+      # nvim
+      pkgs-unstable.neovim
+      xclip
+      tree-sitter
+      lua-language-server
+      cmake-language-server
+      lldb
+      gdb
+      nil
+      nixd
+      valgrind
+      nodejs_18
+      shellcheck
+
+      # git
+      gitFull
     ];
     users.mutableUsers = true;
     nix.settings.experimental-features = ["nix-command" "flakes"];

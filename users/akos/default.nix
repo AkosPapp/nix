@@ -141,6 +141,7 @@
       cmake
       # rust
       cargo
+      rustup
       cargo-valgrind
       bacon
       clippy

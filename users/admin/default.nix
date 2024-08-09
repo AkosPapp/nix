@@ -55,25 +55,6 @@
       fuse
       wireguard-tools
 
-      # nvim
-      neovim
-      xclip
-      tree-sitter
-      lua-language-server
-      cmake-language-server
-      lldb
-      gdb
-      nil
-      nixd
-      valgrind
-      nodejs_18
-
-      # git
-      gitFull
-      gh
-
-      # POSIX
-      shellcheck
     ];
   };
 }
