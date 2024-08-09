@@ -27,8 +27,8 @@
       supportedFilesystems = ["zfs"];
       zfs = {
         extraPools = ["zroot"];
-        forceImportRoot = true;
-        allowHibernation = false;
+        forceImportRoot = false;
+        allowHibernation = true;
       };
       resumeDevice = "/dev/disk/by-partlabel/disk-samsung-pm9a1-swap";
     };
