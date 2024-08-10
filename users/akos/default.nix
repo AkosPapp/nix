@@ -139,15 +139,7 @@
       clang-tools
       gnumake
       cmake
-      # rust
-      cargo
       rustup
-      cargo-valgrind
-      bacon
-      clippy
-      dprint
-      rust-analyzer
-      pkgs-unstable.rustc
       # POSIX
       shellcheck
       # dev tools
