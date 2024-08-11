@@ -68,6 +68,7 @@
       fzf
       rsync
       htop
+      btop
       neofetch
       cowsay
       graphviz
