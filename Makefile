@@ -64,18 +64,27 @@ sync: commit
 	@git pull
 	@git push
 
+upload-remote:
+	@if [ "$(IP)" = "" ]; then \
+		echo "IP not set"; \
+		echo "Usage: make IP=<ip> upload-remote"; \
+		exit 1; \
+	fi; \
+	echo "Uploading Flake"; \
+	rsync -auzv ./* root@$(IP):/tmp/nixconfig --exclude .git --exclude result
+
 install-remote:
-	if [ "$(IP)" = "" ]; then \
+	@if [ "$(IP)" = "" ]; then \
 		echo "IP not set"; \
 		echo "Usage: make IP=<ip> CONFIG=<config> install-remote"; \
-	else \
-		if [ "$(CONFIG)" = "" ]; then \
-			echo "CONFIG not set"; \
-			echo "Usage: make IP=<ip> CONFIG=<config> install-remote"; \
-		else \
-			echo "Uploading Flake"; \
-			rsync -auzv ./* root@$(IP):/tmp/nixconfig --exclude .git --exclude result && \
-			ssh root@$(IP) 'nix --experimental-features "nix-command flakes" run github:nix-community/disko -- --mode disko /tmp/nixconfig/hosts/$(CONFIG)/disko.nix' && \
-			ssh root@$(IP) 'nixos-install --flake /tmp/nixconfig#$(CONFIG)'; \
-		fi \
-	fi
+		exit 1; \
+	fi; \
+	if [ "$(CONFIG)" = "" ]; then \
+		echo "CONFIG not set"; \
+		echo "Usage: make IP=<ip> CONFIG=<config> install-remote"; \
+		exit 1; \
+	fi; \
+	make IP=$(IP) upload-remote; \
+	echo "Installing Flake"; \
+	ssh root@$(IP) 'nix --experimental-features "nix-command flakes" run github:nix-community/disko -- --mode disko /tmp/nixconfig/hosts/$(CONFIG)/disko.nix' && \
+	ssh root@$(IP) 'nixos-install --flake /tmp/nixconfig#$(CONFIG)'; \
