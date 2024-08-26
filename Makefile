@@ -14,6 +14,10 @@ help:
 	@echo "  switch:               Switch to the new configuration"
 	@echo "  sync:                 Commit and push the changes"
 	@echo "  update:               Update the flake"
+	@echo "  upgrade:              Upgrade the flake"
+	@echo "  iso:                  Build the ISO"
+	@echo "  upload-remote:        Upload the flake to a remote server"
+	@echo "  install-remote:       Install the flake on a remote server"
 	@echo ""
 
 
@@ -46,6 +50,7 @@ update:
 upgrade:
 	@echo "--- Upgrading flake ---"
 	make commit
+	make gen
 	make update
 	nix fmt
 	make switch
