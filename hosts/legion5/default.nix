@@ -52,11 +52,23 @@
   services.znapzend = {
     enable = true;
     pure = true;
-    features.compressed = true;
+    autoCreation = true;
+    features = {
+        compressed = true;
+        lowmemRecurse = true;
+        skipIntermediates = true;
+    };
     zetup."zroot/persist" = {
       recursive = true;
-      plan = "1h=>1min,1d=>1h,2w=>1d";
+      plan = "1h=>1min,1d=>1h,1w=>1d";
       enable = true;
+      destinations = {
+          "laptop" = {
+            host = "root@latop";
+            dataset = "zroot/persist";
+            plan = "1h=>1min,1d=>1h,1w=>1d";
+          };
+      };
     };
   };
 

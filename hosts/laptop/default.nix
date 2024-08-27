@@ -28,7 +28,6 @@
   system.stateVersion = "24.05";
 
   USERS.akos.enable = true;
-  services.znapzend.enable = true;
 
   services.displayManager.sddm = {
     enable = true;

@@ -3,8 +3,6 @@
   pkgs,
   lib,
   pkgs-unstable,
-  home-manager,
-  my-nixvim,
   ...
 } @ inputs: {
   options = {
@@ -141,8 +139,10 @@
       gnumake
       cmake
       rustup
+
       # POSIX
       shellcheck
+
       # dev tools
       vscode
       gitkraken
@@ -187,42 +187,8 @@
     # perf
     boot.extraModulePackages = [config.boot.kernelPackages.perf];
 
-    boot.binfmt.emulatedSystems = ["aarch64-linux" "armv6l-linux" "armv7l-linux"];
+    boot.binfmt.emulatedSystems = ["aarch64-linux"];
 
     networking.firewall.enable = false;
-
-    services.sftpgo = {
-      enable = false;
-      settings = {
-        sftpd = {
-          bindings = [
-            {
-              port = 2022;
-              address = "0.0.0.0";
-            }
-          ];
-        };
-
-        httpd = {
-          bindings = [
-            {
-              port = 8080;
-              address = "0.0.0.0";
-              enable_web_client = true;
-              enable_web_admin = true;
-            }
-          ];
-        };
-
-        webdavd = {
-          bindings = [
-            {
-              port = 8081;
-              address = "0.0.0.0";
-            }
-          ];
-        };
-      };
-    };
   };
 }
