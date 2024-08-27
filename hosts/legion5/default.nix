@@ -64,7 +64,7 @@
       enable = true;
       destinations = {
           "laptop" = {
-            host = "root@latop";
+            host = "root@laptop";
             dataset = "zroot/persist";
             plan = "1h=>1min,1d=>1h,1w=>1d";
           };
