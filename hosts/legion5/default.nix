@@ -53,6 +53,8 @@
     enable = true;
     pure = true;
     autoCreation = true;
+    logLevel = "debug";
+    logTo = "/var/log/znapzend.log";
     features = {
         compressed = true;
         lowmemRecurse = true;
