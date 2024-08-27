@@ -54,7 +54,6 @@
       bc
       fuse
       wireguard-tools
-
     ];
   };
 }

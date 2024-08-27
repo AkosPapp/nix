@@ -2,12 +2,10 @@
   config,
   lib,
   modulesPath,
-  nixos-hardware,
   ...
 }: {
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
-    nixos-hardware.nixosModules.lenovo-legion-16ach6h-nvidia
   ];
 
   config = {
