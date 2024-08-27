@@ -55,7 +55,7 @@
     features.compressed = true;
     zetup."zroot/persist" = {
       recursive = true;
-      plan = "1h=>1min,1d=>1h,1m=>1d";
+      plan = "1h=>1min,1d=>1h,2w=>1d";
       enable = true;
     };
   };
