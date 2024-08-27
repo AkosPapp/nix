@@ -34,7 +34,6 @@
   USERS.akos.enable = true;
 
   services.xserver.displayManager.gdm.enable = true;
-  services.xserver.displayManager.gdm.wayland = false;
 
   environment.systemPackages = with pkgs; [lenovo-legion];
 

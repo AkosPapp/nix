@@ -15,6 +15,7 @@
 
       initrd = {
         availableKernelModules = ["nvme" "xhci_pci" "usbhid" "usb_storage" "sd_mod"];
+        kernelModules = ["amdgpu"];
       };
       kernelModules = ["kvm-amd"];
       #kernelPackages = pkgs.linuxPackages_latest;
@@ -67,6 +68,7 @@
       lib.mkDefault config.hardware.enableRedistributableFirmware;
 
     powerManagement.cpuFreqGovernor = "performance";
+    services.xserver.videoDrivers = ["nvidia"];
     hardware.nvidia = {
       # Modesetting is required.
       modesetting.enable = true;
@@ -75,7 +77,7 @@
       # Enable this if you have graphical corruption issues or application crashes after waking
       # up from sleep. This fixes it by saving the entire VRAM memory to /tmp/ instead
       # of just the bare essentials.
-      powerManagement.enable = false;
+      powerManagement.enable = true;
 
       # Fine-grained power management. Turns off GPU when not in use.
       # Experimental and only works on modern Nvidia GPUs (Turing or newer).
@@ -97,7 +99,7 @@
       # Optionally, you may need to select the appropriate driver version for your specific GPU.
       package = config.boot.kernelPackages.nvidiaPackages.stable;
       prime = {
-        sync.enable = true;
+        sync.enable = false;
         nvidiaBusId = "PCI:1:0:0";
         amdgpuBusId = "PCI:5:0:0";
       };
