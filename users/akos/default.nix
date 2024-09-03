@@ -34,6 +34,11 @@
     };
     programs.zsh.enable = true;
     programs.kdeconnect.enable = true;
+    programs.nix-ld.enable = true;
+    programs.nix-ld.libraries = with pkgs; [
+      # Add any missing dynamic libraries for unpackaged programs
+      # here, NOT in environment.systemPackages
+    ];
 
     home-manager = {
       useGlobalPkgs = true;
@@ -104,6 +109,8 @@
       pkgs-unstable.typst
       pkgs-unstable.typstfmt
       pkgs-unstable.prettypst
+
+      minecraft
 
       # python
       (python311.withPackages (ps:

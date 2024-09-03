@@ -28,11 +28,21 @@
     ...
   } @ inputs: let
     system = "x86_64-linux";
-    pkgs-unstable = import nixpkgs-unstable {inherit system;};
+    pkgs-unstable = import nixpkgs-unstable {
+      system = system;
+      config = {
+        allowUnfree = true;
+        allowBroken = true;
+        permittedInsecurePackages = [
+          "electron-27.3.11"
+        ];
+      };
+    };
     pkgs = import nixpkgs {
       system = system;
       config = {
         allowUnfree = true;
+        allowBroken = true;
         permittedInsecurePackages = [
           "electron-27.3.11"
         ];
