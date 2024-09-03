@@ -41,9 +41,6 @@
       # git
       gitFull
     ];
-                permittedInsecurePackages = [
-                "electron-27.3.11"
-              ];
     users.mutableUsers = true;
     nix.settings.experimental-features = ["nix-command" "flakes"];
   };
