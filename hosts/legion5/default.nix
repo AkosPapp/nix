@@ -35,7 +35,12 @@
 
   services.xserver.displayManager.gdm.enable = true;
 
-  environment.systemPackages = with pkgs; [lenovo-legion];
+   environment.systemPackages = with pkgs; [
+lenovo-legion
+    docker
+    nvidia-docker
+    cudatoolkit
+  ];
 
   # Enable OpenGL
   hardware.opengl = {
