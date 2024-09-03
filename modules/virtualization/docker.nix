@@ -14,9 +14,9 @@
 
   config = lib.mkIf config.MODULES.virtualisation.docker.enable {
     virtualisation.docker = {
-		enable = true;
-		enableOnBoot = true;
-	};
+      enable = true;
+      enableOnBoot = true;
+    };
     hardware.nvidia-container-toolkit.enable = true;
     environment.systemPackages = with pkgs; [docker-compose];
   };
