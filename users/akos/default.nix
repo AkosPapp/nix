@@ -161,6 +161,7 @@
       perf-tools
 
       # user tools
+      geogebra6
       networkmanagerapplet
       zotero
       dracula-theme
