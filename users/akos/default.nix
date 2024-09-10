@@ -140,6 +140,7 @@
       gitFull
       act
       gh
+      subversion
 
       # c++
       gcc
@@ -153,6 +154,7 @@
 
       # C#
       dotnetCorePackages.dotnet_8.sdk
+      dotnetCorePackages.dotnet_8.runtime
 
       # dev tools
       vscode
