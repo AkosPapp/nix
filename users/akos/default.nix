@@ -151,6 +151,9 @@
       # POSIX
       shellcheck
 
+      # C#
+      dotnetCorePackages.dotnet_8.sdk
+
       # dev tools
       vscode
       gitkraken
