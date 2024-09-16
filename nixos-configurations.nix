@@ -2,6 +2,7 @@
   nixpkgs,
   home-manager,
   sops-nix,
+  disko,
   ...
 } @ args: {
   iso = nixpkgs.lib.nixosSystem {
@@ -10,6 +11,7 @@
       ./generated.nix
       ./hosts/iso
       home-manager.nixosModules.home-manager
+      disko.nixosModules.disko
       {
         home-manager.useGlobalPkgs = true;
         home-manager.useUserPackages = true;
@@ -24,6 +26,7 @@
       ./generated.nix
       ./hosts/laptop
       home-manager.nixosModules.home-manager
+      disko.nixosModules.disko
       {
         home-manager.useGlobalPkgs = true;
         home-manager.useUserPackages = true;
@@ -38,6 +41,7 @@
       ./generated.nix
       ./hosts/laptop-srv
       home-manager.nixosModules.home-manager
+      disko.nixosModules.disko
       {
         home-manager.useGlobalPkgs = true;
         home-manager.useUserPackages = true;
@@ -52,6 +56,7 @@
       ./generated.nix
       ./hosts/legion5
       home-manager.nixosModules.home-manager
+      disko.nixosModules.disko
       {
         home-manager.useGlobalPkgs = true;
         home-manager.useUserPackages = true;

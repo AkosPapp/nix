@@ -27,7 +27,8 @@
   system.stateVersion = "24.05";
 
   MODULES.virtualisation.docker.enable = true;
+  hardware.nvidia-container-toolkit.enable = true;
   USERS.admin.enable = true;
 
-  services.openssh.PermitRootLogin = lib.mkForce "prohibit-password";
+  services.openssh.settings.PermitRootLogin = lib.mkForce "prohibit-password";
 }

@@ -21,13 +21,14 @@ echo "];" >> $OUTPUT
 echo "}" >> $OUTPUT
 
 # hosts
-echo "{ nixpkgs, home-manager, sops-nix, ... }@args: {" > $NIX_CONFIGS
+echo "{ nixpkgs, home-manager, sops-nix, disko, ... }@args: {" > $NIX_CONFIGS
 for host in $(ls hosts); do
     echo "
     $(basename $host) = nixpkgs.lib.nixosSystem {
         specialArgs = args;
         modules = [ ./${OUTPUT} ./hosts/${host}
         home-manager.nixosModules.home-manager
+        disko.nixosModules.disko
         {
             home-manager.useGlobalPkgs = true;
             home-manager.useUserPackages = true;
