@@ -5,7 +5,7 @@
   nixos-hardware,
   ...
 }: {
-  imports = [./hardware-configuration.nix];
+  imports = [./hardware-configuration.nix ./disko.nix];
 
   #  # Bootloader.
   #  boot.loader.efi.efiSysMountPoint = "/boot/efi";
