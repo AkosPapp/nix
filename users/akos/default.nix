@@ -147,7 +147,13 @@
       clang-tools
       gnumake
       cmake
+      
+      #rust
       rustup
+
+      # C#
+      omnisharp-roslyn
+      csharp-ls
 
       # POSIX
       shellcheck
