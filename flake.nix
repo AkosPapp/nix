@@ -52,6 +52,7 @@
         ];
       };
     };
+    lib = import ./lib { inherit pkgs; };
   in {
     formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.alejandra;
     nixosConfigurations = import ./nixos-configurations.nix {
@@ -67,5 +68,6 @@
         nixos-hardware
         ;
     };
+    deploy = lib.mkDeploy {inherit (inputs) self;};
   };
 }
