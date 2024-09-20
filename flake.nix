@@ -20,8 +20,11 @@
       url = "github:nix-community/disko";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+      deploy-rs.url = "github:serokell/deploy-rs";
+
   };
   outputs = {
+    self,
     nixpkgs,
     nixpkgs-unstable,
     home-manager,
@@ -29,6 +32,7 @@
     disko,
     sops-nix,
     nixos-hardware,
+    deploy-rs,
     ...
   } @ inputs: let
     system = "x86_64-linux";
@@ -52,7 +56,6 @@
         ];
       };
     };
-    lib = import ./lib { inherit pkgs; };
   in {
     formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.alejandra;
     nixosConfigurations = import ./nixos-configurations.nix {
@@ -68,6 +71,16 @@
         nixos-hardware
         ;
     };
-    deploy = lib.mkDeploy {inherit (inputs) self;};
+    #deploy = lib.mkDeploy {inherit (inputs) self;};
+    deploy.nodes.laptop-srv = {
+        hostname = "laptop-srv";
+        profiles.system = {
+             sshUser = "root";
+          user = "root";
+          path = deploy-rs.lib.x86_64-linux.activate.nixos self.nixosConfigurations.laptop-srv;
+        };
+    };
+        checks = builtins.mapAttrs (system: deployLib: deployLib.deployChecks self.deploy) deploy-rs.lib;
+
   };
 }
