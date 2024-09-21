@@ -147,7 +147,7 @@
       clang-tools
       gnumake
       cmake
-      
+
       #rust
       rustup
 

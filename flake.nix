@@ -20,8 +20,7 @@
       url = "github:nix-community/disko";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-      deploy-rs.url = "github:serokell/deploy-rs";
-
+    deploy-rs.url = "github:serokell/deploy-rs";
   };
   outputs = {
     self,
@@ -73,14 +72,13 @@
     };
     #deploy = lib.mkDeploy {inherit (inputs) self;};
     deploy.nodes.laptop-srv = {
-        hostname = "laptop-srv";
-        profiles.system = {
-             sshUser = "root";
-          user = "root";
-          path = deploy-rs.lib.x86_64-linux.activate.nixos self.nixosConfigurations.laptop-srv;
-        };
+      hostname = "laptop-srv";
+      profiles.system = {
+        sshUser = "root";
+        user = "root";
+        path = deploy-rs.lib.x86_64-linux.activate.nixos self.nixosConfigurations.laptop-srv;
+      };
     };
-        checks = builtins.mapAttrs (system: deployLib: deployLib.deployChecks self.deploy) deploy-rs.lib;
-
+    checks = builtins.mapAttrs (system: deployLib: deployLib.deployChecks self.deploy) deploy-rs.lib;
   };
 }
