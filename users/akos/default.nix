@@ -107,6 +107,13 @@
       sanoid
       pkg-config
 
+      # typst
+      pkgs-unstable.typst
+      pkgs-unstable.typstfmt
+      pkgs-unstable.prettypst
+
+      # markdown
+      marksman
 
       # python
       (python311.withPackages (ps:
@@ -187,7 +194,6 @@
       discord
       libreoffice
       logseq
-      obsidian
       freecad
       librecad
       wireshark
