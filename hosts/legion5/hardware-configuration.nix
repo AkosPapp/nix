@@ -52,6 +52,11 @@
       fsType = "zfs";
     };
 
+    fileSystems."/home/akos" = {
+      device = "zroot/persist/home/akos";
+      fsType = "zfs";
+    };
+
     fileSystems."/boot" = {
       device = "/dev/disk/by-partlabel/disk-samsung-pm9a1-ESP";
       fsType = "vfat";
