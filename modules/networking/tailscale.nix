@@ -19,8 +19,8 @@
       openFirewall = true;
       package = pkgs-unstable.tailscale;
     };
-    networking.nameservers = [ "100.100.100.100" "9.9.9.9" "8.8.8.8" "1.1.1.1" ];
-    networking.search = [ "tail546fb.ts.net" ];
+    networking.nameservers = ["100.100.100.100" "9.9.9.9" "8.8.8.8" "1.1.1.1"];
+    networking.search = ["tail546fb.ts.net"];
     networking.firewall.checkReversePath = "loose";
   };
 }
