@@ -121,12 +121,6 @@
           pip
           jedi-language-server
           gitpython
-          #jupyter
-          #jupyter-lsp
-          #jupyterlab
-          #jupyterlab-lsp
-          #jupyterlab-server
-          #jupyter-collaboration
           conda
         ]))
       sage
