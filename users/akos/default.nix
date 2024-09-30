@@ -118,9 +118,9 @@
       # python
       (python312.withPackages (ps:
         with ps; [
-          #pip
-          #jedi-language-server
-          #gitpython
+          pip
+          jedi-language-server
+          gitpython
           #jupyter
           #jupyter-lsp
           #jupyterlab
