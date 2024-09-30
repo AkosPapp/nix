@@ -116,25 +116,18 @@
       marksman
 
       # python
-      (python311.withPackages (ps:
+      (python312.withPackages (ps:
         with ps; [
-          cstruct
-          numpy
-          pip
-          matplotlib
-          transforms3d
-          cycler
-          jedi-language-server
-          bpython
-          pep8
-          notebook
-          gitpython
-          jupyter
-          jupyter-lsp
-          jupyterlab
-          jupyterlab-lsp
-          jupyterlab-server
-          jupyter-collaboration
+          #pip
+          #jedi-language-server
+          #gitpython
+          #jupyter
+          #jupyter-lsp
+          #jupyterlab
+          #jupyterlab-lsp
+          #jupyterlab-server
+          #jupyter-collaboration
+          conda
         ]))
       sage
 
