@@ -152,7 +152,7 @@
       dotnetCorePackages.dotnet_8.runtime
 
       # dev tools
-      vscode
+      pkgs-unstable.vscode
       gitkraken
       jetbrains-toolbox
       openjdk17-bootstrap
