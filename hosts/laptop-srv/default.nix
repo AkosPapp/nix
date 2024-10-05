@@ -19,17 +19,19 @@
     interfaces = {
       enp4s0f3u1u1c2 = {
         useDHCP = false;
-        ipv4.addresses = [ {
-          address = "10.0.1.1";
-          prefixLength = 8;
-        }];
+        ipv4.addresses = [
+          {
+            address = "10.0.1.1";
+            prefixLength = 8;
+          }
+        ];
       };
     };
     defaultGateway = {
-        address = "10.0.0.1";
-        interface = "enp4s0f3u1u1c2";
+      address = "10.0.0.1";
+      interface = "enp4s0f3u1u1c2";
     };
-    nameservers = [ "100.100.100.100" "9.9.9.9" "1.1.1.1" "8.8.8.8" ];
+    nameservers = ["100.100.100.100" "9.9.9.9" "1.1.1.1" "8.8.8.8"];
   };
 
   nix.gc = {
