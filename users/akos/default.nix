@@ -161,6 +161,10 @@
       distrobox
       perf-tools
 
+      # k8s
+      kubectl
+
+
       # user tools
       geogebra6
       networkmanagerapplet
