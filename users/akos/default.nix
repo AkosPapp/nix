@@ -106,6 +106,7 @@
       wireguard-tools
       sanoid
       pkg-config
+      sops
 
       # typst
       pkgs-unstable.typst

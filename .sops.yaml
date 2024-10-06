@@ -1,7 +1,11 @@
 keys:
-  - &akos age1nf9j2uxxjre70whsayvs9rmwnlawgn3m643f7y0wkemc6m252qfsz4kepw
+  - &users:
+    - &akos age1nf9j2uxxjre70whsayvs9rmwnlawgn3m643f7y0wkemc6m252qfsz4kepw
+  - &hosts:
+    - &legion5 age1ghraqy6e7m3njhhwtjhtaxnna9n0h4mf2vy20hlh46588lsptfvqach0t8
 creation_rules:
   - path_regex: secrets/[^/]+\.(yaml|json|env|ini)$
     key_groups:
     - age:
       - *akos
+      - *legion5
