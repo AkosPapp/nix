@@ -106,6 +106,8 @@
       sanoid
       pkg-config
       sops
+      zoxide
+      lsd
 
       # typst
       pkgs-unstable.typst
@@ -189,7 +191,6 @@
       wireshark
       appimage-run
       obs-studio
-      zoxide
 
       # qemu
       qemu_full
