@@ -7,7 +7,7 @@
   imports = [./hardware-configuration.nix];
 
   #  # Bootloader.
-  boot.kernelParams = [ "consoleblank=300" ]; # 300 seconds = 5 minutes
+  boot.kernelParams = ["consoleblank=300"]; # 300 seconds = 5 minutes
 
   networking = {
     networkmanager.enable = false;
