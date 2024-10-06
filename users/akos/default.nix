@@ -189,6 +189,7 @@
       wireshark
       appimage-run
       obs-studio
+      zoxide
 
       # qemu
       qemu_full
