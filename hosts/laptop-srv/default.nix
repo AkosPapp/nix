@@ -7,7 +7,7 @@
   imports = [./hardware-configuration.nix];
 
   #  # Bootloader.
-  #  boot.loader.efi.efiSysMountPoint = "/boot/efi";
+  boot.kernelParams = [ "consoleblank=300" ]; # 300 seconds = 5 minutes
 
   networking = {
     networkmanager.enable = false;
