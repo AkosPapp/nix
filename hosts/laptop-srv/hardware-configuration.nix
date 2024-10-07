@@ -25,6 +25,7 @@
         allowHibernation = false;
       };
     };
+    boot.kernelPackages = pkgs.linuxPackages_5_15;
 
     fileSystems."/" = {
       device = "zroot/root";
