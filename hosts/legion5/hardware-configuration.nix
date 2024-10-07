@@ -20,8 +20,8 @@
       kernelModules = ["kvm-amd"];
       #kernelPackages = pkgs.linuxPackages_latest;
       extraModulePackages = [
-        config.boot.kernelPackages.nvidia_x11
-        config.boot.kernelPackages.lenovo-legion-module
+        #config.boot.kernelPackages.nvidia_x11
+        #config.boot.kernelPackages.lenovo-legion-module
       ];
       supportedFilesystems = ["zfs"];
       zfs = {
