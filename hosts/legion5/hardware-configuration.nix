@@ -17,7 +17,7 @@
         availableKernelModules = ["nvme" "xhci_pci" "usbhid" "usb_storage" "sd_mod"];
         kernelModules = ["amdgpu"];
       };
-      kernelModules = ["kvm-amd"];
+      kernelModules = ["kvm-amd" "acpi_lid" ];
       #kernelPackages = pkgs.linuxPackages_latest;
       extraModulePackages = [
         #config.boot.kernelPackages.nvidia_x11
