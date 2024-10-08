@@ -173,6 +173,7 @@
       dracula-theme
       keepassxc
       inkscape
+      gimp
       pcmanfm
       flameshot
       syncthing
