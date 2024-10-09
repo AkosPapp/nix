@@ -126,6 +126,10 @@
           conda
         ]))
       sage
+    (opencv.override {
+      enableGtk3 = true;
+      enablePython = true;
+    })
 
       # git
       gitFull
