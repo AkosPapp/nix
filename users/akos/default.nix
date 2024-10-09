@@ -129,6 +129,7 @@
       sage
     (opencv.override {
       enableGtk3 = true;
+      enableGtk2 = true;
       enablePython = true;
     })
 
