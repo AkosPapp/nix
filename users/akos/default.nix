@@ -124,7 +124,7 @@
           jedi-language-server
           gitpython
           conda
-          opencv
+          opencv4
         ]))
       sage
     (opencv.override {
