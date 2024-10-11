@@ -127,11 +127,11 @@
           opencv4
         ]))
       sage
-    (opencv.override {
-      enableGtk3 = true;
-      enableGtk2 = true;
-      enablePython = true;
-    })
+      (opencv.override {
+        enableGtk3 = true;
+        enableGtk2 = true;
+        enablePython = true;
+      })
 
       # git
       gitFull
@@ -173,7 +173,6 @@
       kubectl
 
       # user tools
-      geogebra6
       networkmanagerapplet
       zotero
       dracula-theme
