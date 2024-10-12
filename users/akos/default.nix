@@ -124,14 +124,14 @@
           jedi-language-server
           gitpython
           conda
-          opencv4
+          (opencv4.override {
+            enableGtk3 = true;
+            enableGtk2 = true;
+            enablePython = true;
+            enableCuda = true;
+          })
         ]))
       sage
-      (opencv.override {
-        enableGtk3 = true;
-        enableGtk2 = true;
-        enablePython = true;
-      })
 
       # git
       gitFull
