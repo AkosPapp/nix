@@ -11,12 +11,12 @@
       ./generated.nix
       ./hosts/hp
       home-manager.nixosModules.home-manager
+      sops-nix.nixosModules.sops
       disko.nixosModules.disko
       {
         home-manager.useGlobalPkgs = true;
         home-manager.useUserPackages = true;
       }
-      sops-nix.nixosModules.sops
     ];
   };
   iso = nixpkgs.lib.nixosSystem {
@@ -25,12 +25,12 @@
       ./generated.nix
       ./hosts/iso
       home-manager.nixosModules.home-manager
+      sops-nix.nixosModules.sops
       disko.nixosModules.disko
       {
         home-manager.useGlobalPkgs = true;
         home-manager.useUserPackages = true;
       }
-      sops-nix.nixosModules.sops
     ];
   };
   legion5 = nixpkgs.lib.nixosSystem {
@@ -39,12 +39,12 @@
       ./generated.nix
       ./hosts/legion5
       home-manager.nixosModules.home-manager
+      sops-nix.nixosModules.sops
       disko.nixosModules.disko
       {
         home-manager.useGlobalPkgs = true;
         home-manager.useUserPackages = true;
       }
-      sops-nix.nixosModules.sops
     ];
   };
 }

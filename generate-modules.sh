@@ -40,12 +40,12 @@ echo "  $(basename $host) = nixpkgs.lib.nixosSystem {
       ./${OUTPUT}
       ./hosts/${host}
       home-manager.nixosModules.home-manager
+      sops-nix.nixosModules.sops
       disko.nixosModules.disko
       {
         home-manager.useGlobalPkgs = true;
         home-manager.useUserPackages = true;
       }
-      sops-nix.nixosModules.sops
     ];
   };" >> $NIX_CONFIGS
 done

@@ -1,4 +1,4 @@
-.PHONY: help generate gen switch build commit sync update stage switch--show-trace
+.PHONY: help generate gen switch build commit sync update stage switch--show-trace fmt
 
 help:
 	@echo "Usage: make [target]"
@@ -23,11 +23,15 @@ help:
 
 gen: generate
 
+fmt:
+	@echo "--- Formatting the code ---"
+	@nix fmt
+
 generate:
 	@echo "--- Generating the code ---"
 	@./generate-modules.sh
 
-switch: stage
+switch: gen fmt stage
 	@echo "--- Switching to the new configuration ---"
 	@$$([ "$$(whoami)" != "root" ] && echo -e "sudo") nixos-rebuild switch --flake .# && make commit
 
@@ -52,7 +56,7 @@ upgrade:
 	make commit
 	make gen
 	make update
-	nix fmt
+	make fmt
 	make switch
 	make sync
 
