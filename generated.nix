@@ -1,24 +1,24 @@
-{
-  imports = [
-    users/admin
-    users/akos
-    modules/hardware/perifirals/mice/razer.nix
-    modules/virtualization/virtualbox.nix
-    modules/virtualization/docker.nix
-    modules/virtualization/virt-manager.nix
-    modules/virtualization/vmware.nix
-    modules/fonts/nerdfonts.nix
-    modules/wm/dwm.nix
-    modules/games/steam.nix
-    modules/system/bluetooth.nix
-    modules/system/sound.nix
-    modules/system/locale.nix
-    modules/system/zfs.nix
-    modules/system/binbash.nix
-    modules/system/printing.nix
-    modules/system/gpg.nix
-    modules/networking/sshd.nix
-    modules/networking/tailscale.nix
-    profiles/global.nix
-  ];
+{ imports = [
+users/admin
+users/akos
+modules/hardware/perifirals/mice/razer.nix
+modules/virtualization/virtualbox.nix
+modules/virtualization/docker.nix
+modules/virtualization/virt-manager.nix
+modules/virtualization/vmware.nix
+modules/fonts/nerdfonts.nix
+modules/wm/dwm.nix
+modules/games/steam.nix
+modules/system/bluetooth.nix
+modules/system/sound.nix
+modules/system/locale.nix
+modules/system/zfs.nix
+modules/system/binbash.nix
+modules/system/printing.nix
+modules/system/gpg.nix
+modules/networking/sshd.nix
+modules/networking/tailscale.nix
+profiles/global.nix
+profiles/server.nix
+];
 }
