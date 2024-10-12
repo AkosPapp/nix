@@ -27,5 +27,4 @@
       interface = "enp4s0f3u1u1c2";
     };
   };
-
 }

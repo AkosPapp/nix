@@ -71,12 +71,12 @@
         ;
     };
     #deploy = lib.mkDeploy {inherit (inputs) self;};
-    deploy.nodes.laptop-srv = {
-      hostname = "laptop-srv";
+    deploy.nodes.hp = {
+      hostname = "hp";
       profiles.system = {
         sshUser = "root";
         user = "root";
-        path = deploy-rs.lib.x86_64-linux.activate.nixos self.nixosConfigurations.laptop-srv;
+        path = deploy-rs.lib.x86_64-linux.activate.nixos self.nixosConfigurations.hp;
         remoteBuild = false;
       };
     };
