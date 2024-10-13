@@ -55,7 +55,7 @@
         permittedInsecurePackages = [
           "electron-27.3.11"
         ];
-        overlays = [ nixgl.overlay ];
+        overlays = [nixgl.overlay];
       };
     };
   in {
@@ -71,6 +71,7 @@
         disko
         sops-nix
         nixos-hardware
+        nixgl
         ;
     };
     #deploy = lib.mkDeploy {inherit (inputs) self;};

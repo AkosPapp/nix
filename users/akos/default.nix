@@ -3,6 +3,7 @@
   pkgs,
   lib,
   pkgs-unstable,
+  nixgl,
   ...
 } @ inputs: {
   options = {
@@ -140,7 +141,6 @@
         enableCuda = true;
         enableUnfree = true;
       })
-      nixGLNvidia
 
       # git
       gitFull
