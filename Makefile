@@ -33,11 +33,11 @@ generate:
 
 switch: gen fmt stage
 	@echo "--- Switching to the new configuration ---"
-	@$$([ "$$(whoami)" != "root" ] && echo -e "sudo") nixos-rebuild switch --flake .# && make commit
+	@$$([ "$$(whoami)" != "root" ] && echo -e "sudo") nixos-rebuild switch --flake .# --impure && make commit
 
 switch--show-trace: stage
 	@echo "--- Switching to new configuration with --show-trace ---"
-	@$$([ "$$(whoami)" != "root" ] && echo -e "sudo") nixos-rebuild switch --flake .# --show-trace && make commit
+	@$$([ "$$(whoami)" != "root" ] && echo -e "sudo") nixos-rebuild switch --flake .# -impure --show-trace && make commit
 
 build: stage
 	@echo "--- Building new configuration ---"
@@ -45,7 +45,7 @@ build: stage
 
 iso: stage
 	@echo "--- Building ISO ---"
-	@nix build .#nixosConfigurations.iso.config.system.build.isoImage && make commit
+	@nix build .#nixosConfigurations.iso.config.system.build.isoImage -impure && make commit
 
 update:
 	@echo "--- Updating flake ---"
@@ -96,4 +96,4 @@ install-remote:
 	make IP=$(IP) upload-remote; \
 	echo "Installing Flake"; \
 	ssh root@$(IP) 'nix --experimental-features "nix-command flakes" run github:nix-community/disko -- --mode disko /tmp/nixconfig/hosts/$(CONFIG)/disko.nix' && \
-	ssh root@$(IP) 'nixos-install --flake /tmp/nixconfig#$(CONFIG)'; \
+	ssh root@$(IP) 'nixos-install --flake /tmp/nixconfig#$(CONFIG) -impure'; \
