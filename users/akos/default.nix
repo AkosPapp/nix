@@ -146,7 +146,7 @@
           enableGtk3 = true;
           enableGtk2 = true;
           enablePython = true;
-          enableCuda = true;
+          enableCuda = false;
           enableUnfree = true;
         })
         nixglpkgs.nixgl.auto.nixGLDefault
