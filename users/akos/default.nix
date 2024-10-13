@@ -105,6 +105,9 @@
         acpi
         glib
         wget
+        curl
+        curlpp
+        libcpr
         ffmpeg
         zip
         unzip
