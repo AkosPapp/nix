@@ -138,6 +138,7 @@
         enablePython = true;
         enableCuda = true;
       })
+      cudatoolkit
 
       # git
       gitFull
