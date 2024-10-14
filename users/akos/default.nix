@@ -128,6 +128,7 @@
 
         # markdown
         marksman
+        marp-cli
 
         # python
         (python312.withPackages (ps:
@@ -168,12 +169,16 @@
         cmake
 
         #rust
+        llvmPackages.libclang
+        llvm
         rustup
         libclang
         ninja
         vcpkg
         libconfig
         pkgconf
+        rust-bindgen
+        rust-cbindgen
 
         # C#
         omnisharp-roslyn
