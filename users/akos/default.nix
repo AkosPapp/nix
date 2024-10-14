@@ -23,6 +23,7 @@
     };
   in
     lib.mkIf config.USERS.akos.enable {
+      users.defaultUserShell = pkgs.zsh;
       users.users.akos = {
         isNormalUser = true;
         shell = pkgs.zsh;
