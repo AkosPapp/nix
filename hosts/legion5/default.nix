@@ -73,8 +73,8 @@
       plan = "1h=>1min,1d=>1h,1w=>1d";
       enable = true;
       destinations = {
-        "laptop-srv" = {
-          host = "root@laptop-srv";
+        "hp" = {
+          host = "root@hp";
           dataset = "zroot/persist";
           plan = "1h=>1min,1d=>1h,1w=>1d";
         };
