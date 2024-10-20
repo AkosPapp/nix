@@ -29,6 +29,7 @@
       xclip
       tree-sitter
       lua-language-server
+      luajitPackages.luarocks-nix
       cmake-language-server
       lldb
       gdb
