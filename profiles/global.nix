@@ -37,6 +37,7 @@
       valgrind
       nodejs_18
       shellcheck
+      dprint
 
       # git
       gitFull
