@@ -217,6 +217,8 @@
         sxiv
         pinentry
         brave
+        firefox
+        geckodriver
         kitty
         nitrogen
         whatsapp-for-linux
