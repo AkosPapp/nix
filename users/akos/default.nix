@@ -137,6 +137,7 @@
             jedi-language-server
             gitpython
             jupytext
+            jupyter-console
             # (opencv4.override {
             #   enableGtk3 = true;
             #   enableGtk2 = true;
