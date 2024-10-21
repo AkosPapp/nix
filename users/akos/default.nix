@@ -194,7 +194,7 @@
         # dev tools
         pkgs-unstable.vscode
         gitkraken
-        jetbrains-toolbox
+        pkgs-unstable.jetbrains-toolbox
         openjdk17-bootstrap
         rpi-imager
         gparted
