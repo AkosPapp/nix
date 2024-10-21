@@ -136,7 +136,7 @@
             pip
             jedi-language-server
             gitpython
-            conda
+            jupytext
             # (opencv4.override {
             #   enableGtk3 = true;
             #   enableGtk2 = true;

@@ -30,6 +30,7 @@
       tree-sitter
       lua-language-server
       luajitPackages.luarocks-nix
+      luajit
       cmake-language-server
       lldb
       gdb
