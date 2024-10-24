@@ -17,6 +17,8 @@
     '';
   };
 
+  networking.nameservers = ["100.100.100.100" "9.9.9.9" "8.8.8.8" "1.1.1.1" "172.16.0.1"];
+
   MODULES.system.printing.enable = true;
 
   users.users.root.hashedPassword = "$y$j9T$gEhP/0Jlrlwb4ndmLs06L1$7qkdPdgqjCrEH8bAQvJqRn/Mj4m5X9GCRAyM33z0mdA";
