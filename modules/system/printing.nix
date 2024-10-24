@@ -20,6 +20,7 @@
         canon-cups-ufr2
         cups-filters
         samsung-unified-linux-driver
+        ptouch-driver
       ];
     };
 
