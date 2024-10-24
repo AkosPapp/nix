@@ -17,7 +17,7 @@
     '';
   };
 
-  networking.nameservers = ["100.100.100.100" "9.9.9.9" "8.8.8.8" "1.1.1.1" "172.16.0.1"];
+  networking.nameservers = ["172.16.0.1" "100.100.100.100" "9.9.9.9" "8.8.8.8" "1.1.1.1"];
 
   MODULES.system.printing.enable = true;
 
