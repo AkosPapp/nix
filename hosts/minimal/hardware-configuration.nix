@@ -34,13 +34,13 @@
     };
 
     fileSystems."/boot" = {
-      device = "/dev/disk/by-partlabel/BOOT";
+      device = "/dev/disk/by-label/NIXOS_BOOT";
       fsType = "vfat";
       options = ["fmask=0022" "dmask=0022"];
     };
 
     swapDevices = [
-      {device = "/dev/disk/by-partlabel/SWAP";}
+      {device = "/dev/disk/by-label/NIXOS_SWAP";}
     ];
 
     networking.useDHCP = lib.mkDefault true;

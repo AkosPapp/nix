@@ -10,7 +10,7 @@
 
   networking = {
     hostId = "68bf4e0e";
-    hostName = "legion5";
+    hostName = "minimal";
     extraHosts = ''
       127.0.0.1 localhost
     '';
