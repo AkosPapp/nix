@@ -47,4 +47,18 @@
       }
     ];
   };
+  minimal = nixpkgs.lib.nixosSystem {
+    specialArgs = args;
+    modules = [
+      ./generated.nix
+      ./hosts/minimal
+      home-manager.nixosModules.home-manager
+      sops-nix.nixosModules.sops
+      disko.nixosModules.disko
+      {
+        home-manager.useGlobalPkgs = true;
+        home-manager.useUserPackages = true;
+      }
+    ];
+  };
 }

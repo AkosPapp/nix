@@ -7,27 +7,29 @@
         content = {
           type = "gpt";
           partitions = {
-            ESP = {
+            NIXOS_BOOT = {
               size = "1G";
               type = "EF00";
               content = {
                 type = "filesystem";
                 format = "vfat";
                 mountpoint = "/boot";
+                extraArgs = ["-n" "NIXOS_BOOT"];
               };
             };
-            zfs = {
+            ZFS = {
               end = "-32G";
               content = {
                 type = "zfs";
                 pool = "zroot";
               };
             };
-            swap = {
+            NIXOS_SWAP = {
               size = "100%";
               content = {
                 type = "swap";
                 resumeDevice = true; # resume from hiberation from this device
+                extraArgs = ["-L" "NIXOS_SWAP"];
               };
             };
           };

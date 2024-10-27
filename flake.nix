@@ -32,7 +32,6 @@
     sops-nix,
     nixos-hardware,
     deploy-rs,
-    nixgl,
     ...
   } @ inputs: let
     system = "x86_64-linux";
@@ -69,7 +68,6 @@
         disko
         sops-nix
         nixos-hardware
-        nixgl
         ;
     };
     #deploy = lib.mkDeploy {inherit (inputs) self;};
