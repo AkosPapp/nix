@@ -21,7 +21,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     deploy-rs.url = "github:serokell/deploy-rs";
-    nixgl.url = "github:nix-community/nixGL";
   };
   outputs = {
     self,
@@ -55,7 +54,6 @@
         permittedInsecurePackages = [
           "electron-27.3.11"
         ];
-        overlays = [nixgl.overlay];
       };
     };
   in {

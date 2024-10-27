@@ -4,7 +4,6 @@
   lib,
   pkgs-unstable,
   nixpkgs,
-  nixgl,
   ...
 } @ inputs: {
   options = {
@@ -15,13 +14,7 @@
     };
   };
 
-  config = let
-    nixglpkgs = import nixpkgs {
-      overlays = [nixgl.overlay];
-      system = "x86_64-linux";
-      config.allowUnfree = true;
-    };
-  in
+  config = 
     lib.mkIf config.USERS.akos.enable {
       users.users.akos = {
         isNormalUser = true;
@@ -154,8 +147,6 @@
           enableCuda = false;
           enableUnfree = true;
         })
-        nixglpkgs.nixgl.auto.nixGLDefault
-        nixglpkgs.nixgl.auto.nixGLNvidia
 
         # git
         gitFull
