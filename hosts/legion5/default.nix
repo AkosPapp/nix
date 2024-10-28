@@ -87,6 +87,7 @@
     args = lib.concatStringsSep " " [
       "--logto=${config.services.znapzend.logTo}"
       "--loglevel=${config.services.znapzend.logLevel}"
+      "--autoCreation"
       "--debug"
     ];
   in
