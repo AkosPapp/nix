@@ -83,6 +83,14 @@
       };
     };
   };
+  systemd.services.znapzend.serviceConfig.ExecStart = let
+    args = lib.concatStringsSep " " [
+      "--logto=${config.services.znapzend.logTo}"
+      "--loglevel=${config.services.znapzend.logLevel}"
+      "--debug"
+    ];
+  in
+    lib.mkForce "${pkgs.znapzend}/bin/znapzend ${args}";
 
   services.zfs = {
     autoScrub = {
