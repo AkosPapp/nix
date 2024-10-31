@@ -77,6 +77,7 @@
       neofetch
       cowsay
       graphviz
+      devcontainer
 
       # system tools
       usbutils
