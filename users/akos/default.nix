@@ -59,7 +59,7 @@
     };
 
     environment.systemPackages = with pkgs; [
-      my-nixvim.packages.x86_64-linux.default
+      my-nixvim.packages.${system}.default
       # helpful tools
       starship
       ripgrep
