@@ -8,7 +8,7 @@
     USERS.nix-builder.enable = lib.mkOption {
       default = false;
       type = lib.types.bool;
-      description = "Admin user for Servers";
+      description = "user for remote nix builds";
     };
   };
 
@@ -23,6 +23,10 @@
       openssh.authorizedKeys.keys = [
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOavECvlGNeGwEWZASDDjU7XCZOQkO2XU2Zm1VKFWMME nix-builder"
       ];
+    };
+    services.nix-serve = {
+      enable = true;
+      secretKeyFile = "/var/cache-priv-key.pem";
     };
   };
 }
