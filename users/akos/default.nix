@@ -56,6 +56,7 @@
       virtualisation.virt-manager.enable = true;
       wm.dwm.enable = true;
       hardware.perifirals.mice.razer.enable = true;
+      hardware.perifirals.keyboards.kanata.enable = true;
     };
 
     environment.systemPackages = with pkgs; [
