@@ -11,7 +11,7 @@
   # paths it should manage.
   home.username = "akos";
   home.homeDirectory = "/home/akos";
-  #home.packages = [my-nixvim.packages.${system}.default];
+  home.packages = [my-nixvim.packages.${system}.default];
 
   programs = {
     zsh = {
