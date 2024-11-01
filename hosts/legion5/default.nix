@@ -32,6 +32,7 @@
   system.stateVersion = "24.05";
 
   USERS.akos.enable = true;
+  USERS.nix-builder.enable = true;
 
   services.xserver.displayManager.gdm.enable = true;
 
