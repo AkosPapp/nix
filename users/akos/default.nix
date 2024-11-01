@@ -4,6 +4,7 @@
   lib,
   pkgs-unstable,
   nixpkgs,
+  my-nixvim,
   ...
 } @ inputs: {
   options = {
@@ -37,10 +38,6 @@
     programs.zsh.enable = true;
     programs.kdeconnect.enable = true;
     programs.nix-ld.enable = true;
-    programs.nix-ld.libraries = with pkgs; [
-      # Add any missing dynamic libraries for unpackaged programs
-      # here, NOT in environment.systemPackages
-    ];
 
     home-manager = {
       useGlobalPkgs = true;
@@ -62,13 +59,13 @@
     };
 
     environment.systemPackages = with pkgs; [
+      my-nixvim.packages.x86_64-linux.default
       # helpful tools
       starship
       ripgrep
       httm
       mpv
       tmux
-      zellij
       fd
       fzf
       rsync

@@ -27,10 +27,6 @@
       userEmail = "qq557702@gmail.com";
       lfs.enable = true;
     };
-    zellij = {
-      enable = true;
-      enableZshIntegration = true;
-    };
   };
   # This value determines the Home Manager release that your
   # configuration is compatible with. This helps avoid breakage
