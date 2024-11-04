@@ -141,7 +141,7 @@
           #   enableUnfree = true;
           # })
         ]))
-      sage
+      jupyter
       (opencv.override {
         enableGtk3 = true;
         enableGtk2 = true;
