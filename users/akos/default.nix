@@ -124,11 +124,15 @@
       # python
       (python312.withPackages (ps:
         with ps; [
-          pip
+          # pip
           jedi-language-server
           gitpython
-          jupytext
-          jupyter-console
+          # jupytext
+          # jupyter-console
+          # jupyter
+          numpy
+          pandas
+          # scipy
           # (opencv4.override {
           #   enableGtk3 = true;
           #   enableGtk2 = true;
