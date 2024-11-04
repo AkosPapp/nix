@@ -124,7 +124,7 @@
       # python
       (python312.withPackages (ps:
         with ps; [
-          # pip
+          pip
           jedi-language-server
           gitpython
           # jupytext
