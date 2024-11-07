@@ -153,6 +153,8 @@
           pandas
           matplotlib
           scipy
+          pandoc
+          nbconvert
           # scipy
           # (opencv4.override {
           #   enableGtk3 = true;
