@@ -140,29 +140,19 @@
           #   enableCuda = true;
           #   enableUnfree = true;
           # })
+          jupyter
         ]))
       (python311.withPackages (ps:
         with ps; [
           pip
           jedi-language-server
           gitpython
-          # jupytext
-          # jupyter-console
-          # jupyter
           numpy
           pandas
           matplotlib
           scipy
           pandoc
           nbconvert
-          # scipy
-          # (opencv4.override {
-          #   enableGtk3 = true;
-          #   enableGtk2 = true;
-          #   enablePython = true;
-          #   enableCuda = true;
-          #   enableUnfree = true;
-          # })
           jupyter
         ]))
       (opencv.override {
