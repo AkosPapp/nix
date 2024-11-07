@@ -140,7 +140,6 @@
           #   enableCuda = true;
           #   enableUnfree = true;
           # })
-          jupyter
         ]))
       (python311.withPackages (ps:
         with ps; [
