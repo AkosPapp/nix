@@ -151,6 +151,8 @@
           # jupyter
           numpy
           pandas
+          matplotlib
+          scipy
           # scipy
           # (opencv4.override {
           #   enableGtk3 = true;
