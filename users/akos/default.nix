@@ -38,7 +38,7 @@
     programs.zsh.enable = true;
     programs.kdeconnect.enable = true;
     programs.nix-ld.enable = true;
-    programs.nix-ld.dev.enable = true;
+    #programs.nix-ld.dev.enable = true;
 
     home-manager = {
       useGlobalPkgs = true;
