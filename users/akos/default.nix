@@ -219,6 +219,9 @@
       inkscape
       gimp
       pcmanfm
+      xfce.thunar
+      xfce.thunar-volman
+      gvfs
       flameshot
       syncthing
       sxiv
