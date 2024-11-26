@@ -221,7 +221,6 @@
       pcmanfm
       xfce.thunar
       xfce.thunar-volman
-      gvfs
       flameshot
       syncthing
       sxiv
@@ -247,6 +246,7 @@
       qemu-utils
     ];
 
+    services.gvfs.enable = true;
     # perf
     boot.extraModulePackages = [config.boot.kernelPackages.perf];
 
