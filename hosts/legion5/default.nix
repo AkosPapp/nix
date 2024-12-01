@@ -31,7 +31,6 @@
   system.stateVersion = nixos-version;
 
   USERS.akos.enable = true;
-  USERS.nix-builder.enable = true;
 
   services.xserver.displayManager.gdm.enable = true;
 
