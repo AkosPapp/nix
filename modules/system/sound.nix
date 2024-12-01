@@ -12,7 +12,6 @@
     };
   };
   config = lib.mkIf config.MODULES.system.sound.enable {
-    sound.enable = true;
     security.rtkit.enable = true;
     services.pipewire = {
       enable = true;

@@ -9,7 +9,7 @@
     MODULES.virtualisation.vmware.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
-      description = "Enable VirtualBox";
+      description = "Enable VMware virtualisation";
     };
   };
 
