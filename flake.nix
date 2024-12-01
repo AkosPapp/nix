@@ -1,10 +1,10 @@
 {
   description = "My Nixos Configuration";
   inputs = {
-    nixpkgs.url = "nixpkgs/nixos-24.05";
+    nixpkgs.url = "nixpkgs/nixos-24.11";
     nixpkgs-unstable.url = "nixpkgs/nixos-unstable";
     home-manager = {
-      url = "github:nix-community/home-manager/release-24.05";
+      url = "github:nix-community/home-manager/release-24.11";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     my-nixvim. url = "github:PPAPSONKA/nixvim";
@@ -31,6 +31,7 @@
     deploy-rs,
     ...
   } @ inputs: let
+    nixos-version = "24.11";
     system = "x86_64-linux";
     pkgs-unstable = import nixpkgs-unstable {
       system = system;
@@ -65,6 +66,7 @@
         disko
         sops-nix
         nixos-hardware
+        nixos-version
         ;
     };
     #deploy = lib.mkDeploy {inherit (inputs) self;};

@@ -2,8 +2,7 @@
   config,
   pkgs,
   lib,
-  nixos-hardware,
-  sops-nix,
+  nixos-version,
   ...
 }: {
   imports = [./hardware-configuration.nix ./disko.nix ./sops.nix];
@@ -29,7 +28,7 @@
     options = "--delete-older-than 7d";
   };
 
-  system.stateVersion = "24.05";
+  system.stateVersion = nixos-version;
 
   USERS.akos.enable = true;
   USERS.nix-builder.enable = true;

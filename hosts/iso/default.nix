@@ -3,6 +3,7 @@
   modulesPath,
   my-nixvim,
   system,
+  nixos-version,
   ...
 }: {
   imports = ["${modulesPath}/installer/cd-dvd/installation-cd-minimal.nix"];
@@ -36,13 +37,13 @@
       username = "nixos";
       homeDirectory = "/home/nixos";
       packages = [my-nixvim.packages.${system}.default];
-      stateVersion = "24.05";
+      stateVersion = nixos-version;
     };
     users.root.home = {
       username = "root";
       homeDirectory = "/root";
       packages = [my-nixvim.packages.${system}.default];
-      stateVersion = "24.05";
+      stateVersion = nixos-version;
     };
   };
 

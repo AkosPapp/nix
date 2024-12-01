@@ -1,9 +1,6 @@
 {
-  config,
   pkgs,
-  lib,
-  nixos-hardware,
-  sops-nix,
+  nixos-version,
   ...
 }: {
   imports = [./hardware-configuration.nix];
@@ -18,7 +15,7 @@
 
   users.users.root.hashedPassword = "$y$j9T$gEhP/0Jlrlwb4ndmLs06L1$7qkdPdgqjCrEH8bAQvJqRn/Mj4m5X9GCRAyM33z0mdA";
 
-  system.stateVersion = "24.05";
+  system.stateVersion = nixos-version;
 
   MODULES.networking.sshd.enable = true;
 

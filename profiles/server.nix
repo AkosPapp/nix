@@ -1,7 +1,6 @@
 {
   config,
-  pkgs,
-  pkgs-unstable,
+  nixos-version,
   lib,
   ...
 }: {
@@ -47,7 +46,7 @@
       options = "--delete-older-than 7d";
     };
 
-    system.stateVersion = "24.05";
+    system.stateVersion = nixos-version;
 
     MODULES.virtualisation.docker.enable = true;
     USERS.admin.enable = true;
