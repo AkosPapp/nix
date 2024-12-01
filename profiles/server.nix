@@ -46,8 +46,6 @@
       options = "--delete-older-than 7d";
     };
 
-    system.stateVersion = nixos-version;
-
     MODULES.virtualisation.docker.enable = true;
     USERS.admin.enable = true;
 

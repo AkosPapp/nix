@@ -28,8 +28,6 @@
     options = "--delete-older-than 7d";
   };
 
-  system.stateVersion = nixos-version;
-
   USERS.akos.enable = true;
 
   services.xserver.displayManager.gdm.enable = true;

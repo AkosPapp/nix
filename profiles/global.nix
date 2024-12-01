@@ -3,6 +3,7 @@
   pkgs,
   pkgs-unstable,
   lib,
+  nixos-version,
   ...
 }: {
   options = {
@@ -20,31 +21,12 @@
       system.locale.enable = true;
     };
     environment.systemPackages = with pkgs; [
-      gnumake
       kitty
-      htop-vim
-
-      # nvim
-      pkgs-unstable.neovim
-      xclip
-      tree-sitter
-      lua-language-server
-      luajitPackages.luarocks-nix
-      luajit
-      cmake-language-server
-      lldb
-      gdb
-      nil
-      nixd
-      valgrind
-      nodejs_18
-      shellcheck
-      dprint
-
-      # git
-      gitFull
+      neovim
     ];
-    users.mutableUsers = true;
+    users.mutableUsers = false;
     nix.settings.experimental-features = ["nix-command" "flakes"];
+
+    system.stateVersion = nixos-version;
   };
 }

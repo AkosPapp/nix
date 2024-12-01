@@ -28,6 +28,7 @@
       tmux
       rsync
       htop
+      btop
 
       # system tools
       sshpass
