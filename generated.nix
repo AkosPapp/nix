@@ -2,7 +2,6 @@
   imports = [
     users/admin
     users/akos
-    users/nix-builder
     modules/hardware/perifirals/keyboards/kanata/default.nix
     modules/hardware/perifirals/mice/razer.nix
     modules/virtualization/virtualbox.nix
