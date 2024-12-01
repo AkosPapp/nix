@@ -14,7 +14,7 @@
   };
 
   config = lib.mkIf config.MODULES.system.gpg.enable {
-    services.dbus.packages = with pkgs; [pass-secret-service gcr];
+    services.dbus.packages = with pkgs; [gcr];
     services.pcscd.enable = true;
     programs.mtr.enable = true;
     programs.gnupg.agent = {

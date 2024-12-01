@@ -121,25 +121,25 @@
       marp-cli
 
       # python
-     #(python312.withPackages (ps:
-     #  with ps; [
-     #    pip
-     #    jedi-language-server
-     #    gitpython
-     #    # jupytext
-     #    # jupyter-console
-     #    # jupyter
-     #    numpy
-     #    pandas
-     #    # scipy
-     #    # (opencv4.override {
-     #    #   enableGtk3 = true;
-     #    #   enableGtk2 = true;
-     #    #   enablePython = true;
-     #    #   enableCuda = true;
-     #    #   enableUnfree = true;
-     #    # })
-     #  ]))
+      #(python312.withPackages (ps:
+      #  with ps; [
+      #    pip
+      #    jedi-language-server
+      #    gitpython
+      #    # jupytext
+      #    # jupyter-console
+      #    # jupyter
+      #    numpy
+      #    pandas
+      #    # scipy
+      #    # (opencv4.override {
+      #    #   enableGtk3 = true;
+      #    #   enableGtk2 = true;
+      #    #   enablePython = true;
+      #    #   enableCuda = true;
+      #    #   enableUnfree = true;
+      #    # })
+      #  ]))
       (python311.withPackages (ps:
         with ps; [
           pip
