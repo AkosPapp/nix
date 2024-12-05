@@ -152,6 +152,7 @@
           pandoc
           nbconvert
           jupyter
+          seaborn
         ]))
       (opencv.override {
         enableGtk3 = true;
