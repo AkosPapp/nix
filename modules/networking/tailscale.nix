@@ -36,7 +36,7 @@
     environment.etc = {
       "dnsmasq-conf.conf" = {
         source = ./dnsmasq.conf;
-        mode = "0622";
+        mode = "0644";
       };
     };
   };
