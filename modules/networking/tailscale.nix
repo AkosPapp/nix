@@ -23,6 +23,7 @@
     networking.search = ["tail546fb.ts.net"];
     networking.firewall.checkReversePath = "loose";
     services.resolved.enable = false;
+    networking.resolvconf.enable = false;
     networking.nameservers = [
       #"172.16.0.1"
       #"100.100.100.100"
