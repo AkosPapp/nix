@@ -24,10 +24,14 @@
     networking.firewall.checkReversePath = "loose";
     networking.nameservers = [
       #"172.16.0.1"
-      "100.100.100.100"
-      "9.9.9.9"
-      "8.8.8.8"
-      "1.1.1.1"
+      #"100.100.100.100"
+      #"9.9.9.9"
+      #"8.8.8.8"
+      #"1.1.1.1"
+      "127.0.0.1"
     ];
+    services.dnsmasq = {
+      enable = true;
+    };
   };
 }
