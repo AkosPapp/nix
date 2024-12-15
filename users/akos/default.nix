@@ -194,8 +194,10 @@
       shellcheck
 
       # C#
-      dotnetCorePackages.dotnet_8.sdk
-      dotnetCorePackages.dotnet_8.runtime
+      dotnet-runtime
+      dotnet-sdk
+      dotnet-aspnetcore
+      icu
 
       # dev tools
       pkgs-unstable.vscode
