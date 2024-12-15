@@ -33,5 +33,11 @@
     services.dnsmasq = {
       enable = true;
     };
+    environment.etc = {
+      "dnsmasq-conf.conf" = {
+        source = ./dnsmasq.conf;
+        mode = "0440";
+      };
+    };
   };
 }
