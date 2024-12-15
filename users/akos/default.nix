@@ -255,8 +255,6 @@
     # perf
     boot.extraModulePackages = [config.boot.kernelPackages.perf];
 
-    boot.binfmt.emulatedSystems = ["aarch64-linux"];
-
     networking.firewall.enable = false;
   };
 }
