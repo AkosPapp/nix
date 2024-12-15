@@ -199,9 +199,13 @@
 
       # dev tools
       pkgs-unstable.vscode
-      gitkraken
-      pkgs-unstable.jetbrains-toolbox
-      openjdk17-bootstrap
+      pkgs-unstable.gitkraken
+      pkgs-unstable.jetbrains.clion
+      pkgs-unstable.jetbrains.datagrip
+      pkgs-unstable.jetbrains.dataspell
+      pkgs-unstable.jetbrains.idea-ultimate
+      pkgs-unstable.jetbrains.pycharm-professional
+      pkgs-unstable.jetbrains.rider
       rpi-imager
       gparted
       distrobox
