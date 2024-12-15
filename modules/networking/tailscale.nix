@@ -32,30 +32,11 @@
     ];
     services.dnsmasq = {
       enable = true;
-      settings = {
-        # Set up DNS forwarding for specific domains
-        server = [
-          "/local/"
-          "/homenet/"
-          "/airlab/"
-          "/tail546fb.ts.net/100.100.100.100"
-          "9.9.9.9"
-          "1.1.1.1"
-          "8.8.8.8"
-        ];
-
-        # CNAME mapping for tailnet
-        cname = "tailnet,tail546fb.ts.net";
-
-        # Forward all other DNS queries to upstream servers
-
-        # Ensure that dnsmasq uses DHCP-assigned DNS servers (if applicable)
-        # This line might not be strictly necessary if it's enabled by default
-        # server = [ "/<domain>/dhcp" ];  # Replace <domain> with the specific domain if needed
-
-        # Configuration files for DNS resolution
-        resolv-file = "/etc/dnsmasq-resolv.conf";
-        conf-file = "/etc/dnsmasq-conf.conf";
+    };
+    environment.etc = {
+      "dnsmasq-conf.conf" = {
+        source = ./dnsmasq.conf;
+        mode = "0644";
       };
     };
   };
