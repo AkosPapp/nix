@@ -194,9 +194,9 @@
       shellcheck
 
       # C#
-      dotnet-runtime
-      dotnet-sdk
-      dotnet-aspnetcore
+      dotnetCorePackages.dotnet_8.sdk
+      dotnetCorePackages.dotnet_8.runtime
+      dotnetCorePackages.dotnet_8.aspnetcore
       icu
 
       # dev tools
