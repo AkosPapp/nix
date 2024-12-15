@@ -108,8 +108,6 @@
       sanoid
       pkg-config
       sops
-      zoxide
-      lsd
 
       # typst
       pkgs-unstable.typst
@@ -140,6 +138,8 @@
       #    #   enableUnfree = true;
       #    # })
       #  ]))
+
+      # jupyer
       (python311.withPackages (ps:
         with ps; [
           pip
@@ -154,13 +154,6 @@
           jupyter
           seaborn
         ]))
-      (opencv.override {
-        enableGtk3 = true;
-        enableGtk2 = true;
-        enablePython = true;
-        enableCuda = false;
-        enableUnfree = true;
-      })
 
       # git
       gitFull
@@ -229,13 +222,9 @@
       flameshot
       syncthing
       sxiv
-      pinentry
       brave
-      firefox
-      geckodriver
       kitty
       nitrogen
-      whatsapp-for-linux
       signal-desktop
       discord
       libreoffice
@@ -251,10 +240,7 @@
       qemu-utils
     ];
 
-    services.gvfs.enable = true;
     # perf
     boot.extraModulePackages = [config.boot.kernelPackages.perf];
-
-    networking.firewall.enable = false;
   };
 }
