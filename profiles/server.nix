@@ -36,7 +36,6 @@
       extraHosts = ''
         127.0.0.1 localhost
       '';
-      nameservers = ["100.100.100.100" "9.9.9.9" "1.1.1.1" "8.8.8.8"];
       useDHCP = false;
     };
 

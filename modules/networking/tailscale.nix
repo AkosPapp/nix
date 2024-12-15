@@ -17,10 +17,17 @@
     services.tailscale = {
       enable = true;
       openFirewall = true;
+      extraSetFlags = ["--accept-dns=false"];
       package = pkgs-unstable.tailscale;
     };
-    networking.nameservers = ["100.100.100.100" "9.9.9.9" "8.8.8.8" "1.1.1.1"];
     networking.search = ["tail546fb.ts.net"];
     networking.firewall.checkReversePath = "loose";
+    networking.nameservers = [
+      #"172.16.0.1"
+      "100.100.100.100"
+      "9.9.9.9"
+      "8.8.8.8"
+      "1.1.1.1"
+    ];
   };
 }
