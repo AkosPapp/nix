@@ -242,5 +242,8 @@
 
     # perf
     boot.extraModulePackages = [config.boot.kernelPackages.perf];
+
+    # qemu
+    boot.binfmt.emulatedSystems = ["aarch64-linux"];
   };
 }
