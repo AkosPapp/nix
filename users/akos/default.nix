@@ -190,6 +190,7 @@
       dotnetCorePackages.dotnet_8.sdk
       dotnetCorePackages.dotnet_8.runtime
       dotnetCorePackages.dotnet_8.aspnetcore
+      dotnet-ef
       icu
 
       # dev tools

@@ -53,9 +53,6 @@
         allowBroken = true;
         permittedInsecurePackages = [
           "electron-27.3.11"
-          "dotnet-core-combined"
-          "dotnet-sdk-6.0.428"
-          "dotnet-sdk-wrapped-6.0.428"
         ];
       };
     };
