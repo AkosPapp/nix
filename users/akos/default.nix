@@ -259,5 +259,9 @@
       role = "server";
       disableAgent = true;
     };
+
+    services.dockerRegistry.enable = true;
+    services.dockerRegistry.listenAddress = "0.0.0.0";
+    services.dockerRegistry.openFirewall = true;
   };
 }
