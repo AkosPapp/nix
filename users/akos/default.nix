@@ -254,11 +254,11 @@
     # k3s
     networking.extraHosts = "127.0.0.1 reg";
     services.k3s = {
-      enable = true;
-      token = "pjk3y2eyvaj729szjjfy";
+      enable = false;
+      token = "g3vdlz.wbxihya07tya1u0m";
       role = "server";
       serverAddr = "";
-      disableAgent = true;
+      disableAgent = false;
     };
   };
 }
