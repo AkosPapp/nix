@@ -250,18 +250,5 @@
 
     # qemu
     boot.binfmt.emulatedSystems = ["aarch64-linux"];
-
-    # k3s
-    networking.extraHosts = "127.0.0.1 reg";
-    services.k3s = {
-      enable = false;
-      token = "g3vdlz.wbxihya07tya1u0m";
-      role = "server";
-      disableAgent = true;
-    };
-
-    services.dockerRegistry.enable = true;
-    services.dockerRegistry.listenAddress = "0.0.0.0";
-    services.dockerRegistry.openFirewall = true;
   };
 }

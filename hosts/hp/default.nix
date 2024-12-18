@@ -27,4 +27,12 @@
       interface = "enp4s0f3u1u1c2";
     };
   };
+
+  # k3s
+  services.k3s = {
+    enable = true;
+    token = "g3vdlz.wbxihya07tya1u0m";
+    role = "server";
+    disableAgent = false;
+  };
 }
