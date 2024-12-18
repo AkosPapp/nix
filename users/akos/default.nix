@@ -35,6 +35,7 @@
       hashedPassword = "$y$j9T$gEhP/0Jlrlwb4ndmLs06L1$7qkdPdgqjCrEH8bAQvJqRn/Mj4m5X9GCRAyM33z0mdA";
     };
     networking.search = ["airlab"];
+    networking.extraHosts = "127.0.0.1 reg";
     programs.zsh.enable = true;
     programs.kdeconnect.enable = true;
     programs.nix-ld.enable = true;
