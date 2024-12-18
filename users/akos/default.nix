@@ -257,8 +257,7 @@
       enable = false;
       token = "g3vdlz.wbxihya07tya1u0m";
       role = "server";
-      serverAddr = "";
-      disableAgent = false;
+      disableAgent = true;
     };
   };
 }
