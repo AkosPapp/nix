@@ -193,6 +193,9 @@
       dotnet-ef
       icu
 
+      # nodejs
+      nodejs_23
+
       # dev tools
       pkgs-unstable.vscode
       pkgs-unstable.gitkraken
@@ -255,7 +258,7 @@
       token = "pjk3y2eyvaj729szjjfy";
       role = "server";
       serverAddr = "";
-      disableAgent = false;
+      disableAgent = true;
     };
   };
 }
