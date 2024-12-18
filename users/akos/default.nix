@@ -224,6 +224,7 @@
       syncthing
       sxiv
       brave
+      chromium
       kitty
       nitrogen
       signal-desktop
