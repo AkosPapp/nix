@@ -34,16 +34,9 @@
       ];
       hashedPassword = "$y$j9T$gEhP/0Jlrlwb4ndmLs06L1$7qkdPdgqjCrEH8bAQvJqRn/Mj4m5X9GCRAyM33z0mdA";
     };
-    networking.search = ["airlab"];
     programs.zsh.enable = true;
     programs.kdeconnect.enable = true;
     programs.nix-ld.enable = true;
-    #programs.nix-ld.dev.enable = true;
-
-    home-manager = {
-      useGlobalPkgs = true;
-      users.akos = import ./home.nix inputs;
-    };
 
     MODULES = {
       fonts.nerdfonts.enable = true;
@@ -205,9 +198,9 @@
       pkgs-unstable.jetbrains.idea-ultimate
       pkgs-unstable.jetbrains.pycharm-professional
       pkgs-unstable.jetbrains.rider
+      pkgs-unstable.jetbrains.webstorm
       rpi-imager
       gparted
-      distrobox
       perf-tools
 
       # k8s
@@ -221,8 +214,6 @@
       inkscape
       gimp
       pcmanfm
-      xfce.thunar
-      xfce.thunar-volman
       flameshot
       syncthing
       sxiv

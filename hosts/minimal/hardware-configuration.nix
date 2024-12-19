@@ -15,12 +15,6 @@
       initrd = {
         availableKernelModules = ["nvme" "xhci_pci" "usbhid" "usb_storage" "sd_mod"];
       };
-      supportedFilesystems = ["zfs"];
-      zfs = {
-        extraPools = ["zroot"];
-        forceImportRoot = true;
-        allowHibernation = false;
-      };
     };
 
     fileSystems."/" = {
@@ -43,7 +37,6 @@
       {device = "/dev/disk/by-label/NIXOS_SWAP";}
     ];
 
-    networking.useDHCP = lib.mkDefault true;
     nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
   };
 }

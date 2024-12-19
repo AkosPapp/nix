@@ -39,14 +39,9 @@
       useDHCP = false;
     };
 
-    nix.gc = {
-      automatic = true;
-      dates = "weekly";
-      options = "--delete-older-than 7d";
-    };
-
     MODULES.virtualisation.docker.enable = true;
     USERS.admin.enable = true;
+    PROFILES.zroot.enable = true;
 
     services.openssh.settings.PermitRootLogin = lib.mkForce "prohibit-password";
     nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";

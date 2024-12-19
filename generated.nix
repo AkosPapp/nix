@@ -14,12 +14,12 @@
     modules/system/bluetooth.nix
     modules/system/sound.nix
     modules/system/locale.nix
-    modules/system/zfs.nix
     modules/system/binbash.nix
     modules/system/printing.nix
     modules/system/gpg.nix
     modules/networking/sshd.nix
     modules/networking/tailscale.nix
+    profiles/zroot.nix
     profiles/global.nix
     profiles/server.nix
   ];

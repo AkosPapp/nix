@@ -18,28 +18,11 @@
         kernelModules = ["amdgpu"];
       };
       kernelModules = ["kvm-amd" "acpi_lid"];
-      #kernelPackages = pkgs.linuxPackages_latest;
       extraModulePackages = [
-        #config.boot.kernelPackages.nvidia_x11
-        #config.boot.kernelPackages.lenovo-legion-module
       ];
-      supportedFilesystems = ["zfs"];
-      zfs = {
-        extraPools = ["zroot"];
-        forceImportRoot = false;
-        allowHibernation = true;
-      };
     };
 
-    fileSystems."/" = {
-      device = "zroot/root";
-      fsType = "zfs";
-    };
-
-    fileSystems."/nix" = {
-      device = "zroot/nix";
-      fsType = "zfs";
-    };
+    PROFILES.zroot.enable = true;
 
     fileSystems."/etc/NetworkManager/system-connections" = {
       device = "zroot/persist/system-connections";
@@ -65,7 +48,6 @@
       {device = "/dev/disk/by-label/NIXOS_SWAP";}
     ];
 
-    networking.useDHCP = lib.mkDefault true;
     nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
     hardware.cpu.amd.updateMicrocode =
       lib.mkDefault config.hardware.enableRedistributableFirmware;

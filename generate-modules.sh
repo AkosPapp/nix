@@ -28,7 +28,6 @@ echo "}" >> $OUTPUT
 # hosts
 echo "{
   nixpkgs,
-  home-manager,
   sops-nix,
   disko,
   ...
@@ -39,13 +38,8 @@ echo "  $(basename $host) = nixpkgs.lib.nixosSystem {
     modules = [
       ./${OUTPUT}
       ./hosts/${host}
-      home-manager.nixosModules.home-manager
       sops-nix.nixosModules.sops
       disko.nixosModules.disko
-      {
-        home-manager.useGlobalPkgs = true;
-        home-manager.useUserPackages = true;
-      }
     ];
   };" >> $NIX_CONFIGS
 done

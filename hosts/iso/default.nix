@@ -31,22 +31,6 @@
     lz4
   ];
 
-  home-manager = {
-    useGlobalPkgs = true;
-    users.nixos.home = {
-      username = "nixos";
-      homeDirectory = "/home/nixos";
-      packages = [my-nixvim.packages.${system}.default];
-      stateVersion = nixos-version;
-    };
-    users.root.home = {
-      username = "root";
-      homeDirectory = "/root";
-      packages = [my-nixvim.packages.${system}.default];
-      stateVersion = nixos-version;
-    };
-  };
-
   sops.defaultSopsFile = ../../secrets/example.yaml;
   #sops.secrets."repos.PPAPSONKA.nix.deploy-key.iso.private" = {};
 }

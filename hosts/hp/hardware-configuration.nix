@@ -7,16 +7,6 @@
   imports = [(modulesPath + "/installer/scan/not-detected.nix")];
 
   config = {
-    fileSystems."/" = {
-      device = "zroot/root";
-      fsType = "zfs";
-    };
-
-    fileSystems."/nix" = {
-      device = "zroot/nix";
-      fsType = "zfs";
-    };
-
     fileSystems."/home/akos" = {
       device = "zroot/persist/home/akos";
       fsType = "zfs";

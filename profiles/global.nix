@@ -23,9 +23,17 @@
     environment.systemPackages = with pkgs; [
       kitty
       neovim
+      gnumake
     ];
     users.mutableUsers = false;
     nix.settings.experimental-features = ["nix-command" "flakes"];
+
+    nix.gc = {
+      automatic = true;
+      dates = "daily";
+      options = "--delete-older-than 7d";
+      persist = true;
+    };
 
     system.stateVersion = nixos-version;
   };
