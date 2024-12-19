@@ -32,7 +32,7 @@
       automatic = true;
       dates = "daily";
       options = "--delete-older-than 7d";
-      persist = true;
+      persistent = true;
     };
 
     system.stateVersion = nixos-version;
