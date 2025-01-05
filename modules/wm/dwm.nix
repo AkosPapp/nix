@@ -55,7 +55,7 @@
     services.picom = {
       enable = true;
       vSync = true;
-      backend = "xrender";
+      backend = "glx";
     };
     services.xserver.windowManager.dwm.enable = true;
     programs.slock.enable = true;
