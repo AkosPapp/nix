@@ -52,7 +52,11 @@
     ];
 
     services.xserver.enable = true;
-    services.picom.enable = true;
+    services.picom = {
+      enable = true;
+      vSync = true;
+      backend = "glx";
+    };
     services.xserver.windowManager.dwm.enable = true;
     programs.slock.enable = true;
   };
