@@ -34,6 +34,7 @@
       options = "--delete-older-than 7d";
       persistent = true;
     };
+    programs.mosh.enable = true;
 
     system.stateVersion = nixos-version;
   };
