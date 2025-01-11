@@ -54,6 +54,10 @@
       hardware.perifirals.keyboards.kanata.enable = true;
     };
 
+    networking.extraHosts = ''
+      10.44.0.3 laser.robo4you.at
+    '';
+
     environment.systemPackages = with pkgs; [
       my-nixvim.packages.${system}.default
       # helpful tools
