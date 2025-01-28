@@ -196,6 +196,9 @@
       # nodejs
       nodejs_23
 
+      # java
+      adoptopenjdk-icedtea-web
+
       # dev tools
       pkgs-unstable.vscode
       pkgs-unstable.gitkraken
