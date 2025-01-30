@@ -210,6 +210,7 @@
       pkgs-unstable.jetbrains.rider
       pkgs-unstable.jetbrains.webstorm
       rpi-imager
+      picocom
       pkgs-unstable.arduino-ide
       gparted
       perf-tools
