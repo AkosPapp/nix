@@ -205,6 +205,7 @@
       pkgs-unstable.jetbrains.clion
       pkgs-unstable.jetbrains.datagrip
       pkgs-unstable.jetbrains.dataspell
+      pkgs-unstable.jetbrains.gateway
       pkgs-unstable.jetbrains.idea-ultimate
       pkgs-unstable.jetbrains.pycharm-professional
       pkgs-unstable.jetbrains.rider
