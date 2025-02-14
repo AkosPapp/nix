@@ -118,11 +118,6 @@
       marksman
       marp-cli
 
-      # python
-      # (python312.withPackages (ps:
-      #   with ps; [
-      #   ]))
-
       # jupyer
       (python311.withPackages (ps:
         with ps; [
@@ -137,23 +132,14 @@
           nbconvert
           jupyter
           seaborn
-
-          (opencv4.override {
-            enableGtk3 = true;
-            enableGtk2 = true;
-            enablePython = true;
-            enableCuda = true;
-            enableUnfree = true;
-          })
+          # (opencv4.override {
+          #   enableGtk3 = true;
+          #   enableGtk2 = true;
+          #   enablePython = true;
+          #   enableCuda = true;
+          #   enableUnfree = true;
+          # })
         ]))
-
-      (opencv4.override {
-        enableGtk3 = true;
-        enableGtk2 = true;
-        enablePython = true;
-        enableCuda = true;
-        enableUnfree = true;
-      })
 
       # git
       gitFull
