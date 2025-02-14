@@ -119,25 +119,9 @@
       marp-cli
 
       # python
-      #(python312.withPackages (ps:
-      #  with ps; [
-      #    pip
-      #    jedi-language-server
-      #    gitpython
-      #    # jupytext
-      #    # jupyter-console
-      #    # jupyter
-      #    numpy
-      #    pandas
-      #    # scipy
-      #    # (opencv4.override {
-      #    #   enableGtk3 = true;
-      #    #   enableGtk2 = true;
-      #    #   enablePython = true;
-      #    #   enableCuda = true;
-      #    #   enableUnfree = true;
-      #    # })
-      #  ]))
+      # (python312.withPackages (ps:
+      #   with ps; [
+      #   ]))
 
       # jupyer
       (python311.withPackages (ps:
@@ -153,7 +137,23 @@
           nbconvert
           jupyter
           seaborn
+
+          (opencv4.override {
+            enableGtk3 = true;
+            enableGtk2 = true;
+            enablePython = true;
+            enableCuda = true;
+            enableUnfree = true;
+          })
         ]))
+
+      (opencv4.override {
+        enableGtk3 = true;
+        enableGtk2 = true;
+        enablePython = true;
+        enableCuda = true;
+        enableUnfree = true;
+      })
 
       # git
       gitFull
