@@ -206,6 +206,7 @@
       kubectl
 
       # user tools
+      anki
       networkmanagerapplet
       zotero
       dracula-theme
