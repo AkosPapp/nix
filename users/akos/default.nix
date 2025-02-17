@@ -175,11 +175,12 @@
       shellcheck
 
       # C#
-      dotnetCorePackages.dotnet_8.sdk
-      dotnetCorePackages.dotnet_8.runtime
-      dotnetCorePackages.dotnet_8.aspnetcore
-      dotnet-ef
-      icu
+      pkgs-unstable.dotnetCorePackages.dotnet_8.sdk
+      pkgs-unstable.dotnetCorePackages.dotnet_8.runtime
+      pkgs-unstable.dotnetCorePackages.dotnet_8.aspnetcore
+      pkgs-unstable.dotnetPackages.Nuget
+      pkgs-unstable.dotnet-ef
+      pkgs-unstable.icu
 
       # nodejs
       nodejs_23
