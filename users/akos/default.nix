@@ -119,7 +119,7 @@
       marp-cli
 
       # jupyer
-      (python311.withPackages (ps:
+      (python312.withPackages (ps:
         with ps; [
           pip
           jedi-language-server
@@ -132,6 +132,8 @@
           nbconvert
           jupyter
           seaborn
+          sklearn-deap
+          # mlxtend
           # (opencv4.override {
           #   enableGtk3 = true;
           #   enableGtk2 = true;
