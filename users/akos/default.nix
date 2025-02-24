@@ -49,6 +49,7 @@
       system.sound.enable = true;
       virtualisation.docker.enable = true;
       virtualisation.virtualbox.enable = true;
+      virtualisation.virt-manager.enable = true;
       wm.dwm.enable = true;
       hardware.perifirals.mice.razer.enable = true;
       hardware.perifirals.keyboards.kanata.enable = true;
