@@ -21,7 +21,7 @@
       libvirt
       qemu
       virtio-win
-virtiofsd
+      virtiofsd
     ];
   };
 }
