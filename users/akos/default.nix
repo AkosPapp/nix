@@ -133,8 +133,7 @@
           nbconvert
           jupyter
           seaborn
-          sklearn-deap
-          mlxtend
+          scikit-learn
           # (opencv4.override {
           #   enableGtk3 = true;
           #   enableGtk2 = true;

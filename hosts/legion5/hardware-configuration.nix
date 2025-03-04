@@ -10,7 +10,11 @@
 
   config = {
     boot = {
-      loader.systemd-boot.enable = true;
+      loader.systemd-boot.enable = false;
+      loader.grub.enable = true;
+      loader.grub.version = 2;
+      loader.grub.efiSupport = true;
+      loader.grub.device = "nodev";
       loader.efi.canTouchEfiVariables = true;
 
       initrd = {
@@ -86,7 +90,7 @@
       prime = {
         sync.enable = false;
         nvidiaBusId = "PCI:1:0:0";
-        amdgpuBusId = "PCI:5:0:0";
+        amdgpuBusId = "PCI:6:0:0";
       };
     };
   };
