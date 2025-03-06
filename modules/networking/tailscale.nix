@@ -21,6 +21,11 @@
       package = pkgs-unstable.tailscale;
     };
     networking.firewall.checkReversePath = "loose";
+    networking.hosts = {
+      "100.125.194.29" = ["legion5"];
+      "100.127.104.86" = ["hp"];
+      "100.97.77.48" = ["phone"];
+    };
     MODULES.networking.dnsmasq.enable = true;
   };
 }
