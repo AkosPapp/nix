@@ -37,7 +37,6 @@
       lsof
       cryptsetup
       openssl
-      lz4
       nmap
       iperf2
       netcat

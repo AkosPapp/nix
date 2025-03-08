@@ -58,6 +58,8 @@
 
     environment.systemPackages = with pkgs; [
       sanoid
+      lz4
+      mbuffer
     ];
   };
 }
