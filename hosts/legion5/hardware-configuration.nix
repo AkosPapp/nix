@@ -12,7 +12,6 @@
     boot = {
       loader.systemd-boot.enable = false;
       loader.grub.enable = true;
-      loader.grub.version = 2;
       loader.grub.efiSupport = true;
       loader.grub.device = "nodev";
       loader.efi.canTouchEfiVariables = true;

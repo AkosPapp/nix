@@ -26,9 +26,8 @@
 
   environment.systemPackages = with pkgs; [
     lenovo-legion
-    #  docker
-    #  nvidia-docker
-    #cudatoolkit
+    nvidia-container-toolkit
+    cudatoolkit
   ];
 
   # Enable OpenGL
