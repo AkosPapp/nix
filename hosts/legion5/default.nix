@@ -46,6 +46,8 @@
     lidSwitch = "suspend";
   };
 
+  hardware.nvidia-container-toolkit.enable = true;
+
   services.znapzend = {
     enable = true;
     pure = true;
