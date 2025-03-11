@@ -27,6 +27,7 @@
   environment.systemPackages = with pkgs; [
     lenovo-legion
     nvidia-container-toolkit
+    runc
     cudatoolkit
   ];
 
