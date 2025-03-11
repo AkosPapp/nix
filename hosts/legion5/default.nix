@@ -30,6 +30,9 @@
     runc
     cudatoolkit
   ];
+  virtualisation.podman = {
+    enable = true;
+  };
 
   # Enable OpenGL
   hardware.graphics = {
