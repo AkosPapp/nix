@@ -26,6 +26,6 @@
       "100.127.104.86" = ["hp"];
       "100.97.77.48" = ["phone"];
     };
-    MODULES.networking.dnsmasq.enable = true;
+    MODULES.networking.dnsmasq.enable = false;
   };
 }
