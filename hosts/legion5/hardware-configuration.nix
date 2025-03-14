@@ -14,6 +14,7 @@
       loader.grub.enable = true;
       loader.grub.efiSupport = true;
       loader.grub.device = "nodev";
+      loader.grub.useOSProber = true;
       loader.efi.canTouchEfiVariables = true;
 
       initrd = {
