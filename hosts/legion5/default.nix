@@ -86,16 +86,5 @@
   in
     lib.mkForce "${pkgs.znapzend}/bin/znapzend ${args}";
 
-  services.zfs = {
-    autoScrub = {
-      enable = true;
-      interval = "weekly";
-    };
-    trim = {
-      enable = true;
-      interval = "daily";
-    };
-  };
-
   services.power-profiles-daemon.enable = true;
 }

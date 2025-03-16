@@ -56,6 +56,17 @@
       };
     };
 
+    services.zfs = {
+      autoScrub = {
+        enable = true;
+        interval = "weekly";
+      };
+      trim = {
+        enable = true;
+        interval = "daily";
+      };
+    };
+
     environment.systemPackages = with pkgs; [
       sanoid
       lz4

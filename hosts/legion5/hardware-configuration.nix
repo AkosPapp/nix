@@ -10,12 +10,15 @@
 
   config = {
     boot = {
-      loader.systemd-boot.enable = false;
-      loader.grub.enable = true;
-      loader.grub.efiSupport = true;
-      loader.grub.device = "nodev";
-      loader.grub.useOSProber = true;
-      loader.efi.canTouchEfiVariables = true;
+      loader = {
+        grub = {
+          enable = true;
+          efiSupport = true;
+          device = "nodev";
+          useOSProber = true;
+        };
+        efi. canTouchEfiVariables = true;
+      };
 
       initrd = {
         availableKernelModules = ["nvme" "xhci_pci" "usbhid" "usb_storage" "sd_mod"];
@@ -66,7 +69,7 @@
       # Enable this if you have graphical corruption issues or application crashes after waking
       # up from sleep. This fixes it by saving the entire VRAM memory to /tmp/ instead
       # of just the bare essentials.
-      powerManagement.enable = false;
+      powerManagement.enable = true;
 
       # Fine-grained power management. Turns off GPU when not in use.
       # Experimental and only works on modern Nvidia GPUs (Turing or newer).
