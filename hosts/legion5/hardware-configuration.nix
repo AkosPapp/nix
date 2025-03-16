@@ -24,8 +24,12 @@
         #availableKernelModules = ["nvme" "xhci_pci" "usbhid" "usb_storage" "sd_mod"];
         #kernelModules = ["amdgpu"];
       };
-      kernelParams = ["module_blacklist=amdgpu"];
-      kernelModules = ["kvm-amd" "acpi_lid"];
+      kernelParams = [
+        "module_blacklist=amdgpu"
+        "nvidia.NVreg_PreserveVideoMemoryAllocations=1"
+        "nvidia.NVreg_TemporaryFilePath=/var/tmp"
+      ];
+      #kernelModules = ["kvm-amd" "acpi_lid"];
       extraModulePackages = [
         config.boot.kernelPackages.nvidia_x11
       ];
