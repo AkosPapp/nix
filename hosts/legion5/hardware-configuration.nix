@@ -22,8 +22,9 @@
 
       initrd = {
         availableKernelModules = ["nvme" "xhci_pci" "usbhid" "usb_storage" "sd_mod"];
-        kernelModules = ["amdgpu"];
+        #kernelModules = ["amdgpu"];
       };
+      kernelParams = ["module_blacklist=amdgpu"];
       kernelModules = ["kvm-amd" "acpi_lid"];
       extraModulePackages = [
         config.boot.kernelPackages.nvidia_x11
