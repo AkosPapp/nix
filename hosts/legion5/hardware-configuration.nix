@@ -26,6 +26,7 @@
       };
       kernelModules = ["kvm-amd" "acpi_lid"];
       extraModulePackages = [
+        config.boot.kernelPackages.nvidia_x11
       ];
     };
 
