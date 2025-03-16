@@ -40,6 +40,8 @@
     programs.zsh.enable = true;
     programs.kdeconnect.enable = true;
     programs.nix-ld.enable = true;
+    programs.seahorse.enable = true;
+    services.gnome.gnome-keyring.enable = true;
 
     MODULES = {
       fonts.nerdfonts.enable = true;
