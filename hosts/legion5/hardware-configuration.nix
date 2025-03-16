@@ -21,7 +21,7 @@
       };
 
       initrd = {
-        availableKernelModules = ["nvme" "xhci_pci" "usbhid" "usb_storage" "sd_mod"];
+        #availableKernelModules = ["nvme" "xhci_pci" "usbhid" "usb_storage" "sd_mod"];
         #kernelModules = ["amdgpu"];
       };
       kernelParams = ["module_blacklist=amdgpu"];
@@ -65,13 +65,13 @@
     services.xserver.videoDrivers = ["nvidia"];
     hardware.nvidia = {
       # Modesetting is required.
-      modesetting.enable = false;
+      modesetting.enable = true;
 
       # Nvidia power management. Experimental, and can cause sleep/suspend to fail.
       # Enable this if you have graphical corruption issues or application crashes after waking
       # up from sleep. This fixes it by saving the entire VRAM memory to /tmp/ instead
       # of just the bare essentials.
-      powerManagement.enable = false;
+      powerManagement.enable = true;
 
       # Fine-grained power management. Turns off GPU when not in use.
       # Experimental and only works on modern Nvidia GPUs (Turing or newer).
@@ -85,6 +85,8 @@
       # Only available from driver 515.43.04+
       # Currently alpha-quality/buggy, so false is currently the recommended setting.
       open = false;
+
+      nvidiaPersistenced = true;
 
       # Enable the Nvidia settings menu,
       # accessible via `nvidia-settings`.
