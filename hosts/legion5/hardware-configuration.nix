@@ -89,9 +89,9 @@
       nvidiaSettings = true;
 
       # Optionally, you may need to select the appropriate driver version for your specific GPU.
-      package = config.boot.kernelPackages.nvidiaPackages.stable;
+      package = config.boot.kernelPackages.nvidiaPackages.latest;
       prime = {
-        sync.enable = false;
+        sync.enable = true;
         nvidiaBusId = "PCI:1:0:0";
         amdgpuBusId = "PCI:6:0:0";
       };
