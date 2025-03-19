@@ -42,6 +42,8 @@
     programs.nix-ld.enable = true;
     programs.seahorse.enable = true;
     services.gnome.gnome-keyring.enable = true;
+    services.flatpak.enable = true;
+    xdg.portal.enable = true;
 
     MODULES = {
       fonts.nerdfonts.enable = true;
