@@ -33,6 +33,7 @@
       config = {
         allowUnfree = true;
         allowBroken = true;
+        android_sdk.accept_license = true;
         permittedInsecurePackages = [
           "electron-27.3.11"
         ];
@@ -43,6 +44,7 @@
       config = {
         allowUnfree = true;
         allowBroken = true;
+        android_sdk.accept_license = true;
         permittedInsecurePackages = [
           "electron-27.3.11"
         ];
