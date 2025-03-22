@@ -74,6 +74,7 @@
       fd
       fzf
       rsync
+      lsyncd
       htop
       btop
       neofetch
@@ -203,7 +204,7 @@
       pkgs-unstable.jetbrains.pycharm-professional
       pkgs-unstable.jetbrains.rider
       pkgs-unstable.jetbrains.webstorm
-      pkgs-unstable.android-studio-full
+      android-studio
       rpi-imager
       picocom
       pkgs-unstable.arduino-ide
