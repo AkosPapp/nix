@@ -6,6 +6,7 @@
 }: {
   imports = [
     (modulesPath + "/installer/scan/not-detected.nix")
+    ./disko.nix
   ];
 
   config = {
@@ -19,17 +20,11 @@
         };
         efi. canTouchEfiVariables = true;
       };
-
-      initrd = {
-        #availableKernelModules = ["nvme" "xhci_pci" "usbhid" "usb_storage" "sd_mod"];
-        #kernelModules = ["amdgpu"];
-      };
       kernelParams = [
         "module_blacklist=amdgpu"
         "nvidia.NVreg_PreserveVideoMemoryAllocations=1"
         "nvidia.NVreg_TemporaryFilePath=/var/tmp"
       ];
-      #kernelModules = ["kvm-amd" "acpi_lid"];
       extraModulePackages = [
         config.boot.kernelPackages.nvidia_x11
       ];
@@ -37,30 +32,40 @@
 
     PROFILES.zroot.enable = true;
 
-    fileSystems."/etc/NetworkManager/system-connections" = {
-      device = "zroot/persist/system-connections";
-      fsType = "zfs";
-    };
+    fileSystems = {
+      "/etc/NetworkManager/system-connections" = {
+        device = "zroot/persist/system-connections";
+        fsType = "zfs";
+      };
 
-    fileSystems."/home" = {
-      device = "zroot/persist/home";
-      fsType = "zfs";
-    };
+      "/home" = {
+        device = "zroot/persist/home";
+        fsType = "zfs";
+      };
 
-    fileSystems."/home/akos" = {
-      device = "zroot/persist/home/akos";
-      fsType = "zfs";
-    };
+      "/home/akos" = {
+        device = "zroot/persist/home/akos";
+        fsType = "zfs";
+      };
 
-    fileSystems."/boot" = {
-      fsType = "vfat";
-      options = ["fmask=0022" "dmask=0022"];
+      "/boot" = {
+        fsType = "vfat";
+        options = ["fmask=0022" "dmask=0022"];
+      };
     };
 
     swapDevices = [
       {device = "/dev/disk/by-label/NIXOS_SWAP";}
     ];
 
+    networking = {
+      networkmanager.enable = true;
+      hostId = "68bf4e0e";
+      hostName = "legion5";
+      extraHosts = ''
+        127.0.0.1 localhost
+      '';
+    };
     nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
     hardware.cpu.amd.updateMicrocode =
       lib.mkDefault config.hardware.enableRedistributableFirmware;
@@ -104,5 +109,6 @@
         amdgpuBusId = "PCI:6:0:0";
       };
     };
+    users.users.root.hashedPassword = "$y$j9T$gEhP/0Jlrlwb4ndmLs06L1$7qkdPdgqjCrEH8bAQvJqRn/Mj4m5X9GCRAyM33z0mdA";
   };
 }

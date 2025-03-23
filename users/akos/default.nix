@@ -252,6 +252,7 @@
     # remote build
     nix.buildMachines = [
       {
+        sshUser = "builder";
         hostName = "r4unb02.airlab";
         system = "x86_64-linux";
         protocol = "ssh-ng";

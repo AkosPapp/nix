@@ -23,12 +23,6 @@
       };
       kernelModules = ["kvm-amd"];
       kernelParams = ["consoleblank=300"]; # 300 seconds = 5 minutes
-      supportedFilesystems = ["zfs"];
-      zfs = {
-        extraPools = ["zroot"];
-        forceImportRoot = true;
-        allowHibernation = false;
-      };
     };
 
     networking = {

@@ -1,6 +1,6 @@
 {lib, ...}: {
   sops = {
-    defaultSopsFile = ../../secrets/global.yaml;
+    defaultSopsFile = /sops/secrets.yaml;
     defaultSopsFormat = "yaml";
     validateSopsFiles = true;
     age = {
@@ -10,6 +10,9 @@
       keyFile = "/var/lib/sops-nix/key.txt";
       # This will generate a new key if the key specified above does not exist
       generateKey = lib.mkForce true;
+    };
+    secrets = {
+      example_key = {};
     };
   };
 }

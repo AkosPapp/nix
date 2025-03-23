@@ -5,23 +5,10 @@
   nixos-version,
   ...
 }: {
-  imports = [./hardware-configuration.nix ./disko.nix ./sops.nix];
-
-  networking = {
-    networkmanager.enable = true;
-    hostId = "68bf4e0e";
-    hostName = "legion5";
-    extraHosts = ''
-      127.0.0.1 localhost
-    '';
-  };
+  imports = [./hardware-configuration.nix ./sops.nix];
 
   MODULES.system.printing.enable = true;
-
   USERS.akos.enable = true;
-
-  users.users.root.hashedPassword = "$y$j9T$gEhP/0Jlrlwb4ndmLs06L1$7qkdPdgqjCrEH8bAQvJqRn/Mj4m5X9GCRAyM33z0mdA";
-
   services.xserver.displayManager.gdm.enable = true;
 
   environment.systemPackages = with pkgs; [
@@ -30,9 +17,6 @@
     runc
     cudatoolkit
   ];
-  virtualisation.podman = {
-    enable = true;
-  };
 
   # Enable OpenGL
   hardware.graphics = {
@@ -77,15 +61,15 @@
       };
     };
   };
-  systemd.services.znapzend.serviceConfig.ExecStart = let
-    args = lib.concatStringsSep " " [
-      "--logto=${config.services.znapzend.logTo}"
-      "--loglevel=${config.services.znapzend.logLevel}"
-      "--autoCreation"
-      "--debug"
-    ];
-  in
-    lib.mkForce "${pkgs.znapzend}/bin/znapzend ${args}";
+  #  systemd.services.znapzend.serviceConfig.ExecStart = let
+  #    args = lib.concatStringsSep " " [
+  #      "--logto=${config.services.znapzend.logTo}"
+  #      "--loglevel=${config.services.znapzend.logLevel}"
+  #      "--autoCreation"
+  #      "--debug"
+  #    ];
+  #  in
+  #    lib.mkForce "${pkgs.znapzend}/bin/znapzend ${args}";
 
   services.power-profiles-daemon.enable = true;
 }
