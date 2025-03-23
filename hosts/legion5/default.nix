@@ -5,7 +5,7 @@
   nixos-version,
   ...
 }: {
-  imports = [./hardware-configuration.nix ./sops.nix];
+  imports = [./hardware-configuration.nix];
 
   MODULES.system.printing.enable = true;
   USERS.akos.enable = true;
