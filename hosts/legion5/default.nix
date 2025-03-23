@@ -8,6 +8,7 @@
   imports = [./hardware-configuration.nix];
 
   MODULES.system.printing.enable = true;
+  MODULES.security.sops.enable = true;
   USERS.akos.enable = true;
   services.xserver.displayManager.gdm.enable = true;
 
