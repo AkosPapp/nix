@@ -9,6 +9,7 @@
 
   MODULES.system.printing.enable = true;
   MODULES.security.sops.enable = true;
+  MODULES.networking.airlab-vpn.enable = true;
   USERS.akos.enable = true;
   services.xserver.displayManager.gdm.enable = true;
 
