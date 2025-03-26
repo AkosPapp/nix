@@ -48,6 +48,19 @@
       enable = true;
       secretKeyFile = "/var/cache-priv-key.pem";
     };
+    nix = {
+      settings = {
+        substituters = [
+          "https://nix-community.cachix.org"
+          "https://cache.nixos.org/"
+          "https://localhost:5000/nix-cache-info"
+        ];
+        trusted-public-keys = [
+          "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
+          "*:WLHa6x/Dtvvoxd+FyEFBgiz016uyvDUhJm4soGOoXqc="
+        ];
+      };
+    };
 
     nix.distributedBuilds = true;
     # optional, useful when the builder has a faster internet connection than yours
