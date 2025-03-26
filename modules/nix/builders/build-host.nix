@@ -36,8 +36,8 @@
 
     users.users.builder = {
       isNormalUser = true;
-      home = "/var/empty";
-      createHome = false;
+      home = "/var/builder";
+      createHome = true;
       extraGroups = ["nixbld"];
       openssh.authorizedKeys.keys = [
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMSCvNrt6A++ICk03fS5Kbv/A7KdyJ6pg5dV/q6eM3Ge nix-builder"
