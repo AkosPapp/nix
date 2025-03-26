@@ -15,7 +15,7 @@
 
   config = lib.mkIf config.MODULES.nix.builders.build-host {
     MODULES.security.sops.enable = true;
-    sops.secrets."nix-builder/build-host/private_key" = {};
+    sops.secrets."nix-builder/private_key" = {};
     # remote build
     nix.buildMachines = [
       {
@@ -30,7 +30,7 @@
         speedFactor = 2;
         supportedFeatures = ["nixos-test" "benchmark" "big-parallel" "kvm"];
         mandatoryFeatures = [];
-        sshKey = config.sops.secrets."nix-builder/build-host/private_key".path;
+        sshKey = config.sops.secrets."nix-builder/private_key".path;
       }
     ];
 
