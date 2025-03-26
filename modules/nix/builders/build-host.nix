@@ -33,6 +33,17 @@
         sshKey = config.sops.secrets."nix-builder/build-host/private_key".path;
       }
     ];
+
+    users.users.builder = {
+      isNormalUser = true;
+      home = "/var/empty";
+      createHome = false;
+      extraGroups = ["nixbld"];
+      openssh.authorizedKeys.keys = [
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMSCvNrt6A++ICk03fS5Kbv/A7KdyJ6pg5dV/q6eM3Ge nix-builder"
+      ];
+    };
+
     nix.distributedBuilds = true;
     # optional, useful when the builder has a faster internet connection than yours
     nix.extraOptions = ''
