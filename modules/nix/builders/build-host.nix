@@ -44,6 +44,11 @@
       group = "users";
     };
 
+    services.nix-serve = {
+      enable = true;
+      secretKeyFile = "/var/cache-priv-key.pem";
+    };
+
     nix.distributedBuilds = true;
     # optional, useful when the builder has a faster internet connection than yours
     nix.extraOptions = ''
