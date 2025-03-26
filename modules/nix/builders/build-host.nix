@@ -26,7 +26,7 @@
         # if the builder supports building for multiple architectures,
         # replace the previous line by, e.g.
         systems = ["x86_64-linux" "aarch64-linux"];
-        maxJobs = 30;
+        maxJobs = 16;
         speedFactor = 2;
         supportedFeatures = ["nixos-test" "benchmark" "big-parallel" "kvm"];
         mandatoryFeatures = [];
@@ -35,13 +35,16 @@
     ];
 
     users.users.builder = {
-      isNormalUser = true;
-      home = "/var/empty";
       createHome = false;
+      isSystemUser = true;
       extraGroups = ["nixbld"];
       openssh.authorizedKeys.keys = [
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJPP+EWsn2LyMLqTuUUa6+o/toTgWWIZLsk4xG3shyyx nix-builder"
       ];
+      group = "nixbld";
+    };
+    users.groups.nixbld = {
+      gid = 30000;
     };
     nix.settings.trusted-users = ["builder"];
 
