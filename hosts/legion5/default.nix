@@ -8,8 +8,8 @@
   imports = [./hardware-configuration.nix];
 
   MODULES.system.printing.enable = true;
-  MODULES.nix.builders.airlab = true;
   MODULES.nix.builders.build-host = true;
+  MODULES.nix.builders.airlab = true;
   USERS.akos.enable = true;
   services.xserver.displayManager.gdm.enable = true;
 

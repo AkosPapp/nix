@@ -1,44 +1,42 @@
 {
-  pkgs,
-  config,
   lib,
-  sops,
+  pkgs,
+  pkgs-unstable,
+  config,
   ...
 }: {
   options = {
     MODULES.nix.builders.build-host = lib.mkOption {
       type = lib.types.bool;
       default = false;
-      description = "Enable Build Host on this machine";
+      description = "Enable Airlab builders";
     };
   };
 
-  config = lib.mkIf config.MODULES.nix.builders.build-host.enable {
-    #sops.secrets."nix-builder/owncloud/private_key" = {};
-    #sops.secrets."nix-builder/owncloud/public_key" = {};
-
-    #users.users.builder = {
-    #  isNormalUser = true;
-    #  description = "Nix Builder User";
-    #  extraGroups = ["wheel"];
-    #  #openssh.authorizedKeys.keyFiles = [config.sops.secrets."nix-builder/owncloud/public_key".path];
-    #};
-
-    #nix.buildMachines = [
-    #  {
-    #    sshUser = "builder";
-    #    hostName = "localhost";
-    #    #system = "x86_64-linux";
-    #    protocol = "ssh-ng";
-    #    # if the builder supports building for multiple architectures,
-    #    # replace the previous line by, e.g.
-    #    systems = ["x86_64-linux" "aarch64-linux"];
-    #    maxJobs = 16;
-    #    speedFactor = 2;
-    #    supportedFeatures = ["nixos-test" "benchmark" "big-parallel" "kvm"];
-    #    mandatoryFeatures = [];
-    #    #sshKey = config.sops.secrets."nix-builder/owncloud/private_key".path;
-    #  }
-    #];
+  config = lib.mkIf config.MODULES.nix.builders.build-host {
+    MODULES.security.sops.enable = true;
+    sops.secrets."nix-builder/build-host/private_key" = {};
+    # remote build
+    nix.buildMachines = [
+      {
+        sshUser = "builder";
+        hostName = "localhost";
+        #system = "x86_64-linux";
+        protocol = "ssh-ng";
+        # if the builder supports building for multiple architectures,
+        # replace the previous line by, e.g.
+        systems = ["x86_64-linux" "aarch64-linux"];
+        maxJobs = 30;
+        speedFactor = 2;
+        supportedFeatures = ["nixos-test" "benchmark" "big-parallel" "kvm"];
+        mandatoryFeatures = [];
+        sshKey = config.sops.secrets."nix-builder/build-host/private_key".path;
+      }
+    ];
+    nix.distributedBuilds = true;
+    # optional, useful when the builder has a faster internet connection than yours
+    nix.extraOptions = ''
+      builders-use-substitutes = true
+    '';
   };
 }

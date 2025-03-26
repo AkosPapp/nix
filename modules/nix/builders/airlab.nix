@@ -17,7 +17,6 @@
     MODULES.networking.airlab-vpn.enable = true;
     MODULES.security.sops.enable = true;
     sops.secrets."nix-builder/airlab/private_key" = {};
-    sops.secrets."nix-builder/owncloud/private_key" = {};
     # remote build
     nix.buildMachines = [
       {
