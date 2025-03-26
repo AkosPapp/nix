@@ -17,31 +17,33 @@
     MODULES.security.sops.enable = true;
     sops.secrets."nix-builder/build-host/private_key" = {};
     # remote build
-    #nix.buildMachines = [
-    #  {
-    #    sshUser = "builder";
-    #    hostName = "localhost";
-    #    #system = "x86_64-linux";
-    #    protocol = "ssh-ng";
-    #    # if the builder supports building for multiple architectures,
-    #    # replace the previous line by, e.g.
-    #    systems = ["x86_64-linux" "aarch64-linux"];
-    #    maxJobs = 30;
-    #    speedFactor = 2;
-    #    supportedFeatures = ["nixos-test" "benchmark" "big-parallel" "kvm"];
-    #    mandatoryFeatures = [];
-    #    sshKey = config.sops.secrets."nix-builder/build-host/private_key".path;
-    #  }
-    #];
+    nix.buildMachines = [
+      {
+        sshUser = "builder";
+        hostName = "localhost";
+        #system = "x86_64-linux";
+        protocol = "ssh-ng";
+        # if the builder supports building for multiple architectures,
+        # replace the previous line by, e.g.
+        systems = ["x86_64-linux" "aarch64-linux"];
+        maxJobs = 30;
+        speedFactor = 2;
+        supportedFeatures = ["nixos-test" "benchmark" "big-parallel" "kvm"];
+        mandatoryFeatures = [];
+        sshKey = config.sops.secrets."nix-builder/build-host/private_key".path;
+      }
+    ];
 
-    nix.sshServe = {
-      enable = true;
-      keys = [
+    users.users.builder = {
+      isNormalUser = true;
+      home = "/var/empty";
+      createHome = false;
+      extraGroups = ["nixbld"];
+      openssh.authorizedKeys.keys = [
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJPP+EWsn2LyMLqTuUUa6+o/toTgWWIZLsk4xG3shyyx nix-builder"
       ];
-      protocol = "ssh-ng";
-      write = true;
     };
+    nix.settings.trusted-users = ["builder"];
 
     nix.distributedBuilds = true;
     # optional, useful when the builder has a faster internet connection than yours
