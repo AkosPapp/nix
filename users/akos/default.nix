@@ -216,6 +216,8 @@
 
       # user tools
       pkgs-unstable.cura-appimage
+      (pkgs-unstable.prusa-slicer.override {
+        })
       anki
       networkmanagerapplet
       zotero
