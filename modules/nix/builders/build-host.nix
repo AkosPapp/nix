@@ -35,7 +35,8 @@
     ];
 
     users.users.builder = {
-      createHome = false;
+      createHome = true;
+      home = "/var/builder";
       isNormalUser = true;
       extraGroups = ["nixbld"];
       openssh.authorizedKeys.keys = [
