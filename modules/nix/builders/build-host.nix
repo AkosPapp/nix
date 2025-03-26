@@ -36,7 +36,7 @@
 
     users.users.builder = {
       createHome = false;
-      isSystemUser = true;
+      isNormalUser = true;
       extraGroups = ["nixbld"];
       openssh.authorizedKeys.keys = [
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJPP+EWsn2LyMLqTuUUa6+o/toTgWWIZLsk4xG3shyyx nix-builder"
