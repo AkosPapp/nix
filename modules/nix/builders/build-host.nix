@@ -34,14 +34,14 @@
     #  }
     #];
 
-    #nix.sshServe = {
-    #  enable = true;
-    #  keys = [
-    #    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJPP+EWsn2LyMLqTuUUa6+o/toTgWWIZLsk4xG3shyyx nix-builder"
-    #  ];
-    #  protocol = "ssh-ng";
-    #  write = true;
-    #};
+    nix.sshServe = {
+      enable = true;
+      keys = [
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJPP+EWsn2LyMLqTuUUa6+o/toTgWWIZLsk4xG3shyyx nix-builder"
+      ];
+      protocol = "ssh-ng";
+      write = true;
+    };
 
     nix.distributedBuilds = true;
     # optional, useful when the builder has a faster internet connection than yours
