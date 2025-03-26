@@ -23,6 +23,7 @@
     modules/networking/airlab-vpn.nix
     modules/networking/tailscale.nix
     modules/nix/builders/airlab.nix
+    modules/nix/builders/build-host.nix
     profiles/zroot.nix
     profiles/global.nix
     profiles/server.nix
