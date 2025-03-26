@@ -50,6 +50,7 @@
     };
     nix = {
       settings = {
+        trusted-users = ["builder" "@nixbld" "root" "@root" "@wheel"];
         substituters = [
           "https://nix-community.cachix.org"
           "https://cache.nixos.org/"
