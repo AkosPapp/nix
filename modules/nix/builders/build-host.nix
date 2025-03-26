@@ -44,10 +44,7 @@
       ];
       group = "nixbld";
     };
-    users.groups.nixbld = {
-      gid = 30000;
-    };
-    nix.settings.trusted-users = ["builder"];
+    nix.settings.trusted-users = ["root" "builder"];
 
     nix.distributedBuilds = true;
     # optional, useful when the builder has a faster internet connection than yours
