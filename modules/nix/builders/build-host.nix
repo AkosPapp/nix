@@ -36,11 +36,11 @@
 
     users.users.builder = {
       isNormalUser = true;
-      home = "/var/builder";
-      createHome = true;
+      home = "/var/empty";
+      createHome = false;
       extraGroups = ["nixbld"];
       openssh.authorizedKeys.keys = [
-        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMSCvNrt6A++ICk03fS5Kbv/A7KdyJ6pg5dV/q6eM3Ge nix-builder"
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOavECvlGNeGwEWZASDDjU7XCZOQkO2XU2Zm1VKFWMME nix-builder"
       ];
     };
 
