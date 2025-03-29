@@ -9,7 +9,7 @@
 
   MODULES.system.printing.enable = true;
   MODULES.nix.builders.build-host = false;
-  MODULES.nix.builders.airlab = false;
+  MODULES.nix.builders.airlab = true;
   USERS.akos.enable = true;
   services.xserver.displayManager.gdm.enable = true;
 
