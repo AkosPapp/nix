@@ -63,6 +63,10 @@
       10.44.0.3 laser.robo4you.at
     '';
 
+    environment.variables = {
+      GPU_FLAG = "--device=nvidia.com/gpu=all";
+    };
+
     environment.systemPackages = with pkgs; [
       my-nixvim.packages.${system}.default
       # helpful tools
