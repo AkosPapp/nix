@@ -219,6 +219,7 @@
       kubectl
 
       # user tools
+      geogebra6
       pkgs-unstable.cura-appimage
       anki
       networkmanagerapplet
