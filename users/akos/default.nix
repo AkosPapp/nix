@@ -44,6 +44,16 @@
     services.gnome.gnome-keyring.enable = true;
     services.flatpak.enable = true;
     xdg.portal.enable = true;
+    xdg.portal.config = {
+      common = {
+        default = [
+          "gtk"
+        ];
+        "org.freedesktop.impl.portal.Secret" = [
+          "gnome-keyring"
+        ];
+      };
+    };
 
     MODULES = {
       fonts.nerdfonts.enable = true;
