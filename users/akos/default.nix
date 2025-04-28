@@ -43,7 +43,6 @@
     programs.seahorse.enable = true;
     services.gnome.gnome-keyring.enable = true;
     services.flatpak.enable = true;
-    xdg.portal.enable = true;
 
     MODULES = {
       fonts.nerdfonts.enable = true;
@@ -165,16 +164,7 @@
       cmake
 
       #rust
-      llvmPackages.libclang
-      llvm
       rustup
-      libclang
-      ninja
-      vcpkg
-      libconfig
-      pkgconf
-      rust-bindgen
-      rust-cbindgen
 
       # C#
       omnisharp-roslyn
@@ -199,6 +189,7 @@
 
       # dev tools
       pkgs-unstable.vscode
+      pkgs-unstable.vscodium-fhs
       pkgs-unstable.gitkraken
       pkgs-unstable.jetbrains.clion
       pkgs-unstable.jetbrains.datagrip
