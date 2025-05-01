@@ -141,6 +141,7 @@
       # jupyer
       (python312.withPackages (ps:
         with ps; [
+          bokeh
           pip
           jedi-language-server
           gitpython
