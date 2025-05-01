@@ -142,6 +142,7 @@
       (python312.withPackages (ps:
         with ps; [
           bokeh
+          pyserial
           pip
           jedi-language-server
           gitpython
