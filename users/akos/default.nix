@@ -141,7 +141,7 @@
       # jupyer
       (python312.withPackages (ps:
         with ps; [
-          paho-mqtt_2
+          paho-mqtt_1
           bokeh
           pyserial
           pip
