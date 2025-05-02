@@ -142,6 +142,7 @@
       (python312.withPackages (ps:
         with ps; [
           paho-mqtt_1
+          websockets
           bokeh
           pyserial
           pip
