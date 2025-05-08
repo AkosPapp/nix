@@ -14,6 +14,14 @@
   };
 
   config = lib.mkIf config.MODULES.system.gpg.enable {
+    environment.systemPackages = with pkgs; [
+      gnupg
+      gpgme
+      pinentry-tty
+      pinentry-qt
+      pinentry-all
+      pinentry-rofi
+    ];
     services.dbus.packages = with pkgs; [gcr];
     services.pcscd.enable = true;
     programs.mtr.enable = true;
