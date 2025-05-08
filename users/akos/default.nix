@@ -60,6 +60,7 @@
       games.steam.enable = true;
       system.binbash.enable = true;
       system.bluetooth.enable = true;
+      system.gpg.enable = true;
       system.sound.enable = true;
       virtualisation.docker.enable = true;
       virtualisation.virtualbox.enable = true;
