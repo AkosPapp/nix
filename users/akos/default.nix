@@ -226,6 +226,7 @@
       kubectl
 
       # user tools
+      geogebra
       geogebra6
       pkgs-unstable.cura-appimage
       anki
