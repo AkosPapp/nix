@@ -142,7 +142,7 @@
       # jupyer
       (python312.withPackages (ps:
         with ps; [
-          paho-mqtt_1
+          autopep8
           websockets
           bokeh
           pyserial
