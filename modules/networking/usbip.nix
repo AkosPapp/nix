@@ -1,4 +1,3 @@
-
 {
   config,
   pkgs,
@@ -22,6 +21,5 @@
       linuxPackages_latest.usbip
     ];
     boot.initrd.kernelModules = ["vhci_hcd"];
-
   };
 }
