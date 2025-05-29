@@ -25,7 +25,7 @@ gen: generate
 
 fmt:
 	@echo "--- Formatting the code ---"
-	@nix fmt
+	#@nix fmt
 
 generate:
 	@echo "--- Generating the code ---"

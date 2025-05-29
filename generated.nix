@@ -19,6 +19,7 @@
     modules/system/printing.nix
     modules/system/gpg.nix
     modules/networking/sshd.nix
+    modules/networking/usbip.nix
     modules/networking/dnsmasq/default.nix
     modules/networking/airlab-vpn.nix
     modules/networking/tailscale.nix

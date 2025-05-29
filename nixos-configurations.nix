@@ -2,6 +2,7 @@
   nixpkgs,
   sops-nix,
   disko,
+  pkgs,
   ...
 } @ args: {
   hp = nixpkgs.lib.nixosSystem {
@@ -11,6 +12,7 @@
       ./hosts/hp
       sops-nix.nixosModules.sops
       disko.nixosModules.disko
+      nixpkgs.nixosModules.readOnlyPkgs
     ];
   };
   iso = nixpkgs.lib.nixosSystem {
@@ -20,6 +22,7 @@
       ./hosts/iso
       sops-nix.nixosModules.sops
       disko.nixosModules.disko
+      nixpkgs.nixosModules.readOnlyPkgs
     ];
   };
   legion5 = nixpkgs.lib.nixosSystem {
@@ -29,6 +32,7 @@
       ./hosts/legion5
       sops-nix.nixosModules.sops
       disko.nixosModules.disko
+      nixpkgs.nixosModules.readOnlyPkgs
     ];
   };
 }

@@ -30,6 +30,7 @@ echo "{
   nixpkgs,
   sops-nix,
   disko,
+  pkgs,
   ...
 } @ args: {" > $NIX_CONFIGS
 for host in $(ls hosts); do
@@ -40,6 +41,7 @@ echo "  $(basename $host) = nixpkgs.lib.nixosSystem {
       ./hosts/${host}
       sops-nix.nixosModules.sops
       disko.nixosModules.disko
+      nixpkgs.nixosModules.readOnlyPkgs
     ];
   };" >> $NIX_CONFIGS
 done

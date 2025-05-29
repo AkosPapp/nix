@@ -9,7 +9,7 @@
     my-nixvim. url = "github:PPAPSONKA/nixvim";
     nixos-hardware.url = "github:NixOS/nixos-hardware/master";
     nixpkgs-unstable.url = "nixpkgs/nixos-unstable";
-    nixpkgs.url = "nixpkgs/nixos-24.11";
+    nixpkgs.url = "nixpkgs/nixos-25.05";
     sops-nix = {
       url = "github:Mic92/sops-nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -26,7 +26,7 @@
     deploy-rs,
     ...
   } @ inputs: let
-    nixos-version = "24.11";
+    nixos-version = builtins.elemAt (builtins.match "([0-9][0-9]\.[0-9][0-9]).*" inputs.nixpkgs.lib.version) 0;
     system = "x86_64-linux";
     pkgs-unstable = import nixpkgs-unstable {
       system = system;

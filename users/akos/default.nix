@@ -58,16 +58,17 @@
     MODULES = {
       fonts.nerdfonts.enable = true;
       games.steam.enable = true;
+      hardware.perifirals.keyboards.kanata.enable = true;
+      hardware.perifirals.mice.razer.enable = true;
+      networking.usbip.enable = true;
       system.binbash.enable = true;
       system.bluetooth.enable = true;
       system.gpg.enable = true;
       system.sound.enable = true;
       virtualisation.docker.enable = true;
-      virtualisation.virtualbox.enable = true;
       virtualisation.virt-manager.enable = true;
+      virtualisation.virtualbox.enable = true;
       wm.dwm.enable = true;
-      hardware.perifirals.mice.razer.enable = true;
-      hardware.perifirals.keyboards.kanata.enable = true;
     };
 
     networking.extraHosts = ''
@@ -129,6 +130,8 @@
       sanoid
       pkg-config
       sops
+      remmina
+      mongodb-compass
 
       # typst
       pkgs-unstable.typst
@@ -198,7 +201,7 @@
       pkgs-unstable.icu
 
       # nodejs
-      nodejs_23
+      nodejs_24
 
       # java
       adoptopenjdk-icedtea-web
