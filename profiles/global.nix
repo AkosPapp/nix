@@ -14,7 +14,7 @@
       description = "Enable global profile";
     };
   };
-  imports = [nixpkgs.nixosModules.readOnlyPkgs];
+  #imports = [nixpkgs.nixosModules.readOnlyPkgs];
   config = lib.mkIf config.PROFILES.global.enable {
     MODULES = {
       networking.sshd.enable = true;
@@ -28,7 +28,6 @@
     ];
     users.mutableUsers = false;
     nix.settings.experimental-features = ["nix-command" "flakes"];
-    nixpkgs.pkgs = pkgs;
 
     nix.gc = {
       automatic = true;
@@ -37,6 +36,8 @@
       persistent = true;
     };
     programs.mosh.enable = true;
+
+    nixpkgs.config.allowUnfree = true;
 
     system.stateVersion = nixos-version;
   };

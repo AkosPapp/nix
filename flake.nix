@@ -29,42 +29,28 @@
     nixos-version = builtins.elemAt (builtins.match "([0-9][0-9]\.[0-9][0-9]).*" inputs.nixpkgs.lib.version) 0;
     system = "x86_64-linux";
     pkgs-unstable = import nixpkgs-unstable {
-      system = system;
+      inherit system;
       config = {
         allowUnfree = true;
         allowBroken = true;
-        android_sdk.accept_license = true;
-        permittedInsecurePackages = [
-          "electron-27.3.11"
-        ];
-      };
-    };
-    pkgs = import nixpkgs {
-      system = system;
-      config = {
-        allowUnfree = true;
-        allowBroken = true;
-        android_sdk.accept_license = true;
-        permittedInsecurePackages = [
-          "electron-27.3.11"
-        ];
       };
     };
   in {
     formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.alejandra;
-    nixosConfigurations = import ./nixos-configurations.nix {
-      inherit
-        nixpkgs
-        system
-        pkgs
-        pkgs-unstable
-        my-nixvim
-        disko
-        sops-nix
-        nixos-hardware
-        nixos-version
-        ;
-    };
+    nixosConfigurations = import ./nixos-configurations.nix ({
+        inherit
+          #nixpkgs
+          system
+          #pkgs
+          pkgs-unstable
+          #my-nixvim
+          #disko
+          #sops-nix
+          #nixos-hardware
+          nixos-version
+          ;
+      }
+      // inputs);
     #deploy = lib.mkDeploy {inherit (inputs) self;};
     deploy.nodes.hp = {
       hostname = "hp";
