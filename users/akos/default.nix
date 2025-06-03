@@ -143,7 +143,7 @@
       marp-cli
 
       # jupyer
-      (python312.withPackages (ps:
+      (python313.withPackages (ps:
         with ps; [
           autopep8
           websockets
@@ -159,6 +159,8 @@
           pandoc
           nbconvert
           jupyter
+          ipykernel
+          pip
           seaborn
           scikit-learn
           # (opencv4.override {
