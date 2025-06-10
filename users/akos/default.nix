@@ -214,13 +214,14 @@
           pip
           seaborn
           scikit-learn
-          # (opencv4.override {
-          #   enableGtk3 = true;
-          #   enableGtk2 = true;
-          #   enablePython = true;
-          #   enableCuda = true;
-          #   enableUnfree = true;
-          # })
+          (opencv4.override {
+            enableGtk3 = true;
+            enableGtk2 = true;
+            enablePython = true;
+            enableCuda = true;
+            enableUnfree = true;
+          })
+          pytesseract
         ]))
 
       # git

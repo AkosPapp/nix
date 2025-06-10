@@ -35,7 +35,7 @@
       libusb1
       sane-airscan
       libtool
-      python311Packages.notify2
+      python313Packages.notify2
       sane-backends
     ];
     services.avahi = {
