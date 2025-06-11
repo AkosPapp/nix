@@ -212,6 +212,9 @@
           jupyter
           ipykernel
           pip
+          notebook
+          nbformat
+          nbconvert
           seaborn
           scikit-learn
           (opencv4.override {
