@@ -152,6 +152,7 @@
           pip
           jedi-language-server
           gitpython
+          pynput
           numpy
           pandas
           matplotlib
