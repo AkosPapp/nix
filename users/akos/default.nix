@@ -283,6 +283,9 @@
       gparted
       perf-tools
 
+      # yocto
+      kas
+
       # k8s
       kubectl
 
