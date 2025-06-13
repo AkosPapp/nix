@@ -65,12 +65,15 @@
       system.bluetooth.enable = true;
       system.gpg.enable = true;
       system.sound.enable = true;
-      virtualisation.docker.enable = true;
+      #virtualisation.docker.enable = true;
+      virtualisation.podman.enable = true;
       virtualisation.virt-manager.enable = true;
       virtualisation.virtualbox.enable = true;
       wm.dwm.enable = true;
     };
 
+    systemd.services.systemd-udev-settle.enable = false;
+    systemd.services.NetworkManager-wait-online.enable = false;
     networking.extraHosts = ''
       10.44.0.3 laser.robo4you.at
     '';

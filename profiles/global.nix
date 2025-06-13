@@ -35,6 +35,11 @@
       options = "--delete-older-than 7d";
       persistent = true;
     };
+    systemd.services.nix-gc = {
+      # ... existing options ...
+      after = ["default.target"];
+      wantedBy = [];
+    };
     programs.mosh.enable = true;
 
     nixpkgs.config.allowUnfree = true;

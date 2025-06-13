@@ -100,7 +100,7 @@
       # Currently alpha-quality/buggy, so false is currently the recommended setting.
       open = false;
 
-      nvidiaPersistenced = true;
+      #nvidiaPersistenced = true;
 
       # Enable the Nvidia settings menu,
       # accessible via `nvidia-settings`.

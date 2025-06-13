@@ -6,6 +6,7 @@
     modules/hardware/perifirals/keyboards/kanata/default.nix
     modules/hardware/perifirals/mice/razer.nix
     modules/virtualization/virtualbox.nix
+    modules/virtualization/podman.nix
     modules/virtualization/docker.nix
     modules/virtualization/virt-manager.nix
     modules/virtualization/vmware.nix
