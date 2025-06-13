@@ -245,6 +245,7 @@
 
       #rust
       rustup
+      cargo-generate
 
       # C#
       omnisharp-roslyn
@@ -282,9 +283,12 @@
       android-studio
       rpi-imager
       picocom
-      pkgs-unstable.arduino-ide
       gparted
       perf-tools
+
+      # arduino
+      pkgs-unstable.arduino-ide
+      avrdude
 
       # yocto
       kas
