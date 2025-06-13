@@ -289,6 +289,7 @@
       # arduino
       pkgs-unstable.arduino-ide
       avrdude
+      pkgsCross.avr.buildPackages.gcc
 
       # yocto
       kas
