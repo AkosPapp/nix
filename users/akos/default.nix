@@ -285,6 +285,7 @@
       picocom
       gparted
       perf-tools
+      direnv
 
       # arduino
       pkgs-unstable.arduino-ide
