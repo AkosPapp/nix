@@ -246,6 +246,7 @@
       #rust
       rustup
       cargo-generate
+      nasm
 
       # C#
       omnisharp-roslyn
