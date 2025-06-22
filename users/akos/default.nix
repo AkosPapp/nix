@@ -326,6 +326,7 @@
       wireshark
       appimage-run
       obs-studio
+      youtube-music
 
       # qemu
       qemu_full
