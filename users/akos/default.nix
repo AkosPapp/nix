@@ -233,6 +233,7 @@
 
       # git
       gitFull
+      git-lfs
       act
       gh
       subversion
