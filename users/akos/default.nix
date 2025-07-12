@@ -147,6 +147,7 @@
       marp-cli
 
       # jupyer
+      uv
       (python313.withPackages (ps:
         with ps; [
           autopep8
