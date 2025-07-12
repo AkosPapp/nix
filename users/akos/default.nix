@@ -102,6 +102,7 @@
       devcontainer
 
       # system tools
+      deploy-rs
       usbutils
       sshpass
       sshfs
