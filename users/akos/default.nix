@@ -295,6 +295,7 @@
       pkgs-unstable.arduino-ide
       avrdude
       pkgsCross.avr.buildPackages.gcc
+      platformio-core
 
       # yocto
       kas
