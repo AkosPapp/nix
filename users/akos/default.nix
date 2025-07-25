@@ -89,20 +89,20 @@
       ripgrep
       httm
       mpv
-      tmux
       fd
       fzf
       rsync
       lsyncd
       htop
       btop
-      neofetch
-      cowsay
-      graphviz
       devcontainer
+      ncdu
+      deploy-rs
+      wireguard-tools
+      sanoid
+      sops
 
       # system tools
-      deploy-rs
       usbutils
       sshpass
       sshfs
@@ -122,20 +122,13 @@
       glib
       wget
       curl
-      curlpp
-      libcpr
       ffmpeg
       zip
       unzip
       killall
       bc
       fuse
-      wireguard-tools
-      sanoid
       pkg-config
-      sops
-      remmina
-      mongodb-compass
 
       # typst
       pkgs-unstable.typst
@@ -151,13 +144,9 @@
       (python313.withPackages (ps:
         with ps; [
           autopep8
-          websockets
-          bokeh
-          pyserial
           pip
           jedi-language-server
           gitpython
-          pynput
           numpy
           pandas
           matplotlib
@@ -236,9 +225,7 @@
       # git
       gitFull
       git-lfs
-      act
       gh
-      subversion
 
       # c++
       gcc
@@ -248,18 +235,13 @@
 
       #rust
       rustup
-      cargo-generate
-      nasm
-      gdb
-
-      # C#
-      omnisharp-roslyn
-      csharp-ls
 
       # POSIX
       shellcheck
 
       # C#
+      omnisharp-roslyn
+      csharp-ls
       pkgs-unstable.dotnetCorePackages.dotnet_8.sdk
       pkgs-unstable.dotnetCorePackages.dotnet_8.runtime
       pkgs-unstable.dotnetCorePackages.dotnet_8.aspnetcore
@@ -267,25 +249,11 @@
       pkgs-unstable.dotnet-ef
       pkgs-unstable.icu
 
-      # nodejs
-      nodejs_24
-
-      # java
-      adoptopenjdk-icedtea-web
-
       # dev tools
       pkgs-unstable.vscode
-      pkgs-unstable.vscodium-fhs
       pkgs-unstable.gitkraken
-      pkgs-unstable.jetbrains.clion
-      pkgs-unstable.jetbrains.datagrip
-      pkgs-unstable.jetbrains.dataspell
-      pkgs-unstable.jetbrains.gateway
       pkgs-unstable.jetbrains.idea-ultimate
-      pkgs-unstable.jetbrains.pycharm-professional
       pkgs-unstable.jetbrains.rider
-      pkgs-unstable.jetbrains.webstorm
-      android-studio
       rpi-imager
       picocom
       gparted
@@ -293,21 +261,11 @@
       direnv
 
       # arduino
-      pkgs-unstable.arduino-ide
-      avrdude
-      pkgsCross.avr.buildPackages.gcc
       platformio-core
-
-      # yocto
-      kas
-
-      # k8s
-      kubectl
 
       # user tools
       geogebra
       geogebra6
-      pkgs-unstable.cura-appimage
       anki
       networkmanagerapplet
       zotero
@@ -321,6 +279,7 @@
       sxiv
       brave
       chromium
+      firefox
       kitty
       nitrogen
       signal-desktop
@@ -330,7 +289,6 @@
       freecad
       librecad
       wireshark
-      appimage-run
       obs-studio
       youtube-music
 
