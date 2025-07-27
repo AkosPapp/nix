@@ -289,6 +289,7 @@
       freecad
       librecad
       wireshark
+      burpsuite
       obs-studio
       youtube-music
 
