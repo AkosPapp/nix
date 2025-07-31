@@ -287,6 +287,8 @@
       libreoffice
       logseq
       freecad
+      openscad
+      openscad-lsp
       librecad
       wireshark
       burpsuite
