@@ -74,9 +74,6 @@
 
     systemd.services.systemd-udev-settle.enable = false;
     systemd.services.NetworkManager-wait-online.enable = false;
-    networking.extraHosts = ''
-      10.44.0.3 laser.robo4you.at
-    '';
 
     environment.variables = {
       GPU_FLAG = "--device=nvidia.com/gpu=all";
