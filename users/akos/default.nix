@@ -97,6 +97,7 @@
       deploy-rs
       wireguard-tools
       sanoid
+      rclone
       sops
 
       # system tools
