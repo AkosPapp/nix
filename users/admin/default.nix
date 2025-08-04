@@ -27,6 +27,7 @@
       # helpful tools
       tmux
       rsync
+      rclone
       htop
       btop
 
