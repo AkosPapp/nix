@@ -24,6 +24,7 @@
     modules/networking/dnsmasq/default.nix
     modules/networking/airlab-vpn.nix
     modules/networking/tailscale.nix
+    modules/networking/netbird.nix
     modules/nix/builders/airlab.nix
     modules/nix/builders/build-host.nix
     profiles/zroot.nix
