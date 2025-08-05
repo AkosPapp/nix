@@ -69,7 +69,7 @@
       virtualisation.docker.enable = true;
       #virtualisation.podman.enable = true;
       virtualisation.virt-manager.enable = true;
-      virtualisation.virtualbox.enable = true;
+      #virtualisation.virtualbox.enable = true;
       wm.dwm.enable = true;
     };
 
