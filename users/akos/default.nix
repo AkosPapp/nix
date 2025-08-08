@@ -138,6 +138,9 @@
       marksman
       marp-cli
 
+      # latex
+      texliveFull
+
       # jupyer
       uv
       (python313.withPackages (ps:
