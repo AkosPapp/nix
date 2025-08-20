@@ -17,7 +17,7 @@
     services.tailscale = {
       enable = true;
       openFirewall = true;
-      extraSetFlags = ["--accept-dns=false"];
+      extraSetFlags = ["--accept-dns=false" "--accept-routes=true"];
       package = pkgs-unstable.tailscale;
     };
     networking.firewall.checkReversePath = "loose";
