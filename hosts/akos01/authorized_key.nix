@@ -1,0 +1,3 @@
+[
+  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIE+c88YGotI3xhM2y8+RuUuVJD3sAt9jUtCaYEYJ1JHT akos@laptop"
+]

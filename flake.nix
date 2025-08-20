@@ -61,6 +61,15 @@
         remoteBuild = false;
       };
     };
+    deploy.nodes.akos01 = {
+      hostname = "akos01";
+      profiles.system = {
+        sshUser = "root";
+        user = "root";
+        path = deploy-rs.lib.x86_64-linux.activate.nixos self.nixosConfigurations.akos01;
+        remoteBuild = false;
+      };
+    };
     checks = builtins.mapAttrs (system: deployLib: deployLib.deployChecks self.deploy) deploy-rs.lib;
   };
 }
