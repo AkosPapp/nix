@@ -61,7 +61,7 @@
       hardware.perifirals.keyboards.kanata.enable = true;
       hardware.perifirals.mice.razer.enable = true;
       networking.usbip.enable = true;
-      networking.netbird.enable = true;
+      networking.netbird.enable = false;
       system.binbash.enable = true;
       system.bluetooth.enable = true;
       system.gpg.enable = true;
