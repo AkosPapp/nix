@@ -11,7 +11,7 @@
   ];
 
   config = {
-    #MODULES.nix.builders.airlab = true;
+    MODULES.nix.builders.airlab = true;
 
     networking = {
       firewall.enable = true;
@@ -20,13 +20,6 @@
       extraHosts = ''
         127.0.0.1 localhost
       '';
-      #interfaces.ens18.ipv4.routes = [
-      #  {
-      #    address = "10.44.0.0";
-      #    prefixLength = 24;
-      #    via = "172.18.0.1";
-      #  }
-      #];
     };
 
     boot.initrd.availableKernelModules = [

@@ -96,6 +96,7 @@
       devcontainer
       ncdu
       deploy-rs
+      alejandra
       sanoid
       rclone
       sops

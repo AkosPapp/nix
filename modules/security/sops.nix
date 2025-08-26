@@ -15,7 +15,7 @@
 
   config = lib.mkIf config.MODULES.security.sops.enable {
     sops = {
-      defaultSopsFile = /sops/secrets.yaml;
+      defaultSopsFile = ../../sops/secrets.yaml;
       defaultSopsFormat = "yaml";
       validateSopsFiles = true;
       age = {
