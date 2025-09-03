@@ -150,7 +150,6 @@
       platformio-core
 
       # user tools
-      geogebra
       geogebra6
       networkmanagerapplet
       zotero
