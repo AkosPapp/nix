@@ -71,6 +71,7 @@
       virtualisation.virt-manager.enable = true;
       #virtualisation.virtualbox.enable = true;
       wm.dwm.enable = true;
+      dev.platformio.enable = true;
     };
 
     systemd.services.systemd-udev-settle.enable = false;

@@ -10,6 +10,7 @@
     modules/virtualization/docker.nix
     modules/virtualization/virt-manager.nix
     modules/virtualization/vmware.nix
+    modules/dev/platformio.nix
     modules/fonts/nerdfonts.nix
     modules/wm/dwm.nix
     modules/games/steam.nix
