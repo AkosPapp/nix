@@ -2,6 +2,7 @@
   pkgs,
   lib,
   modulesPath,
+  pkgs-unstable,
   ...
 }: {
   imports = [
@@ -75,7 +76,10 @@
       vim
       git
       dig
+      pkgs-unstable.vscode
     ];
+
+    MODULES.virtualisation.docker.enable = true;
 
     MODULES.networking.tailscale.enable = lib.mkForce true;
     services.tailscale = {
