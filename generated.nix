@@ -13,6 +13,7 @@
     modules/dev/platformio.nix
     modules/fonts/nerdfonts.nix
     modules/wm/dwm.nix
+    modules/wm/niri.nix
     modules/games/steam.nix
     modules/system/bluetooth.nix
     modules/system/sound.nix

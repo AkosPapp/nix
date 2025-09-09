@@ -71,6 +71,7 @@
       virtualisation.virt-manager.enable = true;
       virtualisation.virtualbox.enable = true;
       wm.dwm.enable = true;
+      wm.niri.enable = true;
       dev.platformio.enable = true;
     };
 
@@ -130,7 +131,6 @@
       fuse
       pkg-config
 
-      # jupyer
       python314
 
       # git

@@ -77,7 +77,28 @@
       git
       dig
       pkgs-unstable.vscode
+      pkgs-unstable.code-server
     ];
+
+    users.users.code = {
+      isNormalUser = true;
+      #shell = pkgs.zsh;
+      description = "code";
+      extraGroups = [
+        "dialout"
+        "networkmanager"
+        "wheel"
+        "libvirtd"
+        "docker"
+        "input"
+        "uinput"
+        "plugdev"
+        "vboxusers"
+        "openrazer"
+      ];
+      #hashedPassword = "$y$j9T$gEhP/0Jlrlwb4ndmLs06L1$7qkdPdgqjCrEH8bAQvJqRn/Mj4m5X9GCRAyM33z0mdA";
+      openssh.authorizedKeys.keys = import ./authorized_key.nix;
+    };
 
     MODULES.virtualisation.docker.enable = true;
 
