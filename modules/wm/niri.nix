@@ -27,6 +27,9 @@
     environment.sessionVariables.NIXOS_OZONE_WL = "1";
     environment.sessionVariables.ELECTRON_OZONE_PLATFORM_HINT = "wayland";
     environment.sessionVariables.OZONE_PLATFORM = "wayland";
+    services.upower.enable = true;
+    xdg.portal.enable = true;
+    xdg.portal.extraPortals = [pkgs.xdg-desktop-portal-gtk];
 
     environment.systemPackages = with pkgs; [
       wireplumber
