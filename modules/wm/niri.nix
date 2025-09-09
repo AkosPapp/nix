@@ -20,10 +20,12 @@
     programs.niri.package = pkgs.niri;
     programs.niri.enable = true;
     programs.waybar.enable = true;
+    programs.xwayland.enable = true;
     #programs.waybar.settings.mainBar.layer = "top";
     #programs.waybar.systemd.enable = true;
     #programs.niri.settings.environment."NIXOS_OZONE_WL" = "1";
     environment.sessionVariables.NIXOS_OZONE_WL = "1";
+    environment.sessionVariables.ELECTRON_OZONE_PLATFORM_HINT = "wayland";
 
     environment.systemPackages = with pkgs; [
       wireplumber
