@@ -40,6 +40,7 @@
       wl-clipboard
       mako
       fuzzel
+      xwayland-satellite
     ];
   };
 }
