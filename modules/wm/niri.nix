@@ -26,6 +26,7 @@
     #programs.niri.settings.environment."NIXOS_OZONE_WL" = "1";
     environment.sessionVariables.NIXOS_OZONE_WL = "1";
     environment.sessionVariables.ELECTRON_OZONE_PLATFORM_HINT = "wayland";
+    environment.sessionVariables.OZONE_PLATFORM = "wayland";
 
     environment.systemPackages = with pkgs; [
       wireplumber
