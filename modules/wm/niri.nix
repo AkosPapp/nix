@@ -14,5 +14,12 @@
 
   config = lib.mkIf config.MODULES.wm.niri.enable {
     programs.niri.enable = true;
+    environment.systemPackages = with pkgs; [
+      niri
+      wofi
+      swaylock
+      waybar
+      wl-clipboard
+    ];
   };
 }
