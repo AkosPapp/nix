@@ -34,6 +34,7 @@
     environment.systemPackages = with pkgs; [
       wireplumber
       niri
+      swww
       wofi
       swaylock
       waybar
