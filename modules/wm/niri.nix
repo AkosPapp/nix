@@ -36,7 +36,7 @@
       niri
       swww
       wofi
-      swaylock
+      hyprlock
       waybar
       wl-clipboard
       mako
