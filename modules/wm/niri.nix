@@ -19,7 +19,7 @@
     niri-flake.cache.enable = true;
     programs.niri.package = pkgs.niri;
     programs.niri.enable = true;
-    programs.waybar.enable = true;
+    #programs.waybar.enable = true;
     programs.xwayland.enable = true;
     #programs.waybar.settings.mainBar.layer = "top";
     #programs.waybar.systemd.enable = true;
