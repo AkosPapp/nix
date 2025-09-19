@@ -77,6 +77,8 @@
 
     powerManagement.cpuFreqGovernor = "performance";
     services.xserver.videoDrivers = ["nvidia"];
+    hardware.cpu.x86.msr.enable = true;
+    hardware.cpu.x86.msr.settings.allow-writes = "on";
     hardware.nvidia = {
       # Modesetting is required.
       modesetting.enable = true;
