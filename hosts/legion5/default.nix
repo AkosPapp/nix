@@ -20,6 +20,11 @@
     cudatoolkit
   ];
 
+  boot.extraModulePackages = with pkgs; [
+    #linuxPackages_latest.liquidtux
+    linuxPackages_latest.lenovo-legion-module
+  ];
+
   # Enable OpenGL
   hardware.graphics = {
     enable = true;
