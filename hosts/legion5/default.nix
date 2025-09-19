@@ -15,14 +15,14 @@
 
   environment.systemPackages = with pkgs; [
     lenovo-legion
+    lm_sensors
     nvidia-container-toolkit
     runc
     cudatoolkit
   ];
 
   boot.extraModulePackages = with pkgs; [
-    #linuxPackages_latest.liquidtux
-    linuxPackages_latest.lenovo-legion-module
+    linuxPackages_stable.lenovo-legion-module
   ];
 
   # Enable OpenGL
