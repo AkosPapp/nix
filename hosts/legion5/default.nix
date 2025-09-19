@@ -16,6 +16,7 @@
   environment.systemPackages = with pkgs; [
     lenovo-legion
     lm_sensors
+    psutils
     nvidia-container-toolkit
     runc
     cudatoolkit
