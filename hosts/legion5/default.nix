@@ -22,7 +22,7 @@
   ];
 
   boot.extraModulePackages = with pkgs; [
-    linuxPackages_stable.lenovo-legion-module
+    linuxPackages_latest.lenovo-legion-module
   ];
 
   # Enable OpenGL
