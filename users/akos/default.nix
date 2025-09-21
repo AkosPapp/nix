@@ -70,7 +70,7 @@
       #virtualisation.podman.enable = true;
       virtualisation.virt-manager.enable = true;
       virtualisation.virtualbox.enable = true;
-      wm.dwm.enable = true;
+      #wm.dwm.enable = true;
       wm.niri.enable = true;
       dev.platformio.enable = true;
     };
