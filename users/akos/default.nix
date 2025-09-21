@@ -104,6 +104,8 @@
       sops
 
       # system tools
+      libnotify
+
       usbutils
       sshpass
       sshfs
