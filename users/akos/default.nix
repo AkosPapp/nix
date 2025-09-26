@@ -105,7 +105,6 @@
 
       # system tools
       libnotify
-
       usbutils
       sshpass
       sshfs
@@ -153,6 +152,7 @@
       platformio-core
 
       # user tools
+      remmina
       geogebra6
       networkmanagerapplet
       zotero
