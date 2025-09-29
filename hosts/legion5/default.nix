@@ -18,6 +18,8 @@
     lm_sensors
     psutils
     nvidia-container-toolkit
+    libnvidia-container
+    nvidia-docker
     runc
     cudatoolkit
   ];
