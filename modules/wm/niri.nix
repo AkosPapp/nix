@@ -68,8 +68,18 @@
     # XDG Desktop Portal for screencasting
     xdg.portal = {
       enable = true;
+      wlr.enable = false; # Disable wlr portal to avoid conflicts
       extraPortals = [pkgs.xdg-desktop-portal-gnome];
-      config.common.default = lib.mkForce "*"; # Or specify "gnome" explicitly
+      config = {
+        common = {
+          default = lib.mkForce ["gnome"];
+        };
+        niri = {
+          default = lib.mkForce ["gnome" "gtk"];
+          "org.freedesktop.impl.portal.ScreenCast" = ["gnome"];
+          "org.freedesktop.impl.portal.RemoteDesktop" = ["gnome"];
+        };
+      };
     };
 
     # Hardware audio support
