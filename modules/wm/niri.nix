@@ -33,6 +33,9 @@
       xdg-desktop-portal-gnome
       wireplumber
       niri
+      wdisplays
+      wlr-randr
+      xorg.xrandr
       swww
       wofi
       hyprlock
