@@ -141,7 +141,7 @@
 
       # dev tools
       pkgs-unstable.vscode
-      pkgs-unstable.jetbrains.datagrip
+      #pkgs-unstable.jetbrains.datagrip
       pkgs-unstable.gitkraken
       rpi-imager
       picocom

@@ -45,7 +45,6 @@
   };
 
   hardware.nvidia-container-toolkit.enable = true;
-  virtualisation.docker.enableNvidia = true;
   virtualisation.docker.daemon.settings.features.cdi = true;
 
   services.znapzend = {
