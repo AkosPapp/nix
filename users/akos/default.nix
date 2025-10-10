@@ -54,6 +54,9 @@
         ];
       };
     };
+    xdg.mime.defaultApplications = {
+      "inode/directory" = "org.gnome.Nautilus.desktop";
+    };
 
     MODULES = {
       fonts.nerdfonts.enable = true;
