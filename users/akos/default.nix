@@ -180,6 +180,7 @@
       burpsuite
       obs-studio
       youtube-music
+      nautilus
 
       # qemu
       qemu_full
