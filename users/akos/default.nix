@@ -161,7 +161,7 @@
       networkmanagerapplet
       zotero
       dracula-theme
-      keepassxc
+      bitwarden
       inkscape
       gimp
       pcmanfm

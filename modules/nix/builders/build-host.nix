@@ -9,7 +9,7 @@
     MODULES.nix.builders.build-host = lib.mkOption {
       type = lib.types.bool;
       default = false;
-      description = "Enable Airlab builders";
+      description = "Enable Nix build host configuration";
     };
   };
 

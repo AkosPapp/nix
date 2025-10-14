@@ -13,6 +13,7 @@
 
   config = {
     MODULES.nix.builders.airlab = true;
+    MODULES.security.vaultwarden.enable = true;
 
     networking = {
       firewall.enable = true;
@@ -113,71 +114,71 @@
 
     services.qemuGuest.enable = true;
 
-    sops.secrets."nix-builder/private_key" = {
-      mode = lib.mkForce "0640";
-      owner = "hydra";
-      group = "hydra";
-    };
-    services.hydra = {
-      enable = true;
+    #sops.secrets."nix-builder/private_key" = {
+    #  mode = lib.mkForce "0640";
+    #  owner = "hydra";
+    #  group = "hydra";
+    #};
+    # services.hydra = {
+    #   enable = true;
 
-      # Network settings
-      listenHost = "0.0.0.0"; # Listen on all interfaces
-      port = 3000; # Hydra web UI port
+    #   # Network settings
+    #   listenHost = "0.0.0.0"; # Listen on all interfaces
+    #   port = 3000; # Hydra web UI port
 
-      # Package to build; commonly the nixpkgs package set
-      package = pkgs.hydra;
+    #   # Package to build; commonly the nixpkgs package set
+    #   package = pkgs.hydra;
 
-      # Hydra URL (used in notifications, links)
-      hydraURL = "http://akos01:3000";
+    #   # Hydra URL (used in notifications, links)
+    #   hydraURL = "http://akos01:3000";
 
-      # Email notifications
-      smtpHost = "smtp.example.com";
-      notificationSender = "hydra@example.com";
+    #   # Email notifications
+    #   smtpHost = "smtp.example.com";
+    #   notificationSender = "hydra@example.com";
 
-      # Build server settings
-      minSpareServers = 2;
-      maxSpareServers = 5;
-      maxServers = 10;
+    #   # Build server settings
+    #   minSpareServers = 2;
+    #   maxSpareServers = 5;
+    #   maxServers = 10;
 
-      # Use substitutes (binary cache) for building dependencies
-      useSubstitutes = true;
+    #   # Use substitutes (binary cache) for building dependencies
+    #   useSubstitutes = true;
 
-      # Tracker for hydra build inputs
-      tracker = "some-tracker-url-or-id";
+    #   # Tracker for hydra build inputs
+    #   tracker = "some-tracker-url-or-id";
 
-      # Additional flexible config adjustments
-      extraConfig = ''
-        logging: level = "info"
-      '';
-    };
+    #   # Additional flexible config adjustments
+    #   extraConfig = ''
+    #     logging: level = "info"
+    #   '';
+    # };
 
     nix = {
       distributedBuilds = true;
 
-      buildMachines = [
-        {
-          hostName = "localhost";
-          system = "x86_64-linux";
-          maxJobs = 8; # tune for your CPU
-          speedFactor = 1;
-          supportedFeatures = [
-            "kvm"
-            "nixos-test"
-            "benchmark"
-            "big-parallel"
-          ];
-          mandatoryFeatures = [];
-          sshKey = null;
-          protocol = null; # force local, no ssh
-        }
-      ];
+      # buildMachines = [
+      #   {
+      #     hostName = "localhost";
+      #     system = "x86_64-linux";
+      #     maxJobs = 8; # tune for your CPU
+      #     speedFactor = 1;
+      #     supportedFeatures = [
+      #       "kvm"
+      #       "nixos-test"
+      #       "benchmark"
+      #       "big-parallel"
+      #     ];
+      #     mandatoryFeatures = [];
+      #     sshKey = null;
+      #     protocol = null; # force local, no ssh
+      #   }
+      # ];
 
       settings = {
         experimental-features = ["nix-command" "flakes"];
         build-users-group = "nixbld";
         # important: make Nix actually look at /etc/nix/machines
-        builders = "@/etc/nix/machines";
+        #builders = "@/etc/nix/machines";
         # allow cross/emulated builds
         extra-platforms = [
           "aarch64-linux"
