@@ -143,6 +143,7 @@
       gh
 
       # dev tools
+      pkgs-unstable.foxglove-studio
       pkgs-unstable.vscode
       jetbrains.datagrip
       pkgs-unstable.gitkraken
