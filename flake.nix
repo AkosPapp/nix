@@ -218,40 +218,64 @@
     #        self.nixosConfigurations);
     #  };
     # Default package that generates options.json for all configurations
-    #  packages.${system}.default =
-    #    pkgs-unstable.runCommand "nixos-options-all" {
-    #      nativeBuildInputs = [pkgs-unstable.jq];
-    #    } ''
-    #      mkdir -p $out
+    # packages.${system}.default =
+    #   pkgs-unstable.runCommand "nixos-options-all" {
+    #     nativeBuildInputs = [pkgs-unstable.jq];
+    #   } ''
+    #     mkdir -p $out
 
-    #      ${nixpkgs.lib.concatMapStringsSep "\n" (
-    #          doc: let
-    #            params = pkgs-unstable.lib.importJSON doc.json;
-    #            params_filtered =
-    #              pkgs-unstable.lib.filterAttrs
-    #              (a: b: (pkgs-unstable.lib.hasAttr "default" b) && (pkgs-unstable.lib.hasAttr "type" b) && pkgs-unstable.lib.hasAttr "type" b)
-    #              params;
-    #            vals =
-    #              builtins.mapAttrs (k: v: {
-    #                meta =  v;
-    #                #va = v.loc;
-    #                #val =
-    #                #  pkgs-unstable.lib.attrsets.attrByPath (
-    #                #    v.loc
-    #                #  )
-    #                #  null
-    #                #  self.nixosConfigurations.${doc.name}.config;
-    #              })
-    #              params_filtered;
-    #            file = builtins.toFile "json" (builtins.toJSON vals);
-    #          in ''
-    #            echo cp ${doc.json} $out/${doc.name}-options.json
-    #            cp ${doc.json} $out/${doc.name}-options.json
-    #            echo cp ${file} $out/${doc.name}-options-processed.json
-    #            cp ${file} $out/${doc.name}-options-processed.json
-    #          ''
-    #        )
-    #        allOptionsDocs}
-    #    '';
+    #     ${nixpkgs.lib.concatMapStringsSep "\n" (
+    #         doc: let
+    #           params = pkgs-unstable.lib.importJSON doc.json;
+
+    #           params_filtered1 =
+    #             pkgs-unstable.lib.filterAttrs
+    #             (
+    #               a: b: (pkgs-unstable.lib.hasAttr "default" b)
+    #             )
+    #             params;
+
+    #           params_filtered2 =
+    #             pkgs-unstable.lib.filterAttrs
+    #             (
+    #               a: b: (pkgs-unstable.lib.hasAttr "type" b)
+    #             )
+    #             params_filtered1;
+
+    #           params_filtered3 =
+    #             pkgs-unstable.lib.filterAttrs
+    #             (
+    #               a: b: (pkgs-unstable.lib.hasAttrByPath b.loc self.nixosConfigurations.${doc.name}.options)
+    #             )
+    #             params_filtered2;
+
+    #           vals = (
+    #             builtins.mapAttrs (
+    #               k: v: {
+    #                 meta = v;
+    #                 l = v.loc;
+    #                 val =
+    #                   pkgs-unstable.lib.typeOf
+    #                   (
+    #                     pkgs-unstable.lib.attrsets.attrByPath
+    #                     v.loc
+    #                     null
+    #                     self.nixosConfigurations.${doc.name}.config
+    #                   );
+    #               }
+    #             )
+    #             params_filtered3
+    #           );
+    #           options = self.nixosConfigurations.${doc.name}.options;
+    #           file = builtins.toFile "json" (builtins.toJSON vals);
+    #         in ''
+    #           echo cp ${doc.json} $out/${doc.name}-options.json
+    #           cp ${doc.json} $out/${doc.name}-options.json
+    #           echo cp ${file} $out/${doc.name}-options-processed.json
+    #           cp ${file} $out/${doc.name}-options-processed.json
+    #         ''
+    #       )
+    #       allOptionsDocs}
+    #   '';
   };
 }
