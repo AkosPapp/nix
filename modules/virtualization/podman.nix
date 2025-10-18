@@ -16,7 +16,6 @@
     virtualisation.podman = {
       enable = true;
       dockerCompat = true;
-      #enableNvidia = true;
     };
     environment.systemPackages = with pkgs; [podman-compose podman-tui];
   };

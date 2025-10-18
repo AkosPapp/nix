@@ -14,11 +14,11 @@
   };
 
   config = lib.mkIf config.MODULES.nix.builders.airlab {
-    #MODULES.networking.airlab-vpn.enable = true;
     MODULES.security.sops.enable = true;
     sops.secrets."nix-builder/private_key" = {
       mode = "0600";
     };
+
     # remote build
     nix.buildMachines = [
       {

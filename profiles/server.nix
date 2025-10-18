@@ -2,6 +2,7 @@
   config,
   nixos-version,
   lib,
+  pkgs,
   ...
 }: {
   options = {
@@ -33,11 +34,19 @@
       useDHCP = false;
     };
 
+    environment.systemPackages = with pkgs; [
+      htop
+      wget
+      curl
+      vim
+      git
+      iputils
+      tmux
+    ];
+
     MODULES.virtualisation.docker.enable = true;
-    USERS.admin.enable = true;
     PROFILES.zroot.enable = true;
 
-    services.openssh.settings.PermitRootLogin = lib.mkForce "prohibit-password";
-    nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
+    services.openssh.settings.PermitRootLogin = "prohibit-password";
   };
 }

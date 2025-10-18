@@ -24,13 +24,7 @@
         # This is using an age key that is expected to already be in the filesystem
         keyFile = "/var/lib/sops-nix/key.txt";
         # This will generate a new key if the key specified above does not exist
-        generateKey = lib.mkForce true;
-      };
-    };
-    fileSystems = lib.mkIf config.PROFILES.zroot.enable {
-      "/sops" = {
-        device = "zroot/persist/sops";
-        fsType = "zfs";
+        generateKey = true;
       };
     };
   };

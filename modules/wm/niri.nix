@@ -16,14 +16,11 @@
   imports = [niri.nixosModules.niri];
   config = lib.mkIf config.MODULES.wm.niri.enable {
     nixpkgs.overlays = [niri.overlays.niri];
+
     niri-flake.cache.enable = true;
     programs.niri.package = pkgs.niri;
     programs.niri.enable = true;
-    #programs.waybar.enable = true;
     programs.xwayland.enable = true;
-    #programs.waybar.settings.mainBar.layer = "top";
-    #programs.waybar.systemd.enable = true;
-    #programs.niri.settings.environment."NIXOS_OZONE_WL" = "1";
     environment.sessionVariables.NIXOS_OZONE_WL = "1";
     environment.sessionVariables.ELECTRON_OZONE_PLATFORM_HINT = "wayland";
     environment.sessionVariables.OZONE_PLATFORM = "wayland";
@@ -31,7 +28,6 @@
 
     environment.systemPackages = with pkgs; [
       xdg-desktop-portal-gnome
-      wireplumber
       niri
       wdisplays
       wlr-randr
@@ -46,21 +42,8 @@
       xwayland-satellite
     ];
 
-    # PipeWire (required for screencasting)
-    services.pipewire = {
-      enable = lib.mkForce true;
-      audio.enable = true; # If you want audio support
-      pulse.enable = true; # PulseAudio compatibility
-      jack.enable = false; # Set true only if you need JACK
-      alsa.enable = true;
-      alsa.support32Bit = true; # For 32-bit app support
-      wireplumber.enable = true;
-      socketActivation = true; # Recommended for modern setups
-      systemWide = false; # Should be false (per-user is safer)
-    };
-
-    # RTKit for real-time priority (recommended for PipeWire)
-    security.rtkit.enable = true;
+    # PipeWire for screencasting
+    MODULES.system.pipewire.enable = true;
 
     # D-Bus (should already be enabled by default on NixOS)
     services.dbus = {
@@ -75,17 +58,14 @@
       extraPortals = [pkgs.xdg-desktop-portal-gnome];
       config = {
         common = {
-          default = lib.mkForce ["gnome"];
+          default = ["gnome"];
         };
         niri = {
-          default = lib.mkForce ["gnome" "gtk"];
+          default = ["gnome" "gtk"];
           "org.freedesktop.impl.portal.ScreenCast" = ["gnome"];
           "org.freedesktop.impl.portal.RemoteDesktop" = ["gnome"];
         };
       };
     };
-
-    # Hardware audio support
-    hardware.alsa.enable = true; # Usually enabled by default
   };
 }

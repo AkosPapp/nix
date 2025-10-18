@@ -38,25 +38,7 @@
       ];
     };
     programs.zsh.enable = true;
-    programs.kdeconnect.enable = true;
-    programs.nix-ld.enable = true;
-    programs.seahorse.enable = true;
     services.gnome.gnome-keyring.enable = true;
-    services.flatpak.enable = true;
-    xdg.portal.enable = true;
-    xdg.portal.config = {
-      common = {
-        default = [
-          "gtk"
-        ];
-        "org.freedesktop.impl.portal.Secret" = [
-          "gnome-keyring"
-        ];
-      };
-    };
-    xdg.mime.defaultApplications = {
-      "inode/directory" = "org.gnome.Nautilus.desktop";
-    };
 
     MODULES = {
       fonts.nerdfonts.enable = true;
@@ -64,16 +46,12 @@
       hardware.perifirals.keyboards.kanata.enable = true;
       hardware.perifirals.mice.razer.enable = true;
       networking.usbip.enable = true;
-      networking.netbird.enable = false;
-      system.binbash.enable = true;
       system.bluetooth.enable = true;
       system.gpg.enable = true;
-      system.sound.enable = true;
+      system.pipewire.enable = true;
       virtualisation.docker.enable = true;
-      #virtualisation.podman.enable = true;
       virtualisation.virt-manager.enable = true;
       virtualisation.virtualbox.enable = true;
-      #wm.dwm.enable = true;
       wm.niri.enable = true;
       dev.platformio.enable = true;
     };
@@ -124,16 +102,13 @@
       dig
       pciutils
       acpi
-      glib
       wget
       curl
       ffmpeg
       zip
       unzip
       killall
-      bc
       fuse
-      pkg-config
 
       python314
 
@@ -153,9 +128,6 @@
       perf-tools
       direnv
 
-      # arduino
-      platformio-core
-
       # user tools
       remmina
       geogebra6
@@ -165,15 +137,12 @@
       bitwarden
       inkscape
       gimp
-      pcmanfm
-      flameshot
       syncthing
       sxiv
       brave
       chromium
       firefox
       kitty
-      nitrogen
       signal-desktop
       discord
       libreoffice
@@ -185,10 +154,6 @@
       obs-studio
       youtube-music
       nautilus
-
-      # qemu
-      qemu_full
-      qemu-utils
     ];
 
     # perf

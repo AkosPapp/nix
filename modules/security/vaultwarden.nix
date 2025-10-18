@@ -19,10 +19,6 @@
       webVaultPackage = pkgs-unstable.vaultwarden.webvault;
       package = pkgs-unstable.vaultwarden;
 
-      #dbBackend = "sqlite"; # or "postgresql" if you run a Postgres service
-      #backupDir = "/var/backup/vaultwarden";
-      #environmentFile = "/etc/vaultwarden/env"; # create this manually (permissions 600)
-
       config = {
         DOMAIN = "https://akos01.tail546fb.ts.net/vaultwarden";
         ROCKET_ADDRESS = "127.0.0.1";

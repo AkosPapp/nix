@@ -1,4 +1,4 @@
-.PHONY: help generate gen switch build commit sync update stage switch--show-trace fmt
+.PHONY: help switch build commit sync update stage switch--show-trace fmt
 
 help:
 	@echo "Usage: make [target]"
@@ -6,8 +6,6 @@ help:
 	@echo "Targets:"
 	@echo "  build:                Build the new configuration"
 	@echo "  commit:               Commit the changes"
-	@echo "  generate:             Generate the code"
-	@echo "  gen:                  Alias for generate"
 	@echo "  help:                 Show this help message"
 	@echo "  stage:                Stage the changes"
 	@echo "  switch--show-trace:   Switch to the new configuration with --show-trace"
@@ -20,18 +18,11 @@ help:
 	@echo "  install-remote:       Install the flake on a remote server"
 	@echo ""
 
-
-gen: generate
-
 fmt:
 	@echo "--- Formatting the code ---"
 	@nix fmt .
 
-generate:
-	@echo "--- Generating the code ---"
-	@./generate-modules.sh
-
-switch: gen fmt stage
+switch: fmt stage
 	@echo "--- Switching to the new configuration ---"
 	@$$([ "$$(whoami)" != "root" ] && echo -e "sudo") nixos-rebuild switch --flake .# --impure && make commit
 
@@ -54,7 +45,6 @@ update:
 upgrade:
 	@echo "--- Upgrading flake ---"
 	make commit
-	make gen
 	make update
 	make fmt
 	make switch

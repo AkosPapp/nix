@@ -11,6 +11,7 @@
   MODULES.nix.builders.build-host = false;
   MODULES.nix.builders.airlab = false;
   USERS.akos.enable = true;
+  PROFILES.zroot.enable = true;
   services.xserver.displayManager.gdm.enable = true;
 
   environment.systemPackages = with pkgs; [

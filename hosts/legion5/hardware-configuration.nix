@@ -69,6 +69,7 @@
       hostName = "legion5";
       extraHosts = ''
         127.0.0.1 localhost
+        vaultwarden.akos01.tail546fb.ts.net akos01.tail546fb.ts.net
       '';
     };
     nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
