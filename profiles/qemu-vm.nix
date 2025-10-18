@@ -13,9 +13,9 @@
   };
 
   # todo fix this
-  #imports = lib.lists.optionals config.PROFILES.qemu-vm.enable [
-  #  (modulesPath + "/profiles/qemu-guest.nix")
-  #];
+  imports = [
+    (modulesPath + "/profiles/qemu-guest.nix")
+  ];
 
   config = lib.mkIf config.PROFILES.qemu-vm.enable {
     MODULES.networking.tailscale.enable = true;

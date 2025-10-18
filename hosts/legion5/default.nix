@@ -29,6 +29,12 @@
     linuxPackages_6_12.lenovo-legion-module
   ];
 
+  networking = {
+    extraHosts = ''
+      127.0.0.1 localhost
+    '';
+  };
+
   # Enable OpenGL
   hardware.graphics = {
     enable = true;
