@@ -31,7 +31,7 @@
 
   networking = {
     extraHosts = ''
-      127.0.0.1 localhost
+      69.69.69.69 qwertzuiop
     '';
   };
 
