@@ -6,6 +6,7 @@
   nixpkgs,
   system,
   nixos-version,
+  configName,
   ...
 }: {
   options = {
@@ -24,6 +25,8 @@
       system.locale.enable = true;
       nix.gc.enable = true;
     };
+
+    networking.hostName = configName;
 
     nix.settings.experimental-features = ["nix-command" "flakes"];
     nixpkgs.config.allowUnfree = true;

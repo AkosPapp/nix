@@ -28,9 +28,6 @@
 
     networking = {
       networkmanager.enable = false;
-      extraHosts = ''
-        127.0.0.1 localhost
-      '';
       useDHCP = false;
     };
 

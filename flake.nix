@@ -88,7 +88,8 @@
               system
               nixos-version
               ;
-            CONFIGS = self.nixosConfigurations;
+            nixosConfigurations = self.nixosConfigurations;
+            configName = host;
           }
           // inputs;
         modules =
@@ -277,5 +278,13 @@
     #       )
     #       allOptionsDocs}
     #   '';
+
+    devShells.${system}.default = pkgs-unstable.mkShell {
+      buildInputs = with pkgs-unstable; [
+        jq
+        nil
+        alejandra
+      ];
+    };
   };
 }

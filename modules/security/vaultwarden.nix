@@ -35,5 +35,7 @@
 
     # Optional: Bitwarden directory connector (if using LDAP/AD)
     #services.bitwarden-directory-connector-cli.domain = "akos01.tail546fb.ts.net";
+
+    MODULES.networking.tailscale.hostAliases = ["vaultwarden"];
   };
 }

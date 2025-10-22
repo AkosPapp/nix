@@ -11,6 +11,7 @@
   MODULES.nix.builders.build-host = false;
   MODULES.nix.builders.airlab = false;
   USERS.akos.enable = true;
+  MODULES.networking.tailscale.hostIP = "100.125.194.29";
   PROFILES.zroot.enable = true;
   services.xserver.displayManager.gdm.enable = true;
 
@@ -28,12 +29,6 @@
   boot.extraModulePackages = with pkgs; [
     linuxPackages_6_12.lenovo-legion-module
   ];
-
-  networking = {
-    extraHosts = ''
-      69.69.69.69 qwertzuiop
-    '';
-  };
 
   # Enable OpenGL
   hardware.graphics = {
