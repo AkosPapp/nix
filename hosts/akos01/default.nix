@@ -3,13 +3,13 @@
   lib,
   modulesPath,
   pkgs-unstable,
+  config,
   ...
 }: {
   config = {
     MODULES.nix.builders.airlab = true;
     MODULES.security.vaultwarden.enable = true;
     MODULES.networking.tailscale.hostIP = "100.71.138.61";
-    MODULES.networking.traefik.enable = true;
     PROFILES.qemu-vm.enable = true;
 
     networking = {
@@ -17,9 +17,30 @@
       useDHCP = true;
     };
 
+    environment.systemPackages = with pkgs; [
+      vim
+      wget
+      curl
+      git
+      htop
+      tmux
+      dnsutils
+    ];
+
     services.tailscale = {
       extraSetFlags = lib.mkForce ["--accept-dns=false" "--accept-routes=false" "--advertise-routes=10.50.0.0/23,10.44.0.0/24"];
       useRoutingFeatures = "both";
+    };
+
+    MODULES.security.sops.enable = true;
+    sops.secrets."nix-serve/akos01.tail546fb.ts.net/private_key" = {
+      mode = "0400";
+      #owner = "nix-serve";
+      #group = "nix-serve";
+    };
+    services.nix-serve = {
+      enable = true;
+      secretKeyFile = config.sops.secrets."nix-serve/akos01.tail546fb.ts.net/private_key".path;
     };
   };
 }
