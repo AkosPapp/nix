@@ -87,7 +87,7 @@
 
   nix = {
     settings = {
-      substituters = [
+      trusted-substituters = [
         "http://akos01.tail546fb.ts.net:5000"
         "https://nix-community.cachix.org"
         "https://cache.nixos.org/"

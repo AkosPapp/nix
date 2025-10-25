@@ -37,6 +37,7 @@
         my-nixvim.packages.${pkgs.system}.default
       ];
     };
+    nix.settings.trusted-users = ["akos"];
     programs.zsh.enable = true;
     services.gnome.gnome-keyring.enable = true;
 
