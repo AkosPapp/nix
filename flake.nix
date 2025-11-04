@@ -279,6 +279,93 @@
     #       allOptionsDocs}
     #   '';
 
+    packages.${system}.default =
+      pkgs-unstable.stdenv.mkDerivation
+      (
+        let
+          flakes = ["/home/akos/projects/robo/airlib" "/home/akos/projects/robo/DA"];
+          targets = (
+            pkgs-unstable.lib.lists.map
+            (
+              f: let
+                #f = "/home/akos/projects/robo/DA";
+                f = "/home/akos/projects/robo/airlib";
+                flakeName = baseNameOf f;
+                flake = builtins.getFlake f;
+                lib = nixpkgs.lib;
+                systems = ["x86_64-linux" "aarch64-linux"];
+
+                # Get all NixOS configuration toplevels
+                toplevels =
+                  lib.mapAttrsToList
+                  (name: config: {
+                    drv = config.config.system.build.toplevel;
+                    name = "${flakeName}#nixosConfigurations.${name}.config.build.toplevel";
+                  })
+                  (flake.nixosConfigurations or {});
+
+                # Get all packages across specified systems
+                packages = lib.flatten (
+                  lib.mapAttrsToList
+                  (system: pkgs:
+                    lib.mapAttrsToList
+                    (name: pkg: {
+                      drv = pkg;
+                      name = "${flakeName}#packages.${system}.${name}";
+                    })
+                    pkgs)
+                  (lib.filterAttrs (system: _: builtins.elem system systems) (flake.packages or {}))
+                );
+
+                # Get all devShells across specified systems
+                devShells = lib.flatten (
+                  lib.mapAttrsToList
+                  (system: shells:
+                    lib.mapAttrsToList
+                    (name: shell: {
+                      drv = shell;
+                      name = "${flakeName}#devShells.${system}.${name}";
+                    })
+                    shells)
+                  (lib.filterAttrs (system: _: builtins.elem system systems) (flake.devShells or {}))
+                );
+
+                devShell = (
+                  lib.map (system: {
+                    drv = flake.devShell.${system} or null;
+                    name = "${flakeName}#devShell.${system}";
+                  })
+                  systems
+                );
+
+                # Combine everything
+                targets = toplevels ++ packages ++ devShells ++ devShell;
+              in
+                targets
+            )
+          );
+        in {
+          pname = "hello";
+          version = "1.0.0";
+          phases = ["installPhase"];
+
+          installPhase =
+            [
+              ''
+                mkdir -p $out
+              ''
+            ]
+            ++ (
+              map
+              (target: ''
+                echo Copying '${target.drv}' to $out/'${target.name}'
+                ln -s '${target.drv}' $out/'${target.name}'
+              '')
+              targets
+            );
+        }
+      );
+
     devShells.${system}.default = pkgs-unstable.mkShell {
       buildInputs = with pkgs-unstable; [
         jq
@@ -286,5 +373,7 @@
         alejandra
       ];
     };
+
+    # Usage: nix develop .#devShell.x86_64-linux
   };
 }

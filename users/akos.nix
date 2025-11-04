@@ -148,6 +148,7 @@
       discord
       libreoffice
       logseq
+      anki
       freecad
       librecad
       wireshark

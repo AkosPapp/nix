@@ -20,7 +20,7 @@ in {
     {
       MODULES.networking.reverse-proxy.enable = true;
       MODULES.networking.reverse-proxy.options.patterns = {
-        "^https://${config.networking.fqdn}/vaultwarden" = "http://127.0.0.1:8222";
+        "^https://${config.networking.fqdn}/vaultwarden" = "http://127.0.0.1:${port}/vaultwarden";
       };
 
       services.vaultwarden = {

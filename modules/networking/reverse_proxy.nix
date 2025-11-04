@@ -66,7 +66,7 @@
       systemd.services = {
         "tailscale-serve" = {
           description = "Tailscale serve on port ${toString port}";
-          after = ["tailscaled.service"];
+          after = ["tailscaled.service" "network.target" "reverse-proxy.service"];
           wantedBy = ["multi-user.target"];
           serviceConfig = {
             ExecStart = "${pkgs.tailscale}/bin/tailscale serve ${toString port}";
@@ -80,7 +80,7 @@
           wantedBy = ["multi-user.target"];
           serviceConfig = {
             ExecStart = "${rs_reverse_proxy}/bin/rs_reverse_proxy ${configFile}";
-            User = "nobody";
+            User = "root";
             Restart = "always";
           };
         };
