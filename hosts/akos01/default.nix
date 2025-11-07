@@ -42,5 +42,8 @@
       enable = true;
       secretKeyFile = config.sops.secrets."nix-serve/akos01.tail546fb.ts.net/private_key".path;
     };
+    nix.settings = {
+      download-buffer-size = 524288000; # 500 MiB
+    };
   };
 }
