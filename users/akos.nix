@@ -123,7 +123,7 @@
       pkgs-unstable.vscode
       jetbrains.datagrip
       pkgs-unstable.gitkraken
-      rpi-imager
+      #rpi-imager
       picocom
       gparted
       perf-tools
