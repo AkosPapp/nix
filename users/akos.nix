@@ -41,8 +41,6 @@
     programs.zsh.enable = true;
     services.gnome.gnome-keyring.enable = true;
 
-    services.netbird.enable = true;
-
     MODULES = {
       fonts.nerdfonts.enable = true;
       games.steam.enable = true;
