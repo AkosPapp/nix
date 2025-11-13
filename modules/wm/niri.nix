@@ -37,6 +37,7 @@
       hyprlock
       waybar
       wl-clipboard
+      wl-mirror
       mako
       fuzzel
       xwayland-satellite

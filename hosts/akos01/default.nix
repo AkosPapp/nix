@@ -10,6 +10,7 @@
     MODULES.nix.builders.airlab = true;
     MODULES.security.vaultwarden.enable = true;
     MODULES.networking.tailscale.hostIP = "100.71.138.61";
+    MODULES.networking.searx.enable = true;
     PROFILES.qemu-vm.enable = true;
 
     networking = {
