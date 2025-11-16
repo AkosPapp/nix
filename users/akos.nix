@@ -82,6 +82,8 @@
       ncdu
       deploy-rs
       alejandra
+      nil
+      nixd
       sanoid
       rclone
       sops

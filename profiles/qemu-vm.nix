@@ -21,9 +21,8 @@
     MODULES.networking.tailscale.enable = true;
     MODULES.virtualisation.docker.enable = true;
     MODULES.networking.sshd.enable = true;
-    PROFILES.zroot.enable = true;
 
-    #boot.loader.grub.enable = true;
+    boot.loader.grub.enable = true;
     services.qemuGuest.enable = true;
 
     boot.initrd.availableKernelModules = [
