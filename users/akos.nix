@@ -42,7 +42,6 @@
     services.gnome.gnome-keyring.enable = true;
 
     MODULES = {
-      perkeep.enable = true;
       fonts.nerdfonts.enable = true;
       games.steam.enable = true;
       hardware.perifirals.keyboards.kanata.enable = true;
@@ -51,6 +50,7 @@
       system.bluetooth.enable = true;
       system.gpg.enable = true;
       system.pipewire.enable = true;
+      security.sops.enable = true;
       virtualisation.docker.enable = true;
       virtualisation.virt-manager.enable = true;
       virtualisation.virtualbox.enable = true;
