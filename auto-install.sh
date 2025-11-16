@@ -3,7 +3,7 @@
 set -eou pipefail
 
 CONFIGURATION="akos01"
-IP="100.71.138.61"
+IP="akos01"
 
 # sops
 ## generate ssh host key
