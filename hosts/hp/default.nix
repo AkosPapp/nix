@@ -12,8 +12,6 @@
   PROFILES.server.enable = true;
 
   networking = {
-    hostId = "68bf4e0e";
-    hostName = "hp";
     useDHCP = lib.mkForce true;
   };
 

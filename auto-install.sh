@@ -27,8 +27,11 @@ fi
 cd sops && sops updatekeys secrets.yaml || exit 1
 echo done updating sops keys
 
-# nixos-anywhere
-nix run github:nix-community/nixos-anywhere -- --flake ".#${CONFIGURATION}" --target-host root@${IP}
+# upload flake
+rsync -avzv --progress --exclude '.git' --exclude 'tmp' --exclude '.DS_Store' ./ root@${IP}:/tmp/nix/
+
+# disko install
+ssh root@${IP} "bash -c \"nix run github:nix-community/disko/latest -- --mode destroy,format,mount --flake /tmp/nix#${CONFIGURATION}\"" 
 
 # copy ssh host key
 rsync -avzv tmp/ssh_host_ed25519_key tmp/ssh_host_ed25519_key.pub root@${IP}:/mnt/etc/ssh/

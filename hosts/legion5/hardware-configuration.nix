@@ -60,8 +60,6 @@
 
     networking = {
       networkmanager.enable = true;
-      hostId = "68bf4e0e";
-      hostName = "legion5";
     };
     nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
     hardware.cpu.amd.updateMicrocode =

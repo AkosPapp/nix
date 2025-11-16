@@ -88,7 +88,7 @@
           remoteBuild = false;
         };
       })
-      self.nixosConfigurations;
+      (nixpkgs.lib.attrsets.filterAttrs (name: _: name != "iso") self.nixosConfigurations);
 
     checks = builtins.mapAttrs (system: deployLib: deployLib.deployChecks self.deploy) deploy-rs.lib;
   };

@@ -23,7 +23,7 @@
     MODULES.networking.sshd.enable = true;
     PROFILES.zroot.enable = true;
 
-    boot.loader.grub.enable = true;
+    #boot.loader.grub.enable = true;
     services.qemuGuest.enable = true;
 
     boot.initrd.availableKernelModules = [

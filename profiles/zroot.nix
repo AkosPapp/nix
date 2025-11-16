@@ -13,6 +13,7 @@
   };
 
   config = lib.mkIf config.PROFILES.zroot.enable {
+    networking.hostId = "68bf4e0e";
     boot = {
       supportedFilesystems = ["zfs"];
       zfs = {
