@@ -6,6 +6,10 @@
   config,
   ...
 }: {
+  imports = [
+    ./disko.nix
+  ];
+
   config = {
     MODULES.nix.builders.airlab = true;
     MODULES.security.vaultwarden.enable = true;

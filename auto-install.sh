@@ -2,8 +2,8 @@
 
 set -eou pipefail
 
-CONFIGURATION="hp"
-IP="192.168.1.183"
+CONFIGURATION="akos01"
+IP="100.71.138.61"
 
 # sops
 ## generate ssh host key

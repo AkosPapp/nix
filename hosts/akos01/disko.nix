@@ -1,9 +1,9 @@
 {
   disko.devices = {
     disk = {
-      samsung-980 = {
+      vdb = {
         type = "disk";
-        device = "/dev/disk/by-id/nvme-Samsung_SSD_980_1TB_S649NX0T114882D";
+        device = "/dev/vdb";
         content = {
           type = "gpt";
           partitions = {

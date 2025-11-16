@@ -21,6 +21,7 @@
     MODULES.networking.tailscale.enable = true;
     MODULES.virtualisation.docker.enable = true;
     MODULES.networking.sshd.enable = true;
+    PROFILES.zroot.enable = true;
 
     boot.loader.grub.enable = true;
     services.qemuGuest.enable = true;
@@ -39,31 +40,5 @@
       "sys-kernel-debug.mount"
       "sys-fs-fuse-connections.mount"
     ];
-
-    disko.devices = {
-      disk = {
-        main = {
-          device = "/dev/vda";
-          type = "disk";
-          content = {
-            type = "gpt";
-            partitions = {
-              boot = {
-                size = "1M";
-                type = "EF02"; # for grub MBR
-              };
-              root = {
-                size = "100%";
-                content = {
-                  type = "filesystem";
-                  format = "ext4";
-                  mountpoint = "/";
-                };
-              };
-            };
-          };
-        };
-      };
-    };
   };
 }
