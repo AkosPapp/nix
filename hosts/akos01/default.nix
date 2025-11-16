@@ -13,7 +13,6 @@
   MODULES.security.vaultwarden.enable = true;
   PROFILES.qemu-vm.enable = true;
   PROFILES.server.enable = true;
-  PROFILES.zroot.enable = lib.mkForce true;
 
   networking = {
     useDHCP = lib.mkForce true;

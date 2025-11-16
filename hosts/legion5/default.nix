@@ -65,11 +65,11 @@
       plan = "1h=>1min,1d=>1h,1w=>1d";
       enable = true;
       destinations = {
-        #hp = {
-        #  host = "root@hp";
-        #  dataset = "zroot/persist";
-        #  plan = "1h=>1min,1d=>1h,1w=>1d";
-        #};
+        hp = {
+          host = "root@hp";
+          dataset = "zroot/persist";
+          plan = "1h=>1min,1d=>1h,1w=>1d";
+        };
       };
     };
   };
