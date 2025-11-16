@@ -41,6 +41,7 @@
       kitty
       neovim
       gnumake
+      rsync
     ];
     networking = {
       extraHosts = ''

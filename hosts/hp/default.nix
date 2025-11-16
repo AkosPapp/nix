@@ -7,7 +7,7 @@
 }: {
   imports = [./hardware-configuration.nix];
 
-  MODULES.networking.tailscale.hostIP = "100.125.194.123";
+  MODULES.networking.tailscale.hostIP = "100.92.36.52";
   PROFILES.zroot.enable = true;
   PROFILES.server.enable = true;
 

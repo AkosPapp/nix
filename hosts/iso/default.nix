@@ -17,7 +17,7 @@
     serviceConfig = {
       Type = "oneshot";
       ExecStart = ''
-        sh -c 'echo "IP Address: $(hostname -I)" > /dev/tty1'
+        /bin/sh -c 'echo "IP Address: $(hostname -I)" > /dev/tty1'
       '';
     };
   };

@@ -3,7 +3,7 @@
     disk = {
       samsung-pm9a1 = {
         type = "disk";
-        device = "/dev/disk/by-id/nvme-SAMSUNG_MZVL21T0HCLR-00BL2_S64NNF0X101746";
+        device = "/dev/disk/by-id/nvme-Samsung_SSD_980_1TB_S649NX0T114882D";
         content = {
           type = "gpt";
           partitions = {

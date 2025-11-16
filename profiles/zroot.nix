@@ -40,7 +40,7 @@
             "com.sun:auto-snapshot" = "false";
           };
           mountpoint = null;
-          postCreateHook = "zfs snapshot zroot@blank";
+          postCreateHook = "zfs snapshot zroot@blank && zfs snapshot zroot/root@blank";
 
           datasets = {
             root = {
@@ -71,6 +71,7 @@
       sanoid
       lz4
       mbuffer
+      socat
     ];
   };
 }
