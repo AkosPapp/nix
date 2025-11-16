@@ -40,7 +40,7 @@
             "com.sun:auto-snapshot" = "false";
           };
           mountpoint = null;
-          postCreateHook = "zfs snapshot zroot@blank && zfs snapshot zroot/nix@blank && zfs snapshot zroot/nix@blank";
+          postCreateHook = "zfs snapshot zroot@blank";
 
           datasets = {
             root = {

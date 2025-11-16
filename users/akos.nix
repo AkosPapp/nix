@@ -42,6 +42,7 @@
     services.gnome.gnome-keyring.enable = true;
 
     MODULES = {
+      perkeep.enable = true;
       fonts.nerdfonts.enable = true;
       games.steam.enable = true;
       hardware.perifirals.keyboards.kanata.enable = true;

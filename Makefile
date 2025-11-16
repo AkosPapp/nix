@@ -36,7 +36,7 @@ build: stage
 
 iso: stage
 	@echo "--- Building ISO ---"
-	@nix build .#nixosConfigurations.iso.config.system.build.isoImage -impure && make commit
+	@nix build .#nixosConfigurations.iso.config.system.build.isoImage
 
 update:
 	@echo "--- Updating flake ---"
