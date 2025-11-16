@@ -67,7 +67,7 @@
       destinations = {
         hp = {
           host = "root@hp";
-          dataset = "zroot/persist";
+          dataset = "zroot/persist/legion5";
           plan = "1h=>1min,1d=>1h,1w=>1d";
         };
       };
