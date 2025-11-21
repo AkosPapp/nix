@@ -2,7 +2,7 @@
 
 set -eou pipefail
 
-CONFIGURATION="akos01"
+CONFIGURATION="akos01new"
 IP="akos01"
 
 # sops
@@ -30,14 +30,22 @@ echo done updating sops keys
 # upload flake
 rsync -avzv --delete --progress --exclude '.git' --exclude 'tmp' --exclude '.DS_Store' --exclude 'result' ./ root@${IP}:/tmp/nix/
 
-# disko install
+# disko 
 ssh root@${IP} "bash -c \"nix run github:nix-community/disko/latest -- --mode destroy,format,mount --flake /tmp/nix#${CONFIGURATION}\"" 
+
+ssh root@${IP} "bash -c \"nix run github:nix-community/disko/latest -- --mode mount --flake /tmp/nix#${CONFIGURATION}\"" 
+
+# copy ssh host key
+ssh root@${IP} "mkdir -p /mnt/etc/ssh/"
+rsync -avzv tmp/ssh_host_ed25519_key tmp/ssh_host_ed25519_key.pub root@${IP}:/mnt/etc/ssh/
 
 # nixos-install
 ssh root@${IP} "nixos-install --flake /tmp/nix#${CONFIGURATION} --no-root-passwd"
+ssh root@${IP} "nixos-install --flake /tmp/nix#${CONFIGURATION}"
 
-# copy ssh host key
-rsync -avzv tmp/ssh_host_ed25519_key tmp/ssh_host_ed25519_key.pub root@${IP}:/mnt/etc/ssh/
+
+exit 1
+
 
 # reboot host
 ssh root@${IP} 'systemctl reboot'

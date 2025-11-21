@@ -63,17 +63,8 @@
         };
       });
     in {
+      MODULES.networking.tailscale.serve.reverse_proxy.target = "http://127.0.0.1:${toString port}";
       systemd.services = {
-        "tailscale-serve" = {
-          description = "Tailscale serve on port ${toString port}";
-          after = ["tailscaled.service" "network.target" "reverse-proxy.service"];
-          wantedBy = ["multi-user.target"];
-          serviceConfig = {
-            ExecStart = "${pkgs.tailscale}/bin/tailscale serve ${toString port}";
-            User = "root";
-            Restart = "always";
-          };
-        };
         "reverse-proxy" = {
           description = "Rust Reverse Proxy Service";
           after = ["network.target"];

@@ -36,12 +36,12 @@
       zpool = {
         zroot = {
           type = "zpool";
+          mountpoint = null;
+          postCreateHook = "zfs snapshot zroot@blank && zfs snapshot zroot/root@blank";
           rootFsOptions = {
             compression = "off";
             "com.sun:auto-snapshot" = "false";
           };
-          mountpoint = null;
-          postCreateHook = "zfs snapshot zroot@blank && zfs snapshot zroot/root@blank";
 
           datasets = {
             root = {

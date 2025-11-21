@@ -38,11 +38,6 @@
       #owner = "nix-serve";
       #group = "nix-serve";
     };
-    MODULES.networking.tailscale.serve."nix-serve" = {
-      target = "5000";
-      httpsPort = 8443;
-      type = "funnel";
-    };
     services.nix-serve = {
       enable = true;
       secretKeyFile = config.sops.secrets."nix-serve/akos01.tail546fb.ts.net/private_key".path;
@@ -57,8 +52,8 @@
 
     disko.devices = {
       disk = {
-        main = {
-          device = "/dev/vda";
+        vdb = {
+          device = "/dev/vdb";
           type = "disk";
           content = {
             type = "gpt";

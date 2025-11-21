@@ -8,6 +8,11 @@
   imports = [./hardware-configuration.nix];
 
   MODULES.networking.tailscale.hostIP = "100.92.36.52";
+  services.tailscale = {
+    extraSetFlags = ["--advertise-exit-node=true"];
+    useRoutingFeatures = "both";
+  };
+
   PROFILES.zroot.enable = true;
   PROFILES.server.enable = true;
 
@@ -23,12 +28,12 @@
   nix = {
     settings = {
       substituters = [
-        "http://akos01.tail546fb.ts.net:5000"
+        "https://akos01.tail546fb.ts.net:8443"
         "https://nix-community.cachix.org"
         "https://cache.nixos.org/"
       ];
       trusted-substituters = [
-        "http://akos01.tail546fb.ts.net:5000"
+        "https://akos01.tail546fb.ts.net:8443"
         "https://nix-community.cachix.org"
         "https://cache.nixos.org/"
       ];

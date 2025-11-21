@@ -1,0 +1,84 @@
+{
+    "devShells": {
+        "aarch64-darwin": {
+            "default": {
+                "description": "",
+                "name": "nix-shell",
+                "type": "derivation"
+            }
+        },
+        "aarch64-linux": {
+            "default": {
+                "description": "",
+                "name": "nix-shell",
+                "type": "derivation"
+            }
+        },
+        "x86_64-darwin": {
+            "default": {
+                "description": "",
+                "name": "nix-shell",
+                "type": "derivation"
+            }
+        },
+        "x86_64-linux": {
+            "default": {
+                "description": "",
+                "name": "nix-shell",
+                "type": "derivation"
+            }
+        }
+    },
+    "formatter": {
+        "aarch64-darwin": {
+            "description": "Uncompromising Nix Code Formatter",
+            "name": "alejandra-4.0.0",
+            "type": "derivation"
+        },
+        "aarch64-linux": {
+            "description": "Uncompromising Nix Code Formatter",
+            "name": "alejandra-4.0.0",
+            "type": "derivation"
+        },
+        "x86_64-darwin": {
+            "description": "Uncompromising Nix Code Formatter",
+            "name": "alejandra-4.0.0",
+            "type": "derivation"
+        },
+        "x86_64-linux": {
+            "description": "Uncompromising Nix Code Formatter",
+            "name": "alejandra-4.0.0",
+            "type": "derivation"
+        }
+    },
+    "packages": {
+        "aarch64-darwin": {
+            "pdf": {
+                "description": "",
+                "name": "pdf-1.0.0",
+                "type": "derivation"
+            }
+        },
+        "aarch64-linux": {
+            "pdf": {
+                "description": "",
+                "name": "pdf-1.0.0",
+                "type": "derivation"
+            }
+        },
+        "x86_64-darwin": {
+            "pdf": {
+                "description": "",
+                "name": "pdf-1.0.0",
+                "type": "derivation"
+            }
+        },
+        "x86_64-linux": {
+            "pdf": {
+                "description": "",
+                "name": "pdf-1.0.0",
+                "type": "derivation"
+            }
+        }
+    }
+}
