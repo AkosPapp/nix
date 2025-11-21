@@ -13,6 +13,28 @@
     MODULES.networking.searx.enable = true;
     PROFILES.qemu-vm.enable = true;
 
+    MODULES.nix.autobuild = {
+      enable = true;
+      options = {
+        repos = [
+          {
+            url = "https://git.robo4you.at/akos.papp/DA.git";
+            name = "DA";
+            poll_interval_sec = 60;
+          }
+          {
+            url = "https://github.com/AkosPapp/nix.git";
+            name = "AkosPapp/nix";
+            poll_interval_sec = 60;
+          }
+        ];
+        dir = "/var/lib/nix_autobuild";
+        supported_architectures = [
+          "x86_64-linux"
+        ];
+      };
+    };
+
     networking = {
       useDHCP = true;
     };
