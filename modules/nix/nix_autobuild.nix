@@ -42,6 +42,12 @@
           description = "Directory to store build data.";
         };
 
+        thread_count = lib.mkOption {
+          type = lib.types.int;
+          default = 2;
+          description = "Number of threads to use for building.";
+        };
+
         supported_architectures = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           default = ["x86_64-linux"];
@@ -63,7 +69,7 @@
           owner = "AkosPapp";
           repo = "nix_autobuild";
           rev = "main";
-          hash = "sha256-g2VpU4Fw8lJWGu+m+nFzyCjOUGNEqAqUAiRdDUJWpEg=";
+          hash = "sha256-gB4UsvzJWyc6FhaVZrhI9s6Q2mG+uQZ+IlFY1tOY6sY=";
         };
 
         cargoHash = "sha256-VEhIBfWhLjb7K/ni6FyJX1fsw0hBYiyTXUKVWT3BTcM=";
@@ -81,6 +87,7 @@
           description = "A simple build tool for Nix projects.";
           after = ["network.target"];
           wantedBy = ["multi-user.target"];
+          path = [pkgs.nix pkgs.git];
           serviceConfig = {
             ExecStart = "${nix_autobuild}/bin/nix_autobuild ${configFile}";
             User = "root";
