@@ -133,7 +133,7 @@
       direnv
 
       # user tools
-      remmina
+      freerdp
       geogebra6
       networkmanagerapplet
       zotero
