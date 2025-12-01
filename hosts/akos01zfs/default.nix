@@ -7,57 +7,59 @@
   ...
 }: {
   config = {
-    MODULES.nix.builders.airlab = true;
-    MODULES.security.vaultwarden.enable = true;
-    MODULES.networking.tailscale.hostIP = "100.71.138.61";
-    MODULES.networking.searx.enable = true;
+    #MODULES.nix.builders.airlab = true;
+    #MODULES.security.vaultwarden.enable = true;
+    #MODULES.networking.tailscale.hostIP = "100.71.138.61";
+    #MODULES.networking.searx.enable = true;
     PROFILES.qemu-vm.enable = true;
 
     networking = {
       useDHCP = true;
     };
 
-    environment.systemPackages = with pkgs; [
-      vim
-      wget
-      curl
-      git
-      htop
-      tmux
-      dnsutils
-    ];
+    #environment.systemPackages = with pkgs; [
+    #  vim
+    #  wget
+    #  curl
+    #  git
+    #  htop
+    #  tmux
+    #  dnsutils
+    #];
 
-    services.tailscale = {
-      extraSetFlags = lib.mkForce ["--accept-dns=false" "--accept-routes=false" "--advertise-routes=10.50.0.0/23,10.44.0.0/24"];
-      useRoutingFeatures = "both";
-    };
+    #services.tailscale = {
+    #  extraSetFlags = lib.mkForce ["--accept-dns=false" "--accept-routes=false" "--advertise-routes=10.50.0.0/23,10.44.0.0/24"];
+    #  useRoutingFeatures = "both";
+    #};
 
-    MODULES.security.sops.enable = true;
-    sops.secrets."nix-serve/akos01.tail546fb.ts.net/private_key" = {
-      mode = "0400";
-      #owner = "nix-serve";
-      #group = "nix-serve";
-    };
-    services.nix-serve = {
-      enable = true;
-      secretKeyFile = config.sops.secrets."nix-serve/akos01.tail546fb.ts.net/private_key".path;
-    };
-    nix.settings = {
-      download-buffer-size = 524288000; # 500 MiB
-    };
+    #MODULES.security.sops.enable = true;
+    #sops.secrets."nix-serve/akos01.tail546fb.ts.net/private_key" = {
+    #  mode = "0400";
+    #  #owner = "nix-serve";
+    #  #group = "nix-serve";
+    #};
+    #services.nix-serve = {
+    #  enable = true;
+    #  secretKeyFile = config.sops.secrets."nix-serve/akos01.tail546fb.ts.net/private_key".path;
+    #};
+    #nix.settings = {
+    #  download-buffer-size = 524288000; # 500 MiB
+    #};
 
     networking.hostId = "68bf4e0e";
-    #boot.loader.grub.devices = ["/dev/vdb"];
     boot.loader.grub.enable = true;
-    #boot.loader.grub.version = 2;
     boot.supportedFilesystems = ["zfs"];
-    fileSystems."/".device = "zroot/root";
-    fileSystems."/".fsType = "zfs";
-    fileSystems."/boot".device = "/dev/disk/by-partlabel/disk-VDB-boot-ext4";
-    fileSystems."/boot".fsType = "ext4";
+    boot.zfs.forceImportRoot = true;
+    boot.loader.grub.zfsSupport = true;
+    #fileSystems."/".device = "zroot/root";
+    #fileSystems."/".fsType = "zfs";
+    #fileSystems."/nix".device = "zroot/nix";
+    #fileSystems."/nix".fsType = "zfs";
+    #fileSystems."/boot".device = "/dev/disk/by-partlabel/disk-VDA-boot-ext4";
+    #fileSystems."/boot".fsType = "ext4";
 
     disko.devices.disk = {
-      VDB = {
+      VDA = {
         device = "/dev/vda";
         type = "disk";
         content = {
@@ -77,12 +79,10 @@
               };
             };
             ZFS = {
-              size = "100%"; # adjust size as needed
-              type = "BF01"; # Solaris EFI or generic Solaris partition type (sometimes used for ZFS)
+              size = "100%";
               content = {
                 type = "zfs";
                 pool = "zroot";
-                #ashift = 12;
               };
             };
           };
@@ -94,7 +94,6 @@
       zroot = {
         type = "zpool";
         mountpoint = null;
-        postCreateHook = "zfs snapshot zroot@blank && zfs snapshot zroot/root@blank";
         rootFsOptions = {
           compression = "off";
           "com.sun:auto-snapshot" = "false";
