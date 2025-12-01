@@ -50,13 +50,20 @@
     boot.loader.grub.enable = true;
     boot.supportedFilesystems = ["zfs"];
     boot.zfs.forceImportRoot = true;
+    boot.zfs.devNodes = "/dev";
     boot.loader.grub.zfsSupport = true;
-    #fileSystems."/".device = "zroot/root";
-    #fileSystems."/".fsType = "zfs";
-    #fileSystems."/nix".device = "zroot/nix";
-    #fileSystems."/nix".fsType = "zfs";
-    #fileSystems."/boot".device = "/dev/disk/by-partlabel/disk-VDA-boot-ext4";
-    #fileSystems."/boot".fsType = "ext4";
+
+    # Explicit mount order - root must mount first
+    fileSystems."/" = {
+      device = "zroot/root";
+      fsType = "zfs";
+      neededForBoot = true;
+    };
+    fileSystems."/nix" = {
+      device = "zroot/nix";
+      fsType = "zfs";
+      neededForBoot = true;
+    };
 
     disko.devices.disk = {
       VDA = {
@@ -103,10 +110,12 @@
           root = {
             type = "zfs_fs";
             mountpoint = "/";
+            options.canmount = "noauto";
           };
           nix = {
             type = "zfs_fs";
             mountpoint = "/nix";
+            options.canmount = "noauto";
           };
         };
       };
