@@ -13,7 +13,7 @@
   USERS.akos.enable = true;
   MODULES.networking.tailscale.hostIP = "100.125.194.29";
   PROFILES.zroot.enable = true;
-  services.xserver.displayManager.gdm.enable = true;
+  services.displayManager.gdm.enable = true;
 
   environment.systemPackages = with pkgs; [
     lenovo-legion
@@ -35,15 +35,14 @@
     enable = true;
     enable32Bit = true;
     extraPackages = with pkgs; [
-      vaapiVdpau
-      libvdpau-va-gl
+      libva-vdpau-driver
       libvdpau-va-gl
     ];
   };
 
-  services.logind = {
-    powerKey = "suspend";
-    lidSwitch = "suspend";
+  services.logind.settings.Login = {
+    HandleLidSwitch = "suspend";
+    HandlePowerKey = "suspend";
   };
 
   hardware.nvidia-container-toolkit.enable = true;

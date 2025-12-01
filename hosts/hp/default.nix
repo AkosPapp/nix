@@ -20,9 +20,9 @@
     useDHCP = lib.mkForce true;
   };
 
-  services.logind = {
-    powerKey = "ignore";
-    lidSwitch = "ignore";
+  services.logind.settings.Login = {
+    HandleLidSwitch = "ignore";
+    HandlePowerKey = "ignore";
   };
 
   nix = {

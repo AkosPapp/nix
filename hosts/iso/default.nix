@@ -6,7 +6,6 @@
   imports = ["${modulesPath}/installer/cd-dvd/installation-cd-minimal.nix"];
   MODULES.networking.sshd.enable = true;
   MODULES.networking.tailscale.enable = lib.mkForce false;
-  networking.useDHCP = true;
 
   systemd.services.show-ip = {
     description = "Display IP address on console";

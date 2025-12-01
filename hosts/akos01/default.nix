@@ -9,7 +9,7 @@
   config = {
     MODULES.nix.builders.airlab = true;
     MODULES.security.vaultwarden.enable = true;
-    MODULES.networking.tailscale.hostIP = "100.71.138.61";
+    MODULES.networking.tailscale.hostIP = "100.83.255.5";
     MODULES.networking.searx.enable = true;
     PROFILES.qemu-vm.enable = true;
 
@@ -73,31 +73,112 @@
       download-buffer-size = 524288000; # 500 MiB
     };
 
-    boot.supportedFilesystems = ["zfs"];
-    boot.zfs.forceImportRoot = false;
     networking.hostId = "68bf4e0e";
+    boot.loader.grub.enable = true;
+    boot.supportedFilesystems = ["zfs"];
+    boot.zfs.forceImportRoot = true;
+    boot.zfs.devNodes = "/dev";
+    boot.loader.grub.zfsSupport = true;
 
-    disko.devices = {
-      disk = {
-        main = {
-          device = "/dev/vda";
-          type = "disk";
-          content = {
-            type = "gpt";
-            partitions = {
-              boot = {
-                size = "1M";
-                type = "EF02"; # for grub MBR
-              };
-              root = {
-                size = "100%";
-                content = {
-                  type = "filesystem";
-                  format = "ext4";
-                  mountpoint = "/";
-                };
+    fileSystems."/" = {
+      device = "zroot/root";
+      fsType = "zfs";
+      neededForBoot = true;
+    };
+    fileSystems."/nix" = {
+      device = "zroot/nix";
+      fsType = "zfs";
+      neededForBoot = true;
+    };
+
+    swapDevices = [
+      {device = "/dev/disk/by-label/NIXOS_SWAP_VDA";}
+      {device = "/dev/disk/by-label/NIXOS_SWAP_VDB";}
+    ];
+
+    disko.devices.disk = {
+      VDA = {
+        device = "/dev/vda";
+        type = "disk";
+        content = {
+          type = "gpt";
+          partitions = {
+            boot = {
+              size = "1M";
+              type = "EF02";
+            };
+            boot-ext4 = {
+              size = "1G";
+              content = {
+                type = "filesystem";
+                format = "ext4";
+                mountpoint = "/boot";
+                mountOptions = ["defaults"];
               };
             };
+            zfs = {
+              end = "-16G"; # leave 16G for swap at the end of the disk
+              content = {
+                type = "zfs";
+                pool = "zroot";
+              };
+            };
+            swap = {
+              size = "100%";
+              content = {
+                type = "swap";
+                resumeDevice = false; # resume from hibernation from this device
+                extraArgs = ["-L" "NIXOS_SWAP_VDA"]; # unique label for the swap partition on vda
+              };
+            };
+          };
+        };
+      };
+      VDB = {
+        device = "/dev/vdb";
+        type = "disk";
+        content = {
+          type = "gpt";
+          partitions = {
+            zfs = {
+              end = "-16G"; # leave 16G for swap at the end of the disk
+              content = {
+                type = "zfs";
+                pool = "zroot";
+              };
+            };
+            swap = {
+              size = "100%";
+              content = {
+                type = "swap";
+                resumeDevice = false; # resume from hibernation from this device
+                extraArgs = ["-L" "NIXOS_SWAP_VDB"]; # unique label for the swap partition on vdb
+              };
+            };
+          };
+        };
+      };
+    };
+
+    disko.devices.zpool = {
+      zroot = {
+        type = "zpool";
+        mountpoint = null;
+        rootFsOptions = {
+          compression = "off";
+          "com.sun:auto-snapshot" = "false";
+        };
+
+        datasets = {
+          root = {
+            type = "zfs_fs";
+            mountpoint = "/";
+            options.canmount = "noauto";
+          };
+          nix = {
+            type = "zfs_fs";
+            mountpoint = "/nix";
+            options.canmount = "noauto";
           };
         };
       };

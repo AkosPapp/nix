@@ -66,7 +66,7 @@
     };
 
     environment.systemPackages = with pkgs; [
-      my-nixvim.packages.${system}.default
+      my-nixvim.packages.${pkgs.system}.default
       # helpful tools
       starship
       ripgrep
@@ -138,7 +138,7 @@
       networkmanagerapplet
       zotero
       dracula-theme
-      bitwarden
+      bitwarden-desktop
       inkscape
       gimp
       syncthing
@@ -162,7 +162,7 @@
     ];
 
     # perf
-    boot.extraModulePackages = [config.boot.kernelPackages.perf];
+    boot.extraModulePackages = [pkgs.perf];
 
     # qemu
     boot.binfmt.emulatedSystems = ["aarch64-linux"];
