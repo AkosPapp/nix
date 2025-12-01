@@ -5,7 +5,7 @@ set -eou pipefail
 CONFIGURATION="akos01zfs"
 
 # disko 
-nix --experimental-features "nix-command flakes"run github:nix-community/disko/latest -- --mode destroy,format,mount --flake .#${CONFIGURATION}\" 
+nix --experimental-features "nix-command flakes"run github:nix-community/disko/latest -- --mode destroy,format,mount --flake .#${CONFIGURATION} 
 
 
 
