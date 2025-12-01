@@ -146,20 +146,7 @@
           compression = "off";
           "com.sun:auto-snapshot" = "false";
         };
-        # Define a mirror vdev using the ZFS partitions of both VDA and VDB
-        mode = {
-          topology = {
-            type = "topology";
-            vdev = [
-              {
-                members = ["VDA" "VDB"];
-                # It's also possible to use the full path of the device or partition
-                # members = [ "/dev/disk/by-id/wwn-0x5000c500af8b2a14" ];
-                mode = "mirror";
-              }
-            ];
-          };
-        };
+
         datasets = {
           root = {
             type = "zfs_fs";
