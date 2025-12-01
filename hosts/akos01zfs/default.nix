@@ -7,6 +7,9 @@
   ...
 }: {
   config = {
+
+    users.users.root.hashedPassword = "$y$j9T$gEhP/0Jlrlwb4ndmLs06L1$7qkdPdgqjCrEH8bAQvJqRn/Mj4m5X9GCRAyM33z0mdA";
+
     #MODULES.nix.builders.airlab = true;
     #MODULES.security.vaultwarden.enable = true;
     #MODULES.networking.tailscale.hostIP = "100.71.138.61";
@@ -65,6 +68,12 @@
       neededForBoot = true;
     };
 
+    # Add both swap partitions
+    swapDevices = [
+      {device = "/dev/disk/by-label/NIXOS_SWAP_VDA";}
+      {device = "/dev/disk/by-label/NIXOS_SWAP_VDB";}
+    ];
+
     disko.devices.disk = {
       VDA = {
         device = "/dev/vda";
@@ -85,11 +94,43 @@
                 mountOptions = ["defaults"];
               };
             };
-            ZFS = {
-              size = "100%";
+            zfs = {
+              end = "-16G"; # leave 16G for swap at the end of the disk
               content = {
                 type = "zfs";
                 pool = "zroot";
+              };
+            };
+            swap = {
+              size = "100%";
+              content = {
+                type = "swap";
+                resumeDevice = false; # resume from hibernation from this device
+                extraArgs = ["-L" "NIXOS_SWAP_VDA"]; # unique label for the swap partition on vda
+              };
+            };
+          };
+        };
+      };
+      VDB = {
+        device = "/dev/vdb";
+        type = "disk";
+        content = {
+          type = "gpt";
+          partitions = {
+            zfs = {
+              end = "-16G"; # leave 16G for swap at the end of the disk
+              content = {
+                type = "zfs";
+                pool = "zroot";
+              };
+            };
+            swap = {
+              size = "100%";
+              content = {
+                type = "swap";
+                resumeDevice = false; # resume from hibernation from this device
+                extraArgs = ["-L" "NIXOS_SWAP_VDB"]; # unique label for the swap partition on vdb
               };
             };
           };
@@ -105,7 +146,20 @@
           compression = "off";
           "com.sun:auto-snapshot" = "false";
         };
-
+        # Define a mirror vdev using the ZFS partitions of both VDA and VDB
+        mode = {
+          topology = {
+            type = "topology";
+            vdev = [
+              {
+                members = ["VDA" "VDB"];
+                # It's also possible to use the full path of the device or partition
+                # members = [ "/dev/disk/by-id/wwn-0x5000c500af8b2a14" ];
+                mode = "mirror";
+              }
+            ];
+          };
+        };
         datasets = {
           root = {
             type = "zfs_fs";
