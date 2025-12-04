@@ -24,6 +24,7 @@
       networking.tailscale.enable = true;
       system.locale.enable = true;
       nix.gc.enable = true;
+      nix.substituters.cachix.enable = true;
     };
 
     networking.hostName = configName;
