@@ -113,6 +113,8 @@
       unzip
       killall
       fuse
+      grim
+      slurp
 
       python314
 
