@@ -115,6 +115,7 @@
       fuse
       grim
       slurp
+      tesseract
 
       python314
 
