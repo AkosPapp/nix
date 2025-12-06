@@ -74,7 +74,6 @@
     };
 
     virtualisation.docker.daemon.settings = {
-      features.cdi = lib.mkForce false;
       default-runtime = "nvidia";
       runtimes = {
         nvidia = {
