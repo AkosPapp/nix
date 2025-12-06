@@ -71,5 +71,15 @@
       # https://github.com/NVIDIA/libnvidia-container/issues/176
       "net.core.bpf_jit_harden" = 1;
     };
+
+    virtualisation.docker.daemon.settings = {
+      "default-runtime" = "nvidia";
+      "runtimes" = {
+        "nvidia" = {
+          "path" = "${pkgs.nvidia-container-toolkit.tools}/bin/nvidia-container-runtime";
+          "runtimeArgs" = [];
+        };
+      };
+    };
   };
 }
