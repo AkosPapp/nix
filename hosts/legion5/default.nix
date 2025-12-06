@@ -20,9 +20,6 @@
     lenovo-legion
     lm_sensors
     psutils
-    nvidia-container-toolkit
-    libnvidia-container
-    nvidia-docker
     runc
     cudatoolkit
   ];
@@ -45,9 +42,6 @@
     HandleLidSwitch = "suspend";
     HandlePowerKey = "suspend";
   };
-
-  hardware.nvidia-container-toolkit.enable = true;
-  virtualisation.docker.daemon.settings.features.cdi = true;
 
   services.znapzend = {
     enable = true;

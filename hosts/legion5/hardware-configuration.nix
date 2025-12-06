@@ -25,9 +25,6 @@
         "nvidia.NVreg_PreserveVideoMemoryAllocations=1"
         "nvidia.NVreg_TemporaryFilePath=/var/tmp"
       ];
-      extraModulePackages = [
-        config.boot.kernelPackages.nvidia_x11
-      ];
     };
 
     PROFILES.zroot.enable = true;

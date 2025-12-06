@@ -50,7 +50,7 @@
     ];
 
     services.tailscale = {
-      extraSetFlags = lib.mkForce ["--accept-dns=false" "--accept-routes=false" "--advertise-routes=10.50.0.0/23,10.44.0.0/24"];
+      extraSetFlags = lib.mkForce ["--accept-dns=false" "--accept-routes=false" "--advertise-routes=10.50.0.0/23,10.44.0.0/24,172.18.0.252/32"];
       useRoutingFeatures = "both";
     };
 
