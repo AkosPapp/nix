@@ -16,7 +16,13 @@
     boot.initrd.kernelModules = ["nvidia"];
     boot.extraModulePackages = [config.hardware.nvidia.package];
 
-    environment.systemPackages = (with pkgs; [nvitop nvidia-container-toolkit]) ++ [config.hardware.nvidia.package];
+    environment.systemPackages =
+      (with pkgs; [
+        nvitop
+        nvidia-container-toolkit
+        nvidia-container-toolkit.tools
+      ])
+      ++ [config.hardware.nvidia.package];
 
     hardware.nvidia = {
       modesetting.enable = true;
