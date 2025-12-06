@@ -63,7 +63,7 @@
     '';
 
     hardware = {
-      nvidia-container-toolkit.enable = false;
+      nvidia-container-toolkit.enable = true;
     };
 
     systemd.services.k3s.path = with pkgs; [libnvidia-container];
@@ -74,7 +74,7 @@
     };
 
     virtualisation.docker.daemon.settings = {
-      features.cdi = false;
+      features.cdi = lib.mkForce false;
       default-runtime = "nvidia";
       runtimes = {
         nvidia = {
