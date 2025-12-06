@@ -63,7 +63,7 @@
     '';
 
     hardware = {
-      nvidia-container-toolkit.enable = true;
+      nvidia-container-toolkit.enable = false;
     };
 
     systemd.services.k3s.path = with pkgs; [libnvidia-container];
@@ -74,11 +74,12 @@
     };
 
     virtualisation.docker.daemon.settings = {
-      "default-runtime" = "nvidia";
-      "runtimes" = {
-        "nvidia" = {
-          "path" = "${pkgs.nvidia-container-toolkit.tools}/bin/nvidia-container-runtime";
-          "runtimeArgs" = [];
+      features.cdi = false;
+      default-runtime = "nvidia";
+      runtimes = {
+        nvidia = {
+          path = "${pkgs.nvidia-container-toolkit.tools}/bin/nvidia-container-runtime";
+          runtimeArgs = [];
         };
       };
     };
@@ -86,17 +87,11 @@
     virtualisation.containerd.enable = true;
     virtualisation.containerd.settings = {
       plugins = {
-        "io.containerd.grpc.v1.cri" = {
-          containerd = {
-            runtimes = {
-              nvidia = {
-                runtime_type = "io.containerd.runc.v2";
-                options = {
-                  BinaryName = "${pkgs.nvidia-container-toolkit.tools}/bin/nvidia-container-runtime";
-                  SystemdCgroup = true;
-                };
-              };
-            };
+        plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia = {
+          runtime_type = "io.containerd.runc.v2";
+          options = {
+            BinaryName = "${pkgs.nvidia-container-toolkit.tools}/bin/nvidia-container-runtime";
+            SystemdCgroup = true;
           };
         };
       };
