@@ -21,6 +21,7 @@
         nvitop
         nvidia-container-toolkit
         nvidia-container-toolkit.tools
+        libnvidia-container
       ])
       ++ [config.hardware.nvidia.package];
 
