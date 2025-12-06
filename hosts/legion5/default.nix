@@ -10,6 +10,7 @@
   MODULES.system.printing.enable = true;
   MODULES.nix.builders.build-host = false;
   MODULES.nix.builders.airlab = false;
+  MODULES.hardware.nvidia.enable = true;
   USERS.akos.enable = true;
   MODULES.networking.tailscale.hostIP = "100.125.194.29";
   PROFILES.zroot.enable = true;
