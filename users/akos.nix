@@ -136,32 +136,41 @@
       direnv
 
       # user tools
-      freerdp
       geogebra6
-      networkmanagerapplet
       zotero
       dracula-theme
       bitwarden-desktop
-      inkscape
-      gimp
       syncthing
+      discord
+      obs-studio
+      signal-desktop
+      logseq
+      anki
+      libreoffice
+      youtube-music
+      freerdp
       sxiv
+      kitty
+      nautilus
+
+      # cad tools
+      freecad
+      librecad
+
+      # browsers
       brave
       chromium
       firefox
-      kitty
-      signal-desktop
-      discord
-      libreoffice
-      logseq
-      anki
-      freecad
-      librecad
+
+      # network tools
       wireshark
       burpsuite
-      obs-studio
-      youtube-music
-      nautilus
+      networkmanagerapplet
+
+      # graphics tools
+      inkscape
+      gimp
+      krita
     ];
 
     # perf
