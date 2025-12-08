@@ -127,6 +127,7 @@
       # dev tools
       pkgs-unstable.foxglove-studio
       pkgs-unstable.vscode
+      pkgs-unstable.copilot-cli
       jetbrains.datagrip
       pkgs-unstable.gitkraken
       #rpi-imager
