@@ -39,8 +39,8 @@
   };
 
   services.logind.settings.Login = {
-    HandleLidSwitch = "suspend";
-    HandlePowerKey = "suspend";
+    HandleLidSwitch = "sleep";
+    HandlePowerKey = "sleep";
   };
 
   services.znapzend = {
