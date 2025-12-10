@@ -181,6 +181,7 @@
     boot.binfmt.emulatedSystems = ["aarch64-linux"];
 
     services.netbird.enable = true;
+    services.netbird.clients.default.autoStart = false;
     networking.extraHosts = ''
       10.44.0.3 proxmox.robo4you.at
     '';
