@@ -27,6 +27,7 @@
     environment.systemPackages = with pkgs; [
       hplipWithPlugin
       xsane
+      simple-scan
       dbus
       cups-pk-helper
       avahi
