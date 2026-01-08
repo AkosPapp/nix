@@ -30,7 +30,7 @@
       powerManagement.enable = false;
       open = false;
       nvidiaSettings = false;
-      nvidiaPersistenced = true;
+      nvidiaPersistenced = false;
     };
 
     hardware.graphics = {
@@ -45,7 +45,7 @@
       allowUnfreePredicate = pkg:
         builtins.elem (lib.getName pkg) [
           "nvidia-x11"
-          "nvidia-persistenced"
+          #"nvidia-persistenced"
         ];
     };
 
