@@ -17,5 +17,17 @@
       enable = true;
     };
     environment.systemPackages = with pkgs; [docker-compose];
+
+    virtualisation.docker = {
+      daemon.settings = {
+        bip = "172.1.1.1/16";
+        default-address-pools = [
+          {
+            base = "172.1.0.0/16";
+            size = 16;
+          }
+        ];
+      };
+    };
   };
 }
