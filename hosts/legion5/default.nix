@@ -9,6 +9,7 @@
 
   time.timeZone = lib.mkForce "Asia/Dubai";
 
+  MODULES.nix.substituters.akos01.enable = false;
   MODULES.system.printing.enable = true;
   MODULES.nix.builders.build-host = false;
   MODULES.nix.builders.airlab = false;
@@ -61,11 +62,11 @@
       plan = "1h=>1min,1d=>1h,1w=>1d";
       enable = true;
       destinations = {
-        hp = {
-          host = "root@hp";
-          dataset = "zroot/persist/legion5";
-          plan = "1h=>1min,1d=>1h,1w=>1d";
-        };
+        #hp = {
+        #  host = "root@hp";
+        #  dataset = "zroot/persist/legion5";
+        #  plan = "1h=>1min,1d=>1h,1w=>1d";
+        #};
       };
     };
   };
@@ -80,6 +81,4 @@
   #    lib.mkForce "${pkgs.znapzend}/bin/znapzend ${args}";
 
   services.power-profiles-daemon.enable = true;
-
-  MODULES.nix.substituters.akos01.enable = true;
 }
