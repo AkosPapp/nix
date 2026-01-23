@@ -7,8 +7,6 @@
 }: {
   imports = [./hardware-configuration.nix];
 
-  time.timeZone = lib.mkForce "Asia/Dubai";
-
   MODULES.nix.substituters.akos01.enable = false;
   MODULES.system.printing.enable = true;
   MODULES.nix.builders.build-host = false;
