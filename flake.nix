@@ -19,6 +19,10 @@
       url = "github:sodiboo/niri-flake";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    nix_autobuild = {
+      url = "github:AkosPapp/nix_autobuild";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
@@ -28,6 +32,7 @@
     disko,
     sops-nix,
     deploy-rs,
+    nix_autobuild,
     ...
   } @ inputs: let
     nixos-version = builtins.elemAt (builtins.match "([0-9][0-9]\.[0-9][0-9]).*" inputs.nixpkgs.lib.version) 0;
@@ -73,6 +78,7 @@
             ./hosts/${host}
             sops-nix.nixosModules.sops
             disko.nixosModules.disko
+            nix_autobuild.nixosModules.nix_autobuild
           ]
           ++ module_files;
       }))

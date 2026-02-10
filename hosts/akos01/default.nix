@@ -13,27 +13,60 @@
     MODULES.networking.searx.enable = true;
     PROFILES.qemu-vm.enable = true;
 
-    MODULES.nix.autobuild = {
+    services.nix_autobuild = {
       enable = true;
-      options = {
+      settings = {
         repos = [
           {
-            url = "https://git.robo4you.at/akos.papp/DA.git";
-            name = "DA";
-            poll_interval_sec = 60;
+            url = "github.com/PPAPSONKA/nix";
+            poll_interval_sec = 30;
+            branches = ["main"];
+            build_depth = 5;
           }
           {
-            url = "https://github.com/AkosPapp/nix.git";
-            name = "AkosPapp/nix";
-            poll_interval_sec = 60;
+            url = "github.com/PPAPSONKA/nixvim";
+            poll_interval_sec = 30;
+            branches = ["main"];
+            build_depth = 5;
           }
+          {
+            url = "github.com/AkosPapp/nix_autobuild";
+            poll_interval_sec = 30;
+            branches = ["main"];
+            build_depth = 5;
+          }
+          {
+            url = "github.com/AkosPapp/rs_reverse_proxy";
+            poll_interval_sec = 30;
+            branches = ["main"];
+            build_depth = 5;
+          }
+          {
+            url = "git.robo4you.at/akos.papp/DA";
+            poll_interval_sec = 30;
+            branches = ["main"];
+            build_depth = 5;
+          }
+          # {
+          #   url = "git.robo4you.at/flyby/blender-sdg";
+          #   poll_interval_sec = 30;
+          #   branches = ["main"];
+          #   build_depth = 5;
+          # }
         ];
-        dir = "/var/lib/nix_autobuild";
-        supported_architectures = [
-          "x86_64-linux"
-        ];
+        dir = "/tmp/nix_autobuild";
+        supported_architectures = ["x86_64-linux" "aarch64-linux"];
+        host = "127.0.0.1";
+        port = 8085;
       };
     };
+    MODULES.networking.reverse-proxy.enable = true;
+    MODULES.networking.reverse-proxy.options.patterns = {
+      "^https://${config.networking.fqdn}/nix" = "http://127.0.0.1:8085";
+    };
+
+    # Traefik reverse proxy configuration
+    MODULES.networking.traefik.enable = true;
 
     networking = {
       useDHCP = true;
