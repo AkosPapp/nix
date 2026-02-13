@@ -31,7 +31,7 @@
 
     nix.settings.experimental-features = ["nix-command" "flakes"];
     nixpkgs.config.allowUnfree = true;
-    nixpkgs.hostPlatform = system;
+    nixpkgs.hostPlatform.system = system;
     system.stateVersion = nixos-version;
 
     users.mutableUsers = false;

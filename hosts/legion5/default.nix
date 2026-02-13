@@ -7,7 +7,7 @@
 }: {
   imports = [./hardware-configuration.nix];
 
-  MODULES.nix.substituters.akos01.enable = false;
+  MODULES.nix.substituters.akos01.enable = true;
   MODULES.system.printing.enable = true;
   MODULES.nix.builders.build-host = false;
   MODULES.nix.builders.airlab = false;
