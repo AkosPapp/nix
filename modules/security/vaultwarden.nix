@@ -18,18 +18,16 @@ in {
   config =
     lib.mkIf config.MODULES.security.vaultwarden.enable
     {
-      MODULES.networking.reverse-proxy.enable = true;
-      MODULES.networking.reverse-proxy.options.patterns = {
-        "^https://${config.networking.fqdn}/vaultwarden" = "http://127.0.0.1:${port}/vaultwarden";
+      MODULES.networking.traefik.path_routes = {
+        "/vaultwarden" = "http://127.0.0.1:8222";
       };
-
       services.vaultwarden = {
         enable = true;
         webVaultPackage = pkgs-unstable.vaultwarden.webvault;
         package = pkgs-unstable.vaultwarden;
 
         config = {
-          DOMAIN = "https://${config.networking.fqdn}/vaultwarden";
+          DOMAIN = "https://${config.networking.fqdn}";
           ROCKET_ADDRESS = "127.0.0.1";
           ROCKET_PORT = port;
           ROCKET_WORKERS = 4;

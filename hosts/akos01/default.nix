@@ -12,6 +12,7 @@
     MODULES.networking.tailscale.hostIP = "100.83.255.5";
     MODULES.networking.searx.enable = true;
     PROFILES.qemu-vm.enable = true;
+    networking.fqdn = lib.mkForce "akos01.airlab";
 
     services.nix_autobuild = {
       enable = true;
@@ -36,12 +37,6 @@
             build_depth = 5;
           }
           {
-            url = "github.com/AkosPapp/rs_reverse_proxy";
-            poll_interval_sec = 30;
-            branches = ["main"];
-            build_depth = 5;
-          }
-          {
             url = "git.robo4you.at/akos.papp/DA";
             poll_interval_sec = 30;
             branches = ["main"];
@@ -54,19 +49,19 @@
           #   build_depth = 5;
           # }
         ];
+        n_build_threads = 6;
         dir = "/tmp/nix_autobuild";
         supported_architectures = ["x86_64-linux" "aarch64-linux"];
         host = "127.0.0.1";
         port = 8085;
       };
     };
-    MODULES.networking.reverse-proxy.enable = true;
-    MODULES.networking.reverse-proxy.options.patterns = {
-      "^https://${config.networking.fqdn}/nix" = "http://127.0.0.1:8085";
-    };
 
     # Traefik reverse proxy configuration
     MODULES.networking.traefik.enable = true;
+    MODULES.networking.traefik.path_routes = {
+      "/nix" = "http://127.0.0.1:8085";
+    };
 
     networking = {
       useDHCP = true;
@@ -83,26 +78,23 @@
     ];
 
     services.tailscale = {
-      extraSetFlags = lib.mkForce ["--accept-dns=false" "--accept-routes=false" "--advertise-routes=10.50.0.0/23,10.44.0.0/24,172.18.0.252/32"];
+      extraSetFlags = lib.mkForce ["--accept-dns=false" "--accept-routes=false" "--advertise-routes=10.50.0.0/23,10.44.0.0/24,172.18.0.252/32,172.18.2.112/32"];
       useRoutingFeatures = "both";
     };
 
     MODULES.security.sops.enable = true;
-    sops.secrets."nix-serve/akos01.tail546fb.ts.net/private_key" = {
+    sops.secrets."nix-serve/akos01.airlab/private_key" = {
       mode = "0400";
       #owner = "nix-serve";
       #group = "nix-serve";
     };
-    MODULES.networking.tailscale.serve."nix-serve" = {
-      target = "5000";
-      httpsPort = 8443;
-      type = "funnel";
-    };
     services.nix-serve = {
       enable = true;
-      secretKeyFile = config.sops.secrets."nix-serve/akos01.tail546fb.ts.net/private_key".path;
-      #package = pkgs.nix-serve-ng;
+      secretKeyFile = config.sops.secrets."nix-serve/akos01.airlab/private_key".path;
+      package = pkgs.nix-serve-ng;
     };
+    networking.firewall.allowedTCPPorts = [5000];
+
     nix.settings = {
       download-buffer-size = 524288000; # 500 MiB
     };

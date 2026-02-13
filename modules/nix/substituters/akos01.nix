@@ -7,7 +7,7 @@
     MODULES.nix.substituters.akos01.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
-      description = "Enable Nerd Fonts";
+      description = "Enable akos01.airlab substituter";
     };
   };
 
@@ -15,13 +15,13 @@
     nix = {
       settings = {
         substituters = [
-          "http://akos01.tail546fb.ts.net:5000?priority=50"
+          "http://akos01.airlab:5000"
         ];
         trusted-substituters = [
-          "http://akos01.tail546fb.ts.net:5000?priority=50"
+          "http://akos01.airlab:5000"
         ];
         trusted-public-keys = [
-          "akos01.tail546fb.ts.net:sLx+ag0KitVYyMj8GVwO99o58QXWZRRXbDp6YSecrmc="
+          "akos01.airlab:xT0wS6R0UZTtPqVNVb9boPkSfxAf47uS8zEEnzFgfkk="
         ];
       };
     };
