@@ -27,12 +27,18 @@ in {
       default = {};
       description = "Mapping of URL patterns to backend URLs.";
     };
+
+    defaultPage = mkOption {
+      type = types.nullOr types.str;
+      default = "/homepage";
+      description = "Default page to redirect to when accessing root path. Set to null to disable redirect.";
+    };
   };
 
   config = mkIf cfg.enable {
     MODULES.networking.tailscale.serve.traefik.target = "http://127.0.0.1:80";
     MODULES.networking.traefik.path_routes = {
-      "/traefik" = "http://127.0.0.1:${toString cfg.dashboardPort}/dashboard/";
+      "/traefik" = "http://127.0.0.1:${toString cfg.dashboardPort}/dashboard";
     };
     services.traefik = {
       enable = true;
@@ -83,9 +89,12 @@ in {
               routerName = makeRouterName path;
               # Only strip prefix if backend doesn't have a path
               needsStripPrefix = !(hasBackendPath backendUrl);
+              hasBackend = hasBackendPath backendUrl;
               middlewares =
                 if needsStripPrefix
                 then ["${routerName}-stripprefix"]
+                else if hasBackend
+                then ["${routerName}-replacepath"]
                 else [];
             in {
               name = "${routerName}-router";
@@ -116,6 +125,27 @@ in {
           )
           cfg.path_routes);
 
+        # Root path redirect to default page (if configured)
+        rootRedirectRouter = {
+          root-redirect-router = {
+            rule = "Path(`/`)";
+            middlewares = ["root-redirect-middleware"];
+            service = "noop@internal";
+            entryPoints = ["web"];
+            priority = 200;
+          };
+        };
+
+        rootRedirectMiddleware = {
+          root-redirect-middleware = {
+            redirectRegex = {
+              regex = "^.*$";
+              replacement = cfg.defaultPage;
+              permanent = false;
+            };
+          };
+        };
+
         # Catch-all router for 404
         catchAllRouter = {
           catch-all-router = {
@@ -131,6 +161,19 @@ in {
             path: backendUrl: let
               routerName = makeRouterName path;
               needsStripPrefix = !(hasBackendPath backendUrl);
+              # Extract backend path if it exists
+              backendPath =
+                if hasBackendPath backendUrl
+                then let
+                  afterProtocol = builtins.elemAt (builtins.split "://" backendUrl) 2;
+                  pathPart =
+                    builtins.substring
+                    (builtins.stringLength (builtins.head (builtins.split "/" afterProtocol)))
+                    (builtins.stringLength afterProtocol)
+                    afterProtocol;
+                in
+                  pathPart
+                else "";
             in
               if needsStripPrefix
               then [
@@ -143,6 +186,18 @@ in {
                   };
                 }
               ]
+              else if backendPath != ""
+              then [
+                {
+                  name = "${routerName}-replacepath";
+                  value = {
+                    replacePathRegex = {
+                      regex = "^${path}(/.*)?$";
+                      replacement = "${backendPath}$1";
+                    };
+                  };
+                }
+              ]
               else []
           )
           cfg.path_routes));
@@ -151,12 +206,22 @@ in {
         pathServices = lib.listToAttrs (lib.mapAttrsToList (
             path: backendUrl: let
               routerName = makeRouterName path;
+              # Strip path from backend URL for the service
+              baseUrl =
+                if hasBackendPath backendUrl
+                then let
+                  parts = builtins.split "://" backendUrl;
+                  protocol = builtins.head parts;
+                  afterProtocol = builtins.elemAt parts 2;
+                  hostPort = builtins.head (builtins.split "/" afterProtocol);
+                in "${protocol}://${hostPort}"
+                else backendUrl;
             in {
               name = "${routerName}-service";
               value = {
                 loadBalancer = {
                   servers = [
-                    {url = backendUrl;}
+                    {url = baseUrl;}
                   ];
                 };
               };
@@ -175,8 +240,8 @@ in {
         };
       in {
         http = {
-          routers = pathRouters // refererRouters // catchAllRouter;
-          middlewares = pathMiddlewares;
+          routers = pathRouters // refererRouters // (optionalAttrs (cfg.defaultPage != null) rootRedirectRouter) // catchAllRouter;
+          middlewares = pathMiddlewares // (optionalAttrs (cfg.defaultPage != null) rootRedirectMiddleware);
           services = pathServices // notFoundService;
         };
       };
@@ -185,7 +250,6 @@ in {
     # Open firewall ports
     networking.firewall.allowedTCPPorts = [
       cfg.httpPort
-      cfg.dashboardPort
     ];
   };
 }

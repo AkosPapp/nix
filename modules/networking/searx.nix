@@ -84,8 +84,6 @@
         redisCreateLocally = true;
       };
 
-      # Open firewall if needed
-      networking.firewall.allowedTCPPorts = [port];
     }
   );
 }

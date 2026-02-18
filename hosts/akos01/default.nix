@@ -12,7 +12,6 @@
     MODULES.networking.tailscale.hostIP = "100.83.255.5";
     MODULES.networking.searx.enable = true;
     PROFILES.qemu-vm.enable = true;
-    networking.fqdn = lib.mkForce "akos01.airlab";
 
     services.nix_autobuild = {
       enable = true;
@@ -56,12 +55,15 @@
         port = 8085;
       };
     };
-
-    # Traefik reverse proxy configuration
-    MODULES.networking.traefik.enable = true;
     MODULES.networking.traefik.path_routes = {
       "/nix" = "http://127.0.0.1:8085";
     };
+
+    # Traefik reverse proxy configuration
+    MODULES.networking.traefik.enable = true;
+    MODULES.networking.homepage.enable = true;
+    MODULES.networking.grafana.enable = true;
+    MODULES.networking.prometheus.enable = true;
 
     networking = {
       useDHCP = true;
