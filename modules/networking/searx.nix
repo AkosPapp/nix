@@ -83,7 +83,6 @@
         # Enable local Redis instance for caching
         redisCreateLocally = true;
       };
-
     }
   );
 }
