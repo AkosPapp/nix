@@ -31,6 +31,9 @@ in {
 
   config = mkIf cfg.enable {
     MODULES.networking.tailscale.serve.traefik.target = "http://127.0.0.1:80";
+    MODULES.networking.traefik.path_routes = {
+      "/traefik" = "http://127.0.0.1:${toString cfg.dashboardPort}/dashboard/";
+    };
     services.traefik = {
       enable = true;
 
