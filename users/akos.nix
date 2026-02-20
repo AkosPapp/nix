@@ -31,6 +31,8 @@
         "plugdev"
         "vboxusers"
         "openrazer"
+        "scanner"
+        "lp"
       ];
       hashedPassword = "$y$j9T$gEhP/0Jlrlwb4ndmLs06L1$7qkdPdgqjCrEH8bAQvJqRn/Mj4m5X9GCRAyM33z0mdA";
       packages = [

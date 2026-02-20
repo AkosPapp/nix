@@ -20,9 +20,16 @@
         canon-cups-ufr2
         cups-filters
         samsung-unified-linux-driver
+        pkgs.samsung-unified-linux-driver_1_00_37
         ptouch-driver
       ];
     };
+
+    hardware.sane.enable = true;
+    hardware.sane.extraBackends = with pkgs; [
+      samsung-unified-linux-driver_1_00_37
+      samsung-unified-linux-driver
+    ];
 
     environment.systemPackages = with pkgs; [
       hplipWithPlugin
@@ -39,6 +46,7 @@
       python313Packages.notify2
       sane-backends
     ];
+
     services.avahi = {
       enable = true;
       nssmdns4 = true;

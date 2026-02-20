@@ -11,8 +11,12 @@
     MODULES.security.vaultwarden.enable = true;
     MODULES.networking.tailscale.hostIP = "100.83.255.5";
     MODULES.networking.searx.enable = true;
+    MODULES.security.sops.enable = true;
     PROFILES.qemu-vm.enable = true;
 
+    sops.secrets."git.robo4you.at/akos01-nix-autobuild" = {
+      mode = "0400";
+    };
     services.nix_autobuild = {
       enable = true;
       settings = {
@@ -21,32 +25,33 @@
             url = "github.com/PPAPSONKA/nix";
             poll_interval_sec = 30;
             branches = ["main"];
-            build_depth = 5;
+            build_depth = 3;
           }
           {
             url = "github.com/PPAPSONKA/nixvim";
             poll_interval_sec = 30;
             branches = ["main"];
-            build_depth = 5;
+            build_depth = 1;
           }
           {
             url = "github.com/AkosPapp/nix_autobuild";
             poll_interval_sec = 30;
             branches = ["main"];
-            build_depth = 5;
+            build_depth = 1;
           }
           {
             url = "git.robo4you.at/akos.papp/DA";
             poll_interval_sec = 30;
             branches = ["main"];
-            build_depth = 5;
+            build_depth = 2;
           }
-          # {
-          #   url = "git.robo4you.at/flyby/blender-sdg";
-          #   poll_interval_sec = 30;
-          #   branches = ["main"];
-          #   build_depth = 5;
-          # }
+          {
+            url = "git.robo4you.at/flyby/blender-sdg";
+            poll_interval_sec = 30;
+            branches = ["main"];
+            build_depth = 2;
+            credentials_file = config.sops.secrets."git.robo4you.at/akos01-nix-autobuild".path;
+          }
         ];
         n_build_threads = 6;
         dir = "/tmp/nix_autobuild";
@@ -84,7 +89,6 @@
       useRoutingFeatures = "both";
     };
 
-    MODULES.security.sops.enable = true;
     sops.secrets."nix-serve/akos01.airlab/private_key" = {
       mode = "0400";
       #owner = "nix-serve";
