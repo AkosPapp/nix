@@ -138,6 +138,10 @@
       perf-tools
       direnv
 
+      #k8s
+      kubectl
+      k9s
+
       # user tools
       geogebra6
       zotero

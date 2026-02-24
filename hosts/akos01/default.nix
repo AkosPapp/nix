@@ -22,13 +22,13 @@
       settings = {
         repos = [
           {
-            url = "github.com/PPAPSONKA/nix";
+            url = "github.com/AkosPapp/nix";
             poll_interval_sec = 30;
             branches = ["main"];
             build_depth = 3;
           }
           {
-            url = "github.com/PPAPSONKA/nixvim";
+            url = "github.com/AkosPapp/nixvim";
             poll_interval_sec = 30;
             branches = ["main"];
             build_depth = 1;
