@@ -139,8 +139,8 @@
       direnv
 
       #k8s
-      kubectl
-      k9s
+      pkgs-unstable.kubectl
+      pkgs-unstable.k9s
 
       # user tools
       geogebra6
