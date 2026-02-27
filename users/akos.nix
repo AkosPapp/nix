@@ -16,6 +16,9 @@
   };
 
   config = lib.mkIf config.USERS.akos.enable {
+    services.input-remapper.enable = true;
+    services.input-remapper.enableUdevRules = true;
+
     users.users.akos = {
       isNormalUser = true;
       shell = pkgs.zsh;
