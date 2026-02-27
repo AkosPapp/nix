@@ -131,7 +131,7 @@
 
       # dev tools
       pkgs-unstable.foxglove-studio
-      vscode
+      pkgs-unstable.vscode
       pkgs-unstable.copilot-cli
       jetbrains.datagrip
       pkgs-unstable.gitkraken
