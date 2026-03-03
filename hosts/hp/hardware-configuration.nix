@@ -16,6 +16,12 @@
       fsType = "vfat";
       options = ["fmask=0022" "dmask=0022"];
     };
+
+    # dedicated ZFS dataset for sftpgo data
+    "/var/lib/sftpgo" = {
+      device = "zroot/persist/hp/sftpgo";
+      fsType = "zfs";
+    };
   };
 
   hardware.cpu.amd.updateMicrocode =

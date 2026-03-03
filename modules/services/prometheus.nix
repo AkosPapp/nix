@@ -6,23 +6,18 @@
 }: let
   inherit (lib) mkEnableOption mkIf mkOption types;
 
-  cfg = config.MODULES.networking.prometheus;
+  cfg = config.MODULES.services.prometheus;
 in {
-  options.MODULES.networking.prometheus = {
+  options.MODULES.services.prometheus = {
     enable = mkEnableOption "Prometheus monitoring";
-
-    port = mkOption {
-      type = types.int;
-      default = 9090;
-      description = "Port for Prometheus web interface";
-    };
   };
 
   config = lib.mkMerge [
     (mkIf cfg.enable {
       services.prometheus = {
         enable = true;
-        port = cfg.port;
+        listenAddress = "127.0.0.1";
+        port = config.PORTS.prometheus;
 
         globalConfig.scrape_interval = "1s";
 
@@ -34,6 +29,7 @@ in {
         exporters = {
           node = {
             enable = true;
+            listenAddress = "127.0.0.1";
             enabledCollectors = [
               "systemd"
               "cpu"
@@ -48,7 +44,7 @@ in {
               "uname"
               "vmstat"
             ];
-            port = 9100;
+            port = config.PORTS.prometheusNodeExporter;
           };
         };
 
@@ -66,7 +62,7 @@ in {
     })
 
     (mkIf (cfg.enable && config.MODULES.networking.traefik.enable) {
-      MODULES.networking.traefik.path_routes."/prometheus" = "http://127.0.0.1:${toString cfg.port}/prometheus";
+      MODULES.networking.traefik.path_routes."/prometheus" = "http://127.0.0.1:${toString config.PORTS.prometheus}/prometheus";
 
       services.traefik.staticConfigOptions.metrics.prometheus = {
         addEntryPointsLabels = true;
@@ -79,7 +75,7 @@ in {
           job_name = "traefik";
           static_configs = [
             {
-              targets = ["127.0.0.1:${toString config.MODULES.networking.traefik.dashboardPort}"];
+              targets = ["127.0.0.1:${toString config.PORTS.traefikDashboard}"];
             }
           ];
         }
@@ -91,7 +87,8 @@ in {
 
       services.prometheus.exporters.nginx = {
         enable = true;
-        port = 9113;
+        listenAddress = "127.0.0.1";
+        port = config.PORTS.prometheusNginxExporter;
       };
 
       services.prometheus.scrapeConfigs = [
@@ -99,7 +96,7 @@ in {
           job_name = "nginx";
           static_configs = [
             {
-              targets = ["127.0.0.1:9113"];
+              targets = ["127.0.0.1:${toString config.services.prometheus.exporters.nginx.port}"];
             }
           ];
         }
@@ -109,7 +106,8 @@ in {
     (mkIf (cfg.enable && config.services.postgresql.enable) {
       services.prometheus.exporters.postgres = {
         enable = true;
-        port = 9187;
+        listenAddress = "127.0.0.1";
+        port = config.PORTS.prometheusPostgresExporter;
         runAsLocalSuperUser = true;
       };
 
@@ -118,7 +116,7 @@ in {
           job_name = "postgres";
           static_configs = [
             {
-              targets = ["127.0.0.1:9187"];
+              targets = ["127.0.0.1:${toString config.services.prometheus.exporters.postgres.port}"];
             }
           ];
         }
@@ -131,7 +129,8 @@ in {
       };
       services.prometheus.exporters.tailscale = {
         enable = true;
-        port = 9200;
+        listenAddress = "127.0.0.1";
+        port = config.PORTS.prometheusTailscaleExporter;
         environmentFile = config.sops.secrets."tailscale/exporter_environment_file".path;
       };
 
@@ -140,7 +139,7 @@ in {
           job_name = "tailscale";
           static_configs = [
             {
-              targets = ["127.0.0.1:9200"];
+              targets = ["127.0.0.1:${toString config.services.prometheus.exporters.tailscale.port}"];
             }
           ];
         }
@@ -150,7 +149,8 @@ in {
     (mkIf (cfg.enable && config.boot.supportedFilesystems.zfs or false) {
       services.prometheus.exporters.zfs = {
         enable = true;
-        port = 9134;
+        listenAddress = "127.0.0.1";
+        port = config.PORTS.prometheusZfsExporter;
         pools = config.boot.zfs.extraPools;
       };
 
@@ -159,7 +159,7 @@ in {
           job_name = "zfs";
           static_configs = [
             {
-              targets = ["127.0.0.1:9134"];
+              targets = ["127.0.0.1:${toString config.services.prometheus.exporters.zfs.port}"];
             }
           ];
         }

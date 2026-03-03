@@ -4,11 +4,9 @@
   pkgs-unstable,
   lib,
   ...
-}: let
-  port = "8222"; # any non-conflicting port
-in {
+}: {
   options = {
-    MODULES.security.vaultwarden.enable = lib.mkOption {
+    MODULES.services.vaultwarden.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
       description = "Enable vaultwarden service";
@@ -16,10 +14,10 @@ in {
   };
 
   config =
-    lib.mkIf config.MODULES.security.vaultwarden.enable
+    lib.mkIf config.MODULES.services.vaultwarden.enable
     {
       MODULES.networking.traefik.path_routes = {
-        "/vaultwarden" = "http://127.0.0.1:8222";
+        "/vaultwarden" = "http://127.0.0.1:${toString config.PORTS.vaultwarden}";
       };
       services.vaultwarden = {
         enable = true;
@@ -29,7 +27,7 @@ in {
         config = {
           DOMAIN = "https://${config.networking.fqdn}";
           ROCKET_ADDRESS = "127.0.0.1";
-          ROCKET_PORT = port;
+          ROCKET_PORT = config.PORTS.vaultwarden;
           ROCKET_WORKERS = 4;
           SIGNUPS_ALLOWED = false;
           INVITATIONS_ALLOWED = false;

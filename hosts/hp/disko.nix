@@ -28,5 +28,20 @@
         };
       };
     };
+
+    # additional zpool definition for the sftpgo dataset
+    zpool = {
+      zroot = {
+        type = "zpool";
+        mountpoint = null;
+        datasets = {
+          # create a nested dataset named persist/hp/sftpgo
+          "persist/hp/sftpgo" = {
+            type = "zfs_fs";
+            mountpoint = "/var/lib/sftpgo";
+          };
+        };
+      };
+    };
   };
 }

@@ -10,18 +10,6 @@ in {
   options.MODULES.networking.traefik = {
     enable = mkEnableOption "Traefik reverse proxy";
 
-    httpPort = mkOption {
-      type = types.int;
-      default = 80;
-      description = "HTTP port for Traefik";
-    };
-
-    dashboardPort = mkOption {
-      type = types.int;
-      default = 8888;
-      description = "Port for Traefik dashboard";
-    };
-
     path_routes = mkOption {
       type = types.attrsOf types.str;
       default = {};
@@ -38,7 +26,7 @@ in {
   config = mkIf cfg.enable {
     MODULES.networking.tailscale.serve.traefik.target = "http://127.0.0.1:80";
     MODULES.networking.traefik.path_routes = {
-      "/traefik" = "http://127.0.0.1:${toString cfg.dashboardPort}/dashboard";
+      "/traefik" = "http://127.0.0.1:${toString config.PORTS.traefikDashboard}/dashboard";
     };
     services.traefik = {
       enable = true;
@@ -47,10 +35,10 @@ in {
         # Entry points configuration
         entryPoints = {
           web = {
-            address = ":${toString cfg.httpPort}";
+            address = ":${toString config.PORTS.traefikHttp}";
           };
           traefik = {
-            address = ":${toString cfg.dashboardPort}";
+            address = "127.0.0.1:${toString config.PORTS.traefikDashboard}";
           };
         };
 
@@ -249,7 +237,7 @@ in {
 
     # Open firewall ports
     networking.firewall.allowedTCPPorts = [
-      cfg.httpPort
+      config.PORTS.traefikHttp
     ];
   };
 }

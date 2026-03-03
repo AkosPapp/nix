@@ -6,16 +6,10 @@
 }: let
   inherit (lib) mkEnableOption mkIf mkOption types;
 
-  cfg = config.MODULES.networking.grafana;
+  cfg = config.MODULES.services.grafana;
 in {
-  options.MODULES.networking.grafana = {
+  options.MODULES.services.grafana = {
     enable = mkEnableOption "Grafana monitoring dashboard";
-
-    port = mkOption {
-      type = types.int;
-      default = 3000;
-      description = "Port for Grafana web interface";
-    };
 
     adminPassword = mkOption {
       type = types.nullOr types.str;
@@ -35,7 +29,7 @@ in {
       enable = true;
       settings = {
         server = {
-          http_port = cfg.port;
+          http_port = config.PORTS.grafana;
           http_addr = "127.0.0.1";
           domain = config.networking.fqdn;
           root_url = "https://${config.networking.fqdn}/grafana";
@@ -66,7 +60,7 @@ in {
             name = "Prometheus";
             type = "prometheus";
             access = "proxy";
-            url = "http://127.0.0.1:${toString config.MODULES.networking.prometheus.port}/prometheus";
+            url = "http://127.0.0.1:${toString config.PORTS.prometheus}/prometheus";
             isDefault = true;
           }
         ];
@@ -74,6 +68,6 @@ in {
     };
 
     # Add to traefik routes
-    MODULES.networking.traefik.path_routes."/grafana" = "http://127.0.0.1:${toString cfg.port}/grafana";
+    MODULES.networking.traefik.path_routes."/grafana" = "http://127.0.0.1:${toString config.PORTS.grafana}/grafana";
   };
 }

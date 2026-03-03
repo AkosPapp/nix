@@ -157,6 +157,7 @@
       logseq
       anki
       libreoffice
+      onlyoffice-desktopeditors
       youtube-music
       freerdp
       sxiv

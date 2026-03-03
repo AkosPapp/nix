@@ -7,16 +7,21 @@
   ...
 }: {
   config = {
-    MODULES.nix.builders.airlab = true;
-    MODULES.security.vaultwarden.enable = true;
-    MODULES.networking.tailscale.hostIP = "100.83.255.5";
-    MODULES.networking.searx.enable = true;
-    MODULES.security.sops.enable = true;
     PROFILES.qemu-vm.enable = true;
+    MODULES.nix.builders.airlab = true;
+    MODULES.security.sops.enable = true;
+    MODULES.networking.tailscale.hostIP = "100.83.255.5";
+    MODULES.networking.traefik.enable = true;
+    MODULES.services.vaultwarden.enable = true;
+    MODULES.services.grafana.enable = true;
+    MODULES.services.homepage.enable = true;
+    MODULES.services.prometheus.enable = true;
+    MODULES.services.searx.enable = true;
 
     sops.secrets."git.robo4you.at/akos01-nix-autobuild" = {
       mode = "0400";
     };
+
     services.nix_autobuild = {
       enable = true;
       settings = {
@@ -57,18 +62,12 @@
         dir = "/tmp/nix_autobuild";
         supported_architectures = ["x86_64-linux" "aarch64-linux"];
         host = "127.0.0.1";
-        port = 8085;
+        port = config.PORTS.nixAutobuild;
       };
     };
     MODULES.networking.traefik.path_routes = {
-      "/nix" = "http://127.0.0.1:8085";
+      "/nix" = "http://127.0.0.1:${toString config.PORTS.nixAutobuild}";
     };
-
-    # Traefik reverse proxy configuration
-    MODULES.networking.traefik.enable = true;
-    MODULES.networking.homepage.enable = true;
-    MODULES.networking.grafana.enable = true;
-    MODULES.networking.prometheus.enable = true;
 
     networking = {
       useDHCP = true;

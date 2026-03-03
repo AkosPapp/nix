@@ -6,29 +6,22 @@
   ...
 }: {
   options = {
-    MODULES.networking.searx = {
+    MODULES.services.searx = {
       enable = lib.mkOption {
         type = lib.types.bool;
         default = false;
         description = "Enable searx search engine";
       };
-
-      port = lib.mkOption {
-        type = lib.types.int;
-        default = 8081;
-        description = "The port to listen on.";
-      };
     };
   };
 
-  config = lib.mkIf config.MODULES.networking.searx.enable (
+  config = lib.mkIf config.MODULES.services.searx.enable (
     let
-      port = config.MODULES.networking.searx.port;
+      port = config.PORTS.searx;
     in {
       MODULES.networking.traefik.enable = true;
       MODULES.networking.traefik.path_routes = {
         "/searx" = "http://127.0.0.1:${toString port}";
-        # "/search" = "http://127.0.0.1:${toString port}/search";
       };
 
       # # Add custom route for searx static assets containing 'sxng'

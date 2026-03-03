@@ -6,9 +6,9 @@
 }: let
   inherit (lib) mkEnableOption mkIf mkOption types mapAttrsToList;
 
-  cfg = config.MODULES.networking.homepage;
+  cfg = config.MODULES.services.homepage;
 in {
-  options.MODULES.networking.homepage = {
+  options.MODULES.services.homepage = {
     enable = mkEnableOption "Homepage dashboard";
 
     services = mkOption {
@@ -17,25 +17,19 @@ in {
       default = {};
       description = "Additional services to show on the homepage dashboard";
     };
-
-    port = mkOption {
-      type = types.int;
-      default = 8082;
-      description = "Port for Homepage dashboard";
-    };
   };
 
   config = lib.mkMerge [
     (mkIf cfg.enable {
       # default services (can be overridden/extended by `config.MODULES.networking.homepage.services`)
-      MODULES.networking.homepage.services = {
+      MODULES.services.homepage.services = {
         grafana = {
           href = "/grafana";
           icon = "/grafana/public/img/fav32.png";
           widget = {
             type = "grafana";
             version = 2;
-            url = "http://127.0.0.1:${toString config.MODULES.networking.grafana.port}/grafana/";
+            url = "http://127.0.0.1:${toString config.PORTS.grafana}/grafana/";
             username = "admin";
             password = "admin";
           };
@@ -46,7 +40,7 @@ in {
           icon = "/prometheus/favicon.svg";
           widget = {
             type = "prometheus";
-            url = "http://127.0.0.1:${toString config.MODULES.networking.prometheus.port}/prometheus/";
+            url = "http://127.0.0.1:${toString config.PORTS.prometheus}/prometheus/";
           };
         };
 
@@ -55,16 +49,31 @@ in {
           icon = "/traefik/favicon.ico";
           widget = {
             type = "traefik";
-            url = "http://127.0.0.1:${toString config.MODULES.networking.traefik.dashboardPort}/";
+            url = "http://127.0.0.1:${toString config.PORTS.traefikDashboard}/";
+          };
+        };
+
+        sftpgo.icon = "/sftpgo/static/favicon.png";
+        webdav.icon = "/sftpgo/static/favicon.png";
+        i2pd.icon = "https://github.com/PurpleI2P/i2pd-logo/raw/refs/heads/master/i2pd_logo_2_curved.svg";
+
+        transmission = {
+          icon = "/transmission/web/images/favicon.png";
+          widget = {
+            type = "transmission";
+            url = "http://127.0.0.1:${toString config.PORTS.transmissionRpc}";
+            rpcUrl = "/transmission/";
           };
         };
 
         homepage.icon = "/homepage/homepage.ico";
+        ipfs.icon = "https://raw.githubusercontent.com/ipfs/kubo/refs/heads/master/docs/logo/kubo-logo.svg";
+        ipfs-gateway.icon = "https://raw.githubusercontent.com/ipfs/ipfs-webui/refs/heads/main/src/navigation/ipfs-logo.svg";
       };
 
       services.homepage-dashboard = {
         enable = true;
-        listenPort = cfg.port;
+        listenPort = config.PORTS.homepage;
 
         settings = {
           title = config.networking.hostName or "Homepage";
@@ -99,7 +108,7 @@ in {
                 # Add default href/icon if not set by user
                 ${name} = config;
               })
-              config.MODULES.networking.homepage.services
+              config.MODULES.services.homepage.services
             );
           }
         ];
@@ -125,15 +134,16 @@ in {
 
       systemd.services.homepage-dashboard.environment = {
         BASE_PATH = "/homepage";
-        HOMEPAGE_ALLOWED_HOSTS = lib.mkForce "akos01.tail546fb.ts.net,akos01.airlab";
+        HOMEPAGE_ALLOWED_HOSTS = lib.mkForce "${config.networking.fqdn},${config.networking.hostName}.airlab,${config.networking.hostName}";
+        HOSTNAME = "127.0.0.1";
       };
 
       # Add to traefik routes
-      MODULES.networking.traefik.path_routes."/homepage" = "http://127.0.0.1:${toString cfg.port}";
+      MODULES.networking.traefik.path_routes."/homepage" = "http://127.0.0.1:${toString config.PORTS.homepage}";
       MODULES.networking.traefik.defaultPage = "/homepage";
     })
     {
-      MODULES.networking.homepage.services = lib.mkMerge (
+      MODULES.services.homepage.services = lib.mkMerge (
         map (
           value: {
             "${lib.removePrefix "\/" value}" = {
