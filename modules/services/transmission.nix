@@ -30,7 +30,7 @@ in {
 
       settings = {
         rpc-port = config.PORTS.transmissionRpc;
-        rpc-bind-address = "127.0.0.1";
+        rpc-bind-address = config.MODULES.networking.tailscale.hostIP;
         rpc-whitelist-enabled = false;
         rpc-host-whitelist-enabled = false;
         peer-port = config.PORTS.transmissionPeer;
@@ -46,7 +46,7 @@ in {
 
     MODULES.networking.traefik.enable = true;
     MODULES.networking.traefik.path_routes = {
-      "/transmission" = "http://127.0.0.1:${toString config.PORTS.transmissionRpc}/transmission";
+      "/transmission" = "http://${config.MODULES.networking.tailscale.hostIP}:${toString config.PORTS.transmissionRpc}/transmission";
     };
   };
 }

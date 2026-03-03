@@ -58,10 +58,10 @@ in {
         i2pd.icon = "https://github.com/PurpleI2P/i2pd-logo/raw/refs/heads/master/i2pd_logo_2_curved.svg";
 
         transmission = {
-          icon = "/transmission/web/images/favicon.png";
+          icon = "https://transmissionbt.com/assets/images/Transmission_icon.png";
           widget = {
             type = "transmission";
-            url = "http://127.0.0.1:${toString config.PORTS.transmissionRpc}";
+            url = "http://${config.MODULES.networking.tailscale.hostIP}:${toString config.PORTS.transmissionRpc}";
             rpcUrl = "/transmission/";
           };
         };

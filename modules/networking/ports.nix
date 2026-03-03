@@ -25,7 +25,6 @@ in {
     sftpgoHttp = 8090;
     sftpgoWebdav = 8091;
     traefikDashboard = 8888;
-    transmissionRpc = 8092;
     vaultwarden = 8222;
 
     # prometheus exporters
@@ -39,6 +38,7 @@ in {
     i2pdHttpProxy = 4444;
     i2pdSam = 7656;
     i2pdSocksProxy = 4447;
+    transmissionRpc = 9091;
 
     # external ports (open to network)
     i2pdRouter = 12345;

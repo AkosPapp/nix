@@ -163,6 +163,7 @@
       sxiv
       kitty
       nautilus
+      transmission-remote-gtk
 
       # cad tools
       freecad
