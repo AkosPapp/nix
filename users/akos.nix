@@ -164,6 +164,7 @@
       kitty
       nautilus
       transmission-remote-gtk
+      thunderbird
 
       # cad tools
       freecad

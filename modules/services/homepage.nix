@@ -61,7 +61,7 @@ in {
           icon = "https://transmissionbt.com/assets/images/Transmission_icon.png";
           widget = {
             type = "transmission";
-            url = "http://${config.MODULES.networking.tailscale.hostIP}:${toString config.PORTS.transmissionRpc}";
+            url = "http://127.0.0.1:${toString config.PORTS.transmissionRpc}";
             rpcUrl = "/transmission/";
           };
         };

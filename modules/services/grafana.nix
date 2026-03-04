@@ -35,11 +35,6 @@ in {
           root_url = "https://${config.networking.fqdn}/grafana";
           serve_from_sub_path = true;
         };
-        dashboards.min_refresh_interval = "1s";
-        timeSettings = {
-          autoRefresh = "1s";
-          autoRefreshIntervals = ["1s" "5s" "10s" "30s" "1m"];
-        };
         analytics.reporting_enabled = false;
         security =
           {

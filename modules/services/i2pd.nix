@@ -16,7 +16,7 @@
       enable = true;
       address = "0.0.0.0";
       port = config.PORTS.i2pdRouter;
-      bandwidth = 256; # L = 32KB/s, O = 256KB/s, P = unlimited — adjust to taste
+      bandwidth = 1024; # L = 32KB/s, O = 256KB/s, P = unlimited — adjust to taste
       upnp.enable = true;
       nat = true;
       yggdrasil.enable = true;

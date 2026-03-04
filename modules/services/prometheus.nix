@@ -19,7 +19,7 @@ in {
         listenAddress = "127.0.0.1";
         port = config.PORTS.prometheus;
 
-        globalConfig.scrape_interval = "1s";
+        globalConfig.scrape_interval = "5s";
 
         extraFlags = [
           "--web.external-url=https://${config.networking.fqdn}/prometheus"
