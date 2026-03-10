@@ -1,6 +1,5 @@
 {
   config,
-  nixos-version,
   lib,
   pkgs,
   ...
@@ -35,7 +34,6 @@
       htop
       wget
       curl
-      vim
       git
       iputils
       tmux

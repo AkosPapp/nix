@@ -17,8 +17,6 @@ in {
     grafana = 8030;
     homepage = 8082;
     i2pdWebui = 8070;
-    ipfsApi = 8050;
-    ipfsGateway = 8010;
     nixAutobuild = 8085;
     prometheus = 8009;
     searx = 8081;
@@ -39,6 +37,8 @@ in {
     i2pdHttpProxy = 4444;
     i2pdSam = 7656;
     i2pdSocksProxy = 4447;
+    ipfsApi = 5001;
+    ipfsGateway = 5002;
 
     # external ports (open to network)
     i2pdRouter = 12345;

@@ -1,12 +1,11 @@
 {
   config,
   pkgs,
-  pkgs-unstable,
   lib,
-  nixpkgs,
   system,
   nixos-version,
   configName,
+  my-nixvim,
   ...
 }: {
   options = {
@@ -40,7 +39,7 @@
 
     environment.systemPackages = with pkgs; [
       kitty
-      neovim
+      my-nixvim.packages.${pkgs.system}.default
       gnumake
       rsync
     ];

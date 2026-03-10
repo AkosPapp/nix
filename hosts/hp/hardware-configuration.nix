@@ -2,6 +2,7 @@
   config,
   lib,
   modulesPath,
+  pkgs,
   ...
 }: {
   imports = [
@@ -26,6 +27,17 @@
 
   hardware.cpu.amd.updateMicrocode =
     lib.mkDefault config.hardware.enableRedistributableFirmware;
+
+  # Ryzen SMU driver for fan control and temperature monitoring
+  boot.extraModulePackages = with config.boot.kernelPackages; [ryzen-smu];
+  boot.kernelModules = ["ryzen_smu"];
+
+  environment.systemPackages = with pkgs; [
+    ryzenadj
+    lm_sensors
+    config.boot.kernelPackages.turbostat
+  ];
+
   powerManagement.cpuFreqGovernor = "performance";
   users.users.root.hashedPassword = "$y$j9T$gEhP/0Jlrlwb4ndmLs06L1$7qkdPdgqjCrEH8bAQvJqRn/Mj4m5X9GCRAyM33z0mdA";
 }

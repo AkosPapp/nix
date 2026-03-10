@@ -3,10 +3,9 @@
   pkgs,
   lib,
   pkgs-unstable,
-  nixpkgs,
   my-nixvim,
   ...
-} @ inputs: {
+}: {
   options = {
     USERS.akos.enable = lib.mkOption {
       default = false;
@@ -38,9 +37,6 @@
         "lp"
       ];
       hashedPassword = "$y$j9T$gEhP/0Jlrlwb4ndmLs06L1$7qkdPdgqjCrEH8bAQvJqRn/Mj4m5X9GCRAyM33z0mdA";
-      packages = [
-        my-nixvim.packages.${pkgs.system}.default
-      ];
     };
     nix.settings.trusted-users = ["akos"];
     programs.zsh.enable = true;
@@ -71,7 +67,6 @@
     };
 
     environment.systemPackages = with pkgs; [
-      my-nixvim.packages.${pkgs.system}.default
       # helpful tools
       starship
       ripgrep
@@ -194,8 +189,5 @@
 
     services.netbird.enable = true;
     services.netbird.clients.default.autoStart = false;
-    networking.extraHosts = ''
-      10.44.0.3 proxmox.robo4you.at
-    '';
   };
 }

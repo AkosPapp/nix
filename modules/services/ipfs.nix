@@ -29,6 +29,7 @@ in {
       gatewayPort = toString config.PORTS.ipfsGateway;
       swarmPort = toString config.PORTS.ipfsSwarm;
       fqdn = config.networking.fqdn;
+      tailscaleIP = config.MODULES.networking.tailscale.hostIP;
     in {
       services.kubo = {
         enable = true;
@@ -36,8 +37,14 @@ in {
 
         settings = {
           Addresses = {
-            API = "/ip4/127.0.0.1/tcp/${apiPort}";
-            Gateway = "/ip4/127.0.0.1/tcp/${gatewayPort}";
+            API = [
+              "/ip4/127.0.0.1/tcp/${apiPort}"
+              # "/ip4/${tailscaleIP}/tcp/${apiPort}"
+            ];
+            Gateway = [
+              # "/ip4/127.0.0.1/tcp/${gatewayPort}"
+              "/ip4/${tailscaleIP}/tcp/${gatewayPort}"
+            ];
             Swarm = [
               "/ip4/0.0.0.0/tcp/${swarmPort}"
               "/ip6/::/tcp/${swarmPort}"
@@ -48,6 +55,8 @@ in {
           API.HTTPHeaders = {
             Access-Control-Allow-Origin = [
               "https://${fqdn}"
+              "http://${fqdn}:${apiPort}"
+              "https://${fqdn}:${apiPort}"
             ];
             Access-Control-Allow-Methods = ["PUT" "POST"];
           };
@@ -80,6 +89,19 @@ in {
       MODULES.networking.traefik.path_routes = {
         "/ipfs" = "http://127.0.0.1:${apiPort}/ipfs";
         "/ipfs-gateway" = "http://127.0.0.1:${gatewayPort}";
+      };
+
+      MODULES.networking.tailscale.serve = {
+        ipfs-api = {
+          type = "serve";
+          httpsPort = config.PORTS.ipfsApi;
+          target = "http://127.0.0.1:${apiPort}";
+        };
+        # ipfs-gateway = {
+        #   type = "serve";
+        #   httpsPort = config.PORTS.ipfsGateway;
+        #   target = "http://127.0.0.1:${gatewayPort}";
+        # };
       };
 
       services.traefik.dynamicConfigOptions = let
