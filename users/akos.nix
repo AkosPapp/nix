@@ -53,8 +53,6 @@
       system.pipewire.enable = true;
       security.sops.enable = true;
       virtualisation.docker.enable = true;
-      virtualisation.virt-manager.enable = true;
-      virtualisation.virtualbox.enable = true;
       wm.niri.enable = true;
       dev.platformio.enable = true;
     };
@@ -75,7 +73,6 @@
       fd
       fzf
       rsync
-      lsyncd
       htop
       btop
       devcontainer
@@ -113,8 +110,6 @@
       unzip
       killall
       fuse
-      grim
-      slurp
       tesseract
 
       python314
@@ -122,15 +117,12 @@
       # git
       gitFull
       git-lfs
-      gh
 
       # dev tools
       pkgs-unstable.foxglove-studio
       pkgs-unstable.vscode
-      pkgs-unstable.copilot-cli
       jetbrains.datagrip
       pkgs-unstable.gitkraken
-      #rpi-imager
       picocom
       gparted
       perf-tools
@@ -150,8 +142,6 @@
       obs-studio
       signal-desktop
       logseq
-      anki
-      libreoffice
       onlyoffice-desktopeditors
       youtube-music
       freerdp
@@ -167,7 +157,6 @@
 
       # browsers
       brave
-      chromium
       firefox
 
       # network tools

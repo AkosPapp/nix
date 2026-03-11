@@ -9,8 +9,6 @@
 
   MODULES.nix.substituters.akos01.enable = true;
   MODULES.system.printing.enable = true;
-  MODULES.nix.builders.build-host = false;
-  MODULES.nix.builders.airlab = false;
   MODULES.hardware.nvidia.enable = true;
   USERS.akos.enable = true;
   MODULES.networking.tailscale.hostIP = "100.125.194.29";
@@ -79,4 +77,22 @@
   #    lib.mkForce "${pkgs.znapzend}/bin/znapzend ${args}";
 
   services.power-profiles-daemon.enable = true;
+
+  # Set rtprio limits for real-time priority
+  security.pam.loginLimits = [
+    {
+      domain = "*";
+      type = "-";
+      item = "rtprio";
+      value = "98";
+    }
+  ];
+
+  # Increase network buffer sizes
+  boot.kernel.sysctl = {
+    "net.core.rmem_max" = 20971520;
+    "net.core.rmem_default" = 20971520;
+    "net.core.wmem_max" = 20971520;
+    "net.core.wmem_default" = 20971520;
+  };
 }

@@ -32,7 +32,7 @@
       # Optional but recommended: SAM API for apps that use i2p
       proto.sam = {
         enable = true;
-        address = "127.0.0.1";
+        address = config.MODULES.networking.tailscale.hostIP;
         port = config.PORTS.i2pdSam;
       };
 
@@ -50,7 +50,6 @@
     };
 
     # Allow the WebUI port through the firewall on tailscale0
-    networking.firewall.interfaces."tailscale0".allowedTCPPorts = [config.PORTS.i2pdWebui];
     networking.firewall.allowedTCPPorts = [config.PORTS.i2pdRouter];
     networking.firewall.allowedUDPPorts = [config.PORTS.i2pdRouter];
 
