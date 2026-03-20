@@ -1,10 +1,9 @@
 {
   config,
   lib,
-  pkgs,
   ...
 }: let
-  inherit (lib) mkEnableOption mkIf mkOption types;
+  inherit (lib) mkEnableOption mkIf;
 
   cfg = config.MODULES.services.prometheus;
 in {
@@ -84,11 +83,18 @@ in {
 
     (mkIf (cfg.enable && config.services.nginx.enable) {
       services.nginx.statusPage = true;
+      services.nginx.virtualHosts.localhost.listen = [
+        {
+          addr = "127.0.0.1";
+          port = config.PORTS.nginxStatus;
+        }
+      ];
 
       services.prometheus.exporters.nginx = {
         enable = true;
         listenAddress = "127.0.0.1";
         port = config.PORTS.prometheusNginxExporter;
+        scrapeUri = "http://127.0.0.1:${toString config.PORTS.nginxStatus}/nginx_status";
       };
 
       services.prometheus.scrapeConfigs = [
@@ -117,6 +123,32 @@ in {
           static_configs = [
             {
               targets = ["127.0.0.1:${toString config.services.prometheus.exporters.postgres.port}"];
+            }
+          ];
+        }
+      ];
+    })
+
+    (mkIf (cfg.enable && config.services.nextcloud.enable) {
+      sops.secrets."nextcloud/exporter-token" = {
+        owner = "nextcloud-exporter";
+        mode = "0400";
+      };
+
+      services.prometheus.exporters.nextcloud = {
+        enable = true;
+        listenAddress = "127.0.0.1";
+        port = config.PORTS.prometheusNextcloudExporter;
+        url = "http://127.0.0.1:${toString config.PORTS.nextcloud}";
+        tokenFile = config.sops.secrets."nextcloud/exporter-token".path;
+      };
+
+      services.prometheus.scrapeConfigs = [
+        {
+          job_name = "nextcloud";
+          static_configs = [
+            {
+              targets = ["127.0.0.1:${toString config.services.prometheus.exporters.nextcloud.port}"];
             }
           ];
         }

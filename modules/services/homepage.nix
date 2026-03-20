@@ -21,56 +21,6 @@ in {
 
   config = lib.mkMerge [
     (mkIf cfg.enable {
-      # default services (can be overridden/extended by `config.MODULES.networking.homepage.services`)
-      MODULES.services.homepage.services = {
-        grafana = {
-          href = "/grafana";
-          icon = "/grafana/public/img/fav32.png";
-          widget = {
-            type = "grafana";
-            version = 2;
-            url = "http://127.0.0.1:${toString config.PORTS.grafana}/grafana/";
-            username = "admin";
-            password = "admin";
-          };
-        };
-
-        prometheus = {
-          href = "/prometheus";
-          icon = "/prometheus/favicon.svg";
-          widget = {
-            type = "prometheus";
-            url = "http://127.0.0.1:${toString config.PORTS.prometheus}/prometheus/";
-          };
-        };
-
-        traefik = {
-          href = "/traefik";
-          icon = "/traefik/favicon.ico";
-          widget = {
-            type = "traefik";
-            url = "http://127.0.0.1:${toString config.PORTS.traefikDashboard}/";
-          };
-        };
-
-        sftpgo.icon = "/sftpgo/static/favicon.png";
-        webdav.icon = "/sftpgo/static/favicon.png";
-        i2pd.icon = "https://github.com/PurpleI2P/i2pd-logo/raw/refs/heads/master/i2pd_logo_2_curved.svg";
-
-        transmission = {
-          icon = "https://transmissionbt.com/assets/images/Transmission_icon.png";
-          widget = {
-            type = "transmission";
-            url = "http://127.0.0.1:${toString config.PORTS.transmissionRpc}";
-            rpcUrl = "/transmission/";
-          };
-        };
-
-        homepage.icon = "/homepage/homepage.ico";
-        ipfs.icon = "https://raw.githubusercontent.com/ipfs/kubo/refs/heads/master/docs/logo/kubo-logo.svg";
-        ipfs-gateway.icon = "https://raw.githubusercontent.com/ipfs/ipfs-webui/refs/heads/main/src/navigation/ipfs-logo.svg";
-      };
-
       services.homepage-dashboard = {
         enable = true;
         listenPort = config.PORTS.homepage;
@@ -141,6 +91,68 @@ in {
       # Add to traefik routes
       MODULES.networking.traefik.path_routes."/homepage" = "http://127.0.0.1:${toString config.PORTS.homepage}";
       MODULES.networking.traefik.defaultPage = "/homepage";
+
+      MODULES.services.homepage.services.homepage.icon = "/homepage/homepage.ico";
+    })
+    (mkIf (cfg.enable && config.MODULES.services.grafana.enable) {
+      MODULES.services.homepage.services.grafana = {
+        href = "/grafana";
+        icon = "/grafana/public/img/fav32.png";
+        widget = {
+          type = "grafana";
+          version = 2;
+          url = "http://127.0.0.1:${toString config.PORTS.grafana}/grafana/";
+          username = "admin";
+          password = "admin";
+        };
+      };
+    })
+    (mkIf (cfg.enable && config.MODULES.services.prometheus.enable) {
+      MODULES.services.homepage.services.prometheus = {
+        href = "/prometheus";
+        icon = "/prometheus/favicon.svg";
+        widget = {
+          type = "prometheus";
+          url = "http://127.0.0.1:${toString config.PORTS.prometheus}/prometheus/";
+        };
+      };
+    })
+    (mkIf (cfg.enable && config.MODULES.networking.traefik.enable) {
+      MODULES.services.homepage.services.traefik = {
+        href = "/traefik";
+        icon = "/traefik/favicon.ico";
+        widget = {
+          type = "traefik";
+          url = "http://127.0.0.1:${toString config.PORTS.traefikDashboard}/";
+        };
+      };
+    })
+    (mkIf (cfg.enable && config.MODULES.services.sftpgo.enable) {
+      MODULES.services.homepage.services.sftpgo.icon = "/sftpgo/static/favicon.png";
+      MODULES.services.homepage.services.webdav.icon = "/sftpgo/static/favicon.png";
+    })
+    (mkIf (cfg.enable && config.MODULES.services.i2pd.enable) {
+      MODULES.services.homepage.services.i2pd.icon = "https://github.com/PurpleI2P/i2pd-logo/raw/refs/heads/master/i2pd_logo_2_curved.svg";
+    })
+    (mkIf (cfg.enable && config.MODULES.services.transmission.enable) {
+      MODULES.services.homepage.services.transmission = {
+        icon = "https://transmissionbt.com/assets/images/Transmission_icon.png";
+        widget = {
+          type = "transmission";
+          url = "http://127.0.0.1:${toString config.PORTS.transmissionRpc}";
+          rpcUrl = "/transmission/";
+        };
+      };
+    })
+    (mkIf (cfg.enable && config.MODULES.services.ipfs.enable) {
+      MODULES.services.homepage.services.ipfs.icon = "https://raw.githubusercontent.com/ipfs/kubo/refs/heads/master/docs/logo/kubo-logo.svg";
+      MODULES.services.homepage.services."ipfs-gateway".icon = "https://raw.githubusercontent.com/ipfs/ipfs-webui/refs/heads/main/src/navigation/ipfs-logo.svg";
+    })
+    (mkIf (cfg.enable && config.MODULES.services.roundcube.enable) {
+      MODULES.services.homepage.services.roundcube.icon = "/roundcube/skins/elastic/images/favicon.ico";
+    })
+    (mkIf (cfg.enable && config.MODULES.services.nextcloud.enable) {
+      MODULES.services.homepage.services.nextcloud.icon = "/nextcloud/core/img/logo/logo.svg";
     })
     {
       MODULES.services.homepage.services = lib.mkMerge (

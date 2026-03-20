@@ -14,8 +14,9 @@
 
   PROFILES.zroot.enable = true;
   PROFILES.server.enable = true;
-  MODULES.networking.traefik.enable = true;
   MODULES.security.sops.enable = true;
+
+  MODULES.networking.traefik.enable = true;
   MODULES.services.homepage.enable = true;
   MODULES.services.grafana.enable = true;
   MODULES.services.prometheus.enable = true;
@@ -24,6 +25,10 @@
   MODULES.services.ipfs.enable = true;
   MODULES.services.transmission.enable = true;
   MODULES.services.searx.enable = true;
+  MODULES.services.roundcube.enable = true;
+  MODULES.services.nextcloud.enable = true;
+  MODULES.services.nextcloud.hostName = config.networking.fqdn;
+
   MODULES.nix.substituters.akos01.enable = true;
 
   networking = {

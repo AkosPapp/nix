@@ -17,8 +17,11 @@ in {
     grafana = 8030;
     homepage = 8082;
     i2pdWebui = 8070;
+    nextcloud = 8088;
     nixAutobuild = 8085;
+    nginxStatus = 8087;
     prometheus = 8009;
+    roundcube = 8086;
     searx = 8081;
     sftpgoHttp = 8090;
     sftpgoWebdav = 8091;
@@ -28,6 +31,7 @@ in {
 
     # prometheus exporters
     prometheusNginxExporter = 9113;
+    prometheusNextcloudExporter = 9205;
     prometheusNodeExporter = 9100;
     prometheusPostgresExporter = 9187;
     prometheusTailscaleExporter = 9200;

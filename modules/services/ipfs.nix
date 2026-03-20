@@ -38,8 +38,8 @@ in {
         settings = {
           Addresses = {
             API = [
-              "/ip4/127.0.0.1/tcp/${apiPort}"
-              # "/ip4/${tailscaleIP}/tcp/${apiPort}"
+              # "/ip4/127.0.0.1/tcp/${apiPort}"
+              "/ip4/${tailscaleIP}/tcp/${apiPort}"
             ];
             Gateway = [
               # "/ip4/127.0.0.1/tcp/${gatewayPort}"
@@ -57,8 +57,11 @@ in {
               "https://${fqdn}"
               "http://${fqdn}:${apiPort}"
               "https://${fqdn}:${apiPort}"
+              "https://${tailscaleIP}"
+              "http://${tailscaleIP}:${apiPort}"
+              "https://${tailscaleIP}:${apiPort}"
             ];
-            Access-Control-Allow-Methods = ["PUT" "POST"];
+            Access-Control-Allow-Methods = ["PUT" "POST" "GET"];
           };
           Datastore.StorageMax = cfg.storageMax;
           AutoNAT.ServiceMode = "enabled";
@@ -81,56 +84,8 @@ in {
           };
         };
       };
-
       networking.firewall.allowedTCPPorts = [config.PORTS.ipfsSwarm];
       networking.firewall.allowedUDPPorts = [config.PORTS.ipfsSwarm];
-
-      MODULES.networking.traefik.enable = true;
-      MODULES.networking.traefik.path_routes = {
-        "/ipfs" = "http://127.0.0.1:${apiPort}/ipfs";
-        "/ipfs-gateway" = "http://127.0.0.1:${gatewayPort}";
-      };
-
-      MODULES.networking.tailscale.serve = {
-        ipfs-api = {
-          type = "serve";
-          httpsPort = config.PORTS.ipfsApi;
-          target = "http://127.0.0.1:${apiPort}";
-        };
-        # ipfs-gateway = {
-        #   type = "serve";
-        #   httpsPort = config.PORTS.ipfsGateway;
-        #   target = "http://127.0.0.1:${gatewayPort}";
-        # };
-      };
-
-      services.traefik.dynamicConfigOptions = let
-        fqdn = config.networking.fqdn;
-      in {
-        http = {
-          routers = {
-            ipfs-webui = {
-              rule = "Host(`${fqdn}`) && (Path(`/ipfs`) || Path(`/ipfs/`))";
-              entryPoints = ["web"];
-              middlewares = ["replace-path-ipfs-webui"];
-              service = "ipfs-api";
-              priority = 900;
-            };
-          };
-          services = {
-            ipfs-api = {
-              loadBalancer = {
-                servers = [{url = "http://127.0.0.1:${apiPort}";}];
-              };
-            };
-          };
-          middlewares = {
-            replace-path-ipfs-webui = {
-              replacePath.path = "/webui/";
-            };
-          };
-        };
-      };
     }
   );
 }

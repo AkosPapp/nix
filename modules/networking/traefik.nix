@@ -48,6 +48,11 @@ in {
           insecure = true;
         };
 
+        experimental.plugins.rewriteHeaders = {
+          moduleName = "github.com/bitrvmpd/traefik-plugin-rewrite-headers";
+          version = "v0.0.1";
+        };
+
         # Logging
         log = {
           level = "INFO";
@@ -80,9 +85,9 @@ in {
               hasBackend = hasBackendPath backendUrl;
               middlewares =
                 if needsStripPrefix
-                then ["${routerName}-stripprefix"]
+                then ["${routerName}-stripprefix" "${routerName}-redirect"]
                 else if hasBackend
-                then ["${routerName}-replacepath"]
+                then ["${routerName}-replacepath" "${routerName}-redirect"]
                 else [];
             in {
               name = "${routerName}-router";
@@ -173,6 +178,25 @@ in {
                     };
                   };
                 }
+                {
+                  name = "${routerName}-redirect";
+                  value = {
+                    plugin.rewriteHeaders = {
+                      rewrites.response = [
+                        {
+                          header = "Location";
+                          regex = "^/(.*)$";
+                          replacement = "${path}/$1";
+                        }
+                        {
+                          header = "Location";
+                          regex = "^${path}${path}/?(.*)$";
+                          replacement = "${path}/$1";
+                        }
+                      ];
+                    };
+                  };
+                }
               ]
               else if backendPath != ""
               then [
@@ -182,6 +206,25 @@ in {
                     replacePathRegex = {
                       regex = "^${path}(/.*)?$";
                       replacement = "${backendPath}$1";
+                    };
+                  };
+                }
+                {
+                  name = "${routerName}-redirect";
+                  value = {
+                    plugin.rewriteHeaders = {
+                      rewrites.response = [
+                        {
+                          header = "Location";
+                          regex = "^/(.*)$";
+                          replacement = "${path}/$1";
+                        }
+                        {
+                          header = "Location";
+                          regex = "^${path}${path}/?(.*)$";
+                          replacement = "${path}/$1";
+                        }
+                      ];
                     };
                   };
                 }
