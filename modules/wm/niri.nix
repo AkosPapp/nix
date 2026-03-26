@@ -3,6 +3,7 @@
   pkgs,
   lib,
   niri,
+  inputs,
   ...
 }: {
   options = {
@@ -15,6 +16,7 @@
 
   imports = [niri.nixosModules.niri];
   config = lib.mkIf config.MODULES.wm.niri.enable {
+    MODULES.nix.substituters.noctalia.enable = true;
     nixpkgs.overlays = [niri.overlays.niri];
 
     niri-flake.cache.enable = true;
@@ -41,6 +43,7 @@
       mako
       fuzzel
       xwayland-satellite
+      inputs.noctalia.packages.${pkgs.stdenv.hostPlatform.system}.default
     ];
 
     # PipeWire for screencasting

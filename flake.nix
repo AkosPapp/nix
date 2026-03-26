@@ -15,12 +15,20 @@
       url = "github:Mic92/sops-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    nix-openclaw = {
+      url = "github:openclaw/nix-openclaw";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     niri = {
       url = "github:sodiboo/niri-flake";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     nix_autobuild = {
       url = "github:AkosPapp/nix_autobuild";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    noctalia = {
+      url = "github:noctalia-dev/noctalia-shell";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
@@ -63,14 +71,19 @@
     nixosConfigurations =
       builtins.mapAttrs (host: _: (nixpkgs.lib.nixosSystem {
         specialArgs =
+          let
+            nixOpenClaw = inputs."nix-openclaw";
+          in
           {
             inherit
               pkgs-unstable
               system
               nixos-version
+              inputs
               ;
             nixosConfigurations = self.nixosConfigurations;
             configName = host;
+            nixOpenClaw = nixOpenClaw;
           }
           // inputs;
         modules =
@@ -79,6 +92,7 @@
             sops-nix.nixosModules.sops
             disko.nixosModules.disko
             nix_autobuild.nixosModules.nix_autobuild
+            inputs.nix-openclaw.nixosModules.openclaw-gateway
           ]
           ++ module_files;
       }))

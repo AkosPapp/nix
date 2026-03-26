@@ -3,6 +3,7 @@
   pkgs,
   lib,
   pkgs-unstable,
+  nixOpenClaw,
   my-nixvim,
   ...
 }: {
@@ -53,6 +54,7 @@
       system.pipewire.enable = true;
       security.sops.enable = true;
       virtualisation.docker.enable = true;
+      virtualisation.virtualbox.enable = true;
       wm.niri.enable = true;
       dev.platformio.enable = true;
     };
