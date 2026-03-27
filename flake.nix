@@ -70,10 +70,9 @@
 
     nixosConfigurations =
       builtins.mapAttrs (host: _: (nixpkgs.lib.nixosSystem {
-        specialArgs =
-          let
-            nixOpenClaw = inputs."nix-openclaw";
-          in
+        specialArgs = let
+          nixOpenClaw = inputs."nix-openclaw";
+        in
           {
             inherit
               pkgs-unstable
