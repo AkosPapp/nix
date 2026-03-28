@@ -126,6 +126,7 @@
       jetbrains.datagrip
       pkgs-unstable.gitkraken
       picocom
+      rpi-imager
       gparted
       perf-tools
       direnv
@@ -156,6 +157,7 @@
       # cad tools
       freecad
       librecad
+      blender
 
       # browsers
       brave
