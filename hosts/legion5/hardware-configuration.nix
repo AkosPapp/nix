@@ -21,11 +21,11 @@
         };
         efi. canTouchEfiVariables = true;
       };
-      #kernelParams = [
-      #  "module_blacklist=amdgpu"
-      #  "nvidia.NVreg_PreserveVideoMemoryAllocations=1"
-      #  "nvidia.NVreg_TemporaryFilePath=/var/tmp"
-      #];
+      kernelParams = [
+        "module_blacklist=amdgpu"
+        #  "nvidia.NVreg_PreserveVideoMemoryAllocations=1"
+        #  "nvidia.NVreg_TemporaryFilePath=/var/tmp"
+      ];
     };
 
     PROFILES.zroot.enable = true;
@@ -66,14 +66,13 @@
     hardware.cpu.x86.msr.enable = true;
     hardware.cpu.x86.msr.settings.allow-writes = "on";
 
-    environment.systemPackages =
-      (with pkgs; [
-        nvitop
-      ])
-      ++ [config.hardware.nvidia.package];
+    environment.systemPackages = with pkgs; [
+      nvitop
+    ];
+    # ++ [config.hardware.nvidia.package];
 
-    boot.initrd.kernelModules = ["nvidia"];
-    boot.extraModulePackages = [config.hardware.nvidia.package];
+    # boot.initrd.kernelModules = ["nvidia"];
+    # boot.extraModulePackages = [config.hardware.nvidia.package];
     hardware.nvidia = {
       # Modesetting is required.
       modesetting.enable = true;
@@ -82,7 +81,7 @@
       # Enable this if you have graphical corruption issues or application crashes after waking
       # up from sleep. This fixes it by saving the entire VRAM memory to /tmp/ instead
       # of just the bare essentials.
-      powerManagement.enable = lib.mkForce true;
+      # powerManagement.enable = lib.mkForce true;
 
       # Fine-grained power management. Turns off GPU when not in use.
       # Experimental and only works on modern Nvidia GPUs (Turing or newer).
