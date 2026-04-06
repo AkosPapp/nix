@@ -3,7 +3,7 @@
 
   MODULES.nix.substituters.akos01.enable = true;
   MODULES.system.printing.enable = true;
-  MODULES.hardware.nvidia.enable = true;
+  MODULES.hardware.nvidia.enable = false;
   USERS.akos.enable = true;
   MODULES.networking.tailscale.hostIP = "100.125.194.29";
   PROFILES.zroot.enable = true;
