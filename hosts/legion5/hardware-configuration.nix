@@ -69,10 +69,18 @@
     environment.systemPackages = with pkgs; [
       nvitop
     ];
+    environment.sessionVariables = {
+      WLR_NO_HARDWARE_CURSORS = "1"; # Common fix for NVIDIA + Wayland
+    };
     # ++ [config.hardware.nvidia.package];
 
     # boot.initrd.kernelModules = ["nvidia"];
     # boot.extraModulePackages = [config.hardware.nvidia.package];
+    hardware.graphics.enable = true;
+    services.xserver.videoDrivers = [
+      "modesetting"
+      "nvidia"
+    ];
     hardware.nvidia = {
       # Modesetting is required.
       modesetting.enable = true;
@@ -97,6 +105,7 @@
       open = false;
 
       #nvidiaPersistenced = true;
+      gsp.enable = false; # or true - try false first for stability
 
       # Enable the Nvidia settings menu,
       # accessible via `nvidia-settings`.
@@ -104,12 +113,13 @@
 
       # Optionally, you may need to select the appropriate driver version for your specific GPU.
       package = config.boot.kernelPackages.nvidiaPackages.latest;
-      # prime = {
-      #   sync.enable = true;
-      #   nvidiaBusId = "PCI:1:0:0";
-      #   amdgpuBusId = "PCI:6:0:0";
-      # };
+      prime = {
+        nvidiaBusId = "PCI:1:0:0";
+        amdgpuBusId = "PCI:6:0:0";
+        sync.enable = true;
+      };
     };
+
     users.users.root.hashedPassword = "$y$j9T$gEhP/0Jlrlwb4ndmLs06L1$7qkdPdgqjCrEH8bAQvJqRn/Mj4m5X9GCRAyM33z0mdA";
   };
 }
