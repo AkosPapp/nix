@@ -22,7 +22,7 @@
   MODULES.services.prometheus.enable = true;
   MODULES.services.sftpgo.enable = true;
   MODULES.services.i2pd.enable = true;
-  MODULES.services.ipfs.enable = true;
+  # MODULES.services.ipfs.enable = true;
   MODULES.services.transmission.enable = true;
   MODULES.services.searx.enable = true;
   MODULES.services.roundcube.enable = true;
