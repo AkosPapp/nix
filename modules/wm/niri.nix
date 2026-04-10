@@ -4,6 +4,7 @@
   lib,
   niri,
   inputs,
+  pkgs-unstable,
   ...
 }: {
   options = {
@@ -20,7 +21,7 @@
     nixpkgs.overlays = [niri.overlays.niri];
 
     niri-flake.cache.enable = true;
-    programs.niri.package = pkgs.niri;
+    programs.niri.package = pkgs.niri-unstable;
     programs.niri.enable = true;
     programs.xwayland.enable = true;
     environment.sessionVariables.NIXOS_OZONE_WL = "1";
@@ -29,21 +30,32 @@
     services.upower.enable = true;
 
     environment.systemPackages = with pkgs; [
-      xdg-desktop-portal-gnome
-      niri
-      wdisplays
-      wlr-randr
-      xorg.xrandr
-      swww
-      wofi
-      hyprlock
-      waybar
-      wl-clipboard
-      wl-mirror
-      mako
+      config.programs.niri.package
+      curl
+      ffmpeg
       fuzzel
-      xwayland-satellite
+      gifski
+      grim
+      hyprlock
+      imagemagick
       inputs.noctalia.packages.${pkgs.stdenv.hostPlatform.system}.default
+      mako
+      pkgs-unstable.wl-mirror
+      slurp
+      tesseract
+      translate-shell
+      wayland-utils
+      wayvnc
+      wdisplays
+      wf-recorder
+      wl-clipboard
+      wlr-randr
+      wl-screenrec
+      wofi
+      xdg-desktop-portal-gnome
+      xorg.xrandr
+      xwayland-satellite
+      zbar
     ];
 
     # PipeWire for screencasting

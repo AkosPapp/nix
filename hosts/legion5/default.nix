@@ -8,7 +8,6 @@
   MODULES.networking.tailscale.hostIP = "100.125.194.29";
   PROFILES.zroot.enable = true;
   services.displayManager.gdm.enable = true;
-  # MODULES.services.openclaw.enable = true;
 
   environment.systemPackages = with pkgs; [
     lenovo-legion

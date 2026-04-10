@@ -49,6 +49,7 @@ in {
     ipfsSwarm = 4001;
     traefikHttp = 80;
     transmissionPeer = 51413;
+    cups = 631;
   };
 
   config.assertions =

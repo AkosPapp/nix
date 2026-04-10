@@ -15,10 +15,6 @@
       url = "github:Mic92/sops-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    nix-openclaw = {
-      url = "github:openclaw/nix-openclaw";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
     niri = {
       url = "github:sodiboo/niri-flake";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -70,9 +66,7 @@
 
     nixosConfigurations =
       builtins.mapAttrs (host: _: (nixpkgs.lib.nixosSystem {
-        specialArgs = let
-          nixOpenClaw = inputs."nix-openclaw";
-        in
+        specialArgs =
           {
             inherit
               pkgs-unstable
@@ -82,7 +76,6 @@
               ;
             nixosConfigurations = self.nixosConfigurations;
             configName = host;
-            nixOpenClaw = nixOpenClaw;
           }
           // inputs;
         modules =
@@ -91,7 +84,6 @@
             sops-nix.nixosModules.sops
             disko.nixosModules.disko
             nix_autobuild.nixosModules.nix_autobuild
-            inputs.nix-openclaw.nixosModules.openclaw-gateway
           ]
           ++ module_files;
       }))
