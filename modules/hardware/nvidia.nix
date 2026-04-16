@@ -12,6 +12,8 @@
     };
   };
   config = lib.mkIf config.MODULES.hardware.nvidia.enable {
+    nixpkgs.config.cudaSupport = true;
+
     # See also https://nixos.wiki/wiki/Nvidia
     boot.initrd.kernelModules = ["nvidia"];
     boot.extraModulePackages = [config.hardware.nvidia.package];
@@ -22,6 +24,7 @@
         nvidia-container-toolkit
         nvidia-container-toolkit.tools
         libnvidia-container
+        cudatoolkit
       ])
       ++ [config.hardware.nvidia.package];
 
