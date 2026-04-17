@@ -16,7 +16,9 @@
   config = lib.mkIf config.MODULES.nix.builders.airlab {
     MODULES.security.sops.enable = true;
     sops.secrets."nix-builder/private_key" = {
-      mode = "0600";
+      mode = "0400";
+      owner = "root";
+      group = "root";
     };
 
     # remote build
@@ -41,18 +43,5 @@
     nix.extraOptions = ''
       builders-use-substitutes = true
     '';
-
-    nix = {
-      settings = {
-        substituters = [
-          #"ssh-ng://builder@r4unb02.airlab"
-          "https://nix-community.cachix.org"
-          "https://cache.nixos.org/"
-        ];
-        trusted-public-keys = [
-          "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
-        ];
-      };
-    };
   };
 }

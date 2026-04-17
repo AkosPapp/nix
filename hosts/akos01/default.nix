@@ -58,7 +58,8 @@
             credentials_file = config.sops.secrets."git.robo4you.at/akos01-nix-autobuild".path;
           }
         ];
-        n_build_threads = 6;
+        n_build_threads = 2;
+        builders = ["ssh-ng://builder@r4unb02.airlab"];
         dir = "/tmp/nix_autobuild";
         supported_architectures = ["x86_64-linux" "aarch64-linux"];
         host = "127.0.0.1";
@@ -87,7 +88,7 @@
         "--accept-dns=false"
         "--accept-routes=false"
         "--advertise-exit-node=true"
-        "--advertise-routes=10.50.0.0/23,10.44.0.0/24,172.18.0.252/32,172.18.2.112/32"
+        "--advertise-routes=10.50.0.0/23,10.44.0.0/24,172.18.0.252/32,172.18.2.112/32,172.18.2.21/32"
       ];
       useRoutingFeatures = "both";
     };
