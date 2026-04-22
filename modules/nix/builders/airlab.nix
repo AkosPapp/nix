@@ -1,7 +1,5 @@
 {
   lib,
-  pkgs,
-  pkgs-unstable,
   config,
   ...
 }: {
@@ -19,6 +17,7 @@
       mode = "0400";
       owner = "root";
       group = "root";
+      path = "/root/.ssh/id_airlab_builder";
     };
 
     # remote build
