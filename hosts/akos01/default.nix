@@ -30,19 +30,25 @@
             url = "github.com/AkosPapp/nix";
             poll_interval_sec = 30;
             branches = ["main"];
-            build_depth = 3;
+            build_depth = 2;
           }
           {
             url = "github.com/AkosPapp/nixvim";
             poll_interval_sec = 30;
             branches = ["main"];
-            build_depth = 1;
+            build_depth = 2;
           }
           {
             url = "github.com/AkosPapp/nix_autobuild";
             poll_interval_sec = 30;
             branches = ["main"];
-            build_depth = 1;
+            build_depth = 2;
+          }
+          {
+            url = "github.com/AkosPapp/nix_ssh_serve_proxy";
+            poll_interval_sec = 30;
+            branches = ["main"];
+            build_depth = 2;
           }
           {
             url = "git.robo4you.at/akos.papp/DA";
@@ -61,9 +67,10 @@
         n_build_threads = 2;
         builders = ["ssh-ng://builder@r4unb02.airlab"];
         dir = "/tmp/nix_autobuild";
-        supported_architectures = ["x86_64-linux" "aarch64-linux"];
+        supported_architectures = ["x86_64-linux"];
         host = "127.0.0.1";
         port = config.PORTS.nixAutobuild;
+        copy_to = ["ssh-ng://builder@r4unb02.airlab" "ssh-ng://root@hp"];
       };
     };
     MODULES.networking.traefik.path_routes = {
@@ -85,7 +92,7 @@
 
     services.tailscale = {
       extraSetFlags = lib.mkForce [
-        "--accept-dns=false"
+        "--accept-dns=true"
         "--accept-routes=false"
         "--advertise-exit-node=true"
         "--advertise-routes=10.50.0.0/23,10.44.0.0/24,172.18.0.252/32,172.18.2.112/32,172.18.2.21/32"
