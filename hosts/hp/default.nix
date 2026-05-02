@@ -15,16 +15,16 @@
   PROFILES.zroot.enable = true;
   PROFILES.server.enable = true;
   MODULES.security.sops.enable = true;
-  MODULES.system.printing.enable = true;
-  services.printing.openFirewall = true;
-  services.printing.listenAddresses = [
-    "127.0.0.1:${toString config.PORTS.cups}"
-    "${config.MODULES.networking.tailscale.hostIP}:${toString config.PORTS.cups}"
-  ];
-  services.printing.allowFrom = ["all"];
-  MODULES.networking.traefik.path_routes = {
-    "/cups" = "http://127.0.0.1:${toString config.PORTS.cups}";
-  };
+  # MODULES.system.printing.enable = true;
+  # services.printing.openFirewall = true;
+  # services.printing.listenAddresses = [
+  #   "127.0.0.1:${toString config.PORTS.cups}"
+  #   "${config.MODULES.networking.tailscale.hostIP}:${toString config.PORTS.cups}"
+  # ];
+  # services.printing.allowFrom = ["all"];
+  # MODULES.networking.traefik.path_routes = {
+  #   "/cups" = "http://127.0.0.1:${toString config.PORTS.cups}";
+  # };
 
   MODULES.networking.traefik.enable = true;
   MODULES.services.homepage.enable = true;
