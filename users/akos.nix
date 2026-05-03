@@ -114,7 +114,10 @@
       fuse
       tesseract
 
-      python314
+      (python314.withPackages (ps:
+        with ps; [
+          pagelabels
+        ]))
 
       # git
       gitFull
