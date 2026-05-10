@@ -62,10 +62,6 @@
     systemd.services.systemd-udev-settle.enable = false;
     systemd.services.NetworkManager-wait-online.enable = false;
 
-    environment.variables = {
-      GPU_FLAG = "--device=nvidia.com/gpu=all";
-    };
-
     environment.systemPackages = with pkgs; [
       # helpful tools
       starship
@@ -116,6 +112,7 @@
 
       (python314.withPackages (ps:
         with ps; [
+          pdfrw
           pagelabels
         ]))
 

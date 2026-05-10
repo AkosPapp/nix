@@ -74,6 +74,10 @@
       "net.core.bpf_jit_harden" = 1;
     };
 
+    environment.variables = {
+      GPU_FLAG = "--device=nvidia.com/gpu=all";
+    };
+
     virtualisation.docker.daemon.settings = {
       default-runtime = "nvidia";
       runtimes = {
