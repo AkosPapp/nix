@@ -146,6 +146,7 @@
       signal-desktop
       logseq
       onlyoffice-desktopeditors
+      libreoffice
       youtube-music
       freerdp
       sxiv
