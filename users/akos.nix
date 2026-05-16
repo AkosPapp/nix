@@ -3,7 +3,6 @@
   pkgs,
   lib,
   pkgs-unstable,
-  nixOpenClaw,
   my-nixvim,
   ...
 }: {
@@ -110,11 +109,13 @@
       fuse
       tesseract
 
-      (python314.withPackages (ps:
-        with ps; [
-          pdfrw
-          pagelabels
-        ]))
+      (python314.withPackages (
+        ps:
+          with ps; [
+            pdfrw
+            pagelabels
+          ]
+      ))
 
       # git
       gitFull
@@ -123,6 +124,7 @@
       # dev tools
       pkgs-unstable.foxglove-studio
       pkgs-unstable.vscode
+      pkgs-unstable.zed-editor
       jetbrains.datagrip
       pkgs-unstable.gitkraken
       picocom

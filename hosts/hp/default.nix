@@ -8,7 +8,8 @@
 
   MODULES.networking.tailscale.hostIP = "100.92.36.52";
   services.tailscale = {
-    extraSetFlags = ["--advertise-exit-node=true"];
+    # extraSetFlags = ["--advertise-exit-node=true"];
+    # extraSetFlags = ["--accept-dns=true" "--accept-routes=true"];
     useRoutingFeatures = "both";
   };
 

@@ -16,7 +16,7 @@
     MODULES.services.grafana.enable = true;
     MODULES.services.homepage.enable = true;
     MODULES.services.prometheus.enable = true;
-    MODULES.services.searx.enable = true;
+    # MODULES.services.searx.enable = true;
 
     sops.secrets."git.robo4you.at/akos01-nix-autobuild" = {
       mode = "0400";
@@ -225,6 +225,47 @@
           };
         };
       };
+    };
+
+    # da
+    virtualisation.docker = {
+      enable = true;
+      enableOnBoot = true;
+    };
+    virtualisation.oci-containers = {
+      backend = "docker";
+      containers.fastdds_discovery = {
+        image = "ros:humble-ros-base-jammy";
+        extraOptions = [
+          "--privileged" # Required for network access
+          "--network=host" # Use host networking for discovery
+          "--ipc=host" # Share IPC namespace
+        ];
+        # Start FastDDS discovery server on all interfaces
+        cmd = ["/opt/ros/humble/bin/fastdds" "discovery" "-i" "0" "-t" "0.0.0.0" "-l" "0.0.0.0"];
+        ports = [
+          "11811" # FastDDS discovery server port
+          "42100" # FastDDS default data port
+        ];
+      };
+    };
+    # Mosquitto MQTT broker configuration
+    services.mosquitto = {
+      enable = true;
+      listeners = [
+        {
+          # Bind on all IPv4 and IPv6 interfaces
+          address = "0.0.0.0";
+          port = 1883; # Standard MQTT port
+
+          # Authentication settings - allow anonymous for development
+          settings.allow_anonymous = true;
+          omitPasswordAuth = true;
+
+          # Access Control List - full read/write access for all topics
+          acl = ["pattern readwrite #"];
+        }
+      ];
     };
   };
 }
