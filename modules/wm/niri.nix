@@ -56,6 +56,7 @@
       xorg.xrandr
       xwayland-satellite
       zbar
+      shikane
     ];
 
     # PipeWire for screencasting
