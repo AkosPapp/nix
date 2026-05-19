@@ -114,7 +114,7 @@
           with ps; [
             pdfrw
             pagelabels
-            # ipykernel
+            ipykernel
           ]
       ))
 
