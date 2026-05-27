@@ -126,6 +126,7 @@
       pkgs-unstable.foxglove-studio
       pkgs-unstable.vscode
       pkgs-unstable.zed-editor
+      pkgs-unstable.github-copilot-cli
       jetbrains.datagrip
       pkgs-unstable.gitkraken
       picocom

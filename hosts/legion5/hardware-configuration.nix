@@ -31,21 +31,6 @@
     PROFILES.zroot.enable = true;
 
     fileSystems = {
-      "/etc/NetworkManager/system-connections" = {
-        device = "zroot/persist/system-connections";
-        fsType = "zfs";
-      };
-
-      "/home" = {
-        device = "zroot/persist/home";
-        fsType = "zfs";
-      };
-
-      "/home/akos" = {
-        device = "zroot/persist/home/akos";
-        fsType = "zfs";
-      };
-
       "/boot" = {
         fsType = "vfat";
         options = ["fmask=0022" "dmask=0022"];

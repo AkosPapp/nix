@@ -36,5 +36,24 @@
         };
       };
     };
+
+    zpool = {
+      zroot = {
+        datasets = {
+          "persist/legion5/system-connections" = {
+            type = "zfs_fs";
+            mountpoint = "/etc/NetworkManager/system-connections";
+          };
+          "persist/legion5/home" = {
+            type = "zfs_fs";
+            mountpoint = "/home";
+          };
+          "persist/legion5/home/akos" = {
+            type = "zfs_fs";
+            mountpoint = "/home/akos";
+          };
+        };
+      };
+    };
   };
 }

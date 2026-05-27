@@ -2,7 +2,7 @@
 
 set -eou pipefail
 
-CONFIGURATION="akos01new"
+CONFIGURATION="legion5"
 IP="akos01"
 
 # sops
