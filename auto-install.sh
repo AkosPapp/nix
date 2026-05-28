@@ -3,7 +3,7 @@
 set -eou pipefail
 
 CONFIGURATION="legion5"
-IP="akos01"
+IP="10.50.1.237"
 
 # sops
 ## generate ssh host key
@@ -24,24 +24,26 @@ else
     sed -e "s/^    - age:$/    - age:\n      - *${CONFIGURATION}/" -i sops/.sops.yaml
 fi
 
-cd sops && sops updatekeys secrets.yaml || exit 1
+bash -c "cd sops && sops updatekeys secrets.yaml || exit 1"
 echo done updating sops keys
 
 # upload flake
-rsync -avzv --delete --progress --exclude '.git' --exclude 'tmp' --exclude '.DS_Store' --exclude 'result' ./ root@${IP}:/tmp/nix/
+echo "Uploading flake to ${IP}..."
+rsync -avzv --delete --progress --exclude '.git' --exclude 'tmp' --exclude '.DS_Store' --exclude 'result' ./. root@${IP}:/tmp/nix
 
 # disko 
-ssh root@${IP} "bash -c \"nix run github:nix-community/disko/latest -- --mode destroy,format,mount --flake /tmp/nix#${CONFIGURATION}\"" 
+echo "Running disko on ${IP}..."
+ssh root@${IP} "bash -c \"nix run --extra-experimental-features nix-command --extra-experimental-features flakes github:nix-community/disko/latest -- --mode destroy,format,mount --flake /tmp/nix#${CONFIGURATION} --yes-wipe-all-disks\"" 
 
-ssh root@${IP} "bash -c \"nix run github:nix-community/disko/latest -- --mode mount --flake /tmp/nix#${CONFIGURATION}\"" 
+# ssh root@${IP} "bash -c \"nix run --extra-experimental-features nix-command --extra-experimental-features flakes github:nix-community/disko/latest -- --mode mount --flake /tmp/nix#${CONFIGURATION}\"" 
 
 # copy ssh host key
 ssh root@${IP} "mkdir -p /mnt/etc/ssh/"
 rsync -avzv tmp/ssh_host_ed25519_key tmp/ssh_host_ed25519_key.pub root@${IP}:/mnt/etc/ssh/
 
 # nixos-install
-ssh root@${IP} "nixos-install --flake /tmp/nix#${CONFIGURATION} --no-root-passwd"
-ssh root@${IP} "nixos-install --flake /tmp/nix#${CONFIGURATION}"
+ssh root@${IP} "nixos-install  --flake /tmp/nix#${CONFIGURATION} --no-root-passwd"
+ssh root@${IP} "nixos-install  --flake /tmp/nix#${CONFIGURATION}"
 
 
 exit 1

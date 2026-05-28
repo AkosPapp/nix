@@ -1,7 +1,8 @@
 keys:
   - &akos01zfs age13g9ww6uvta3p5uqwy8ye03vl6cxtezdsfmw97kay8lgnwd7cwdxqugv3vl
   - &hp age1ldw6atyczam0z88m26myg0hlydqkxput7r22c5svtd503ts523kqhmmtug
-  - &legion5 age1u57z2k07r7cajz0507z4tgltgq5jwt7dfaks0z7cdgnn7pvqkg2qzv4l7u
+  - &legion5 age1kgwk6clqzr3hftpqdgt5mcmxppphjgsunmd2zxr7wcxytycnnarqdaaltv
+  - &legion5old age1u57z2k07r7cajz0507z4tgltgq5jwt7dfaks0z7cdgnn7pvqkg2qzv4l7u
   - &akos01 age1ueg0ptynzw8lc7tkmjw89jfjlx3dg9x53cc5n30ygm8py5eljq7ql7yjr9
 creation_rules:
   - path_regex: secrets.yaml$
@@ -10,5 +11,6 @@ creation_rules:
       - *akos01zfs
       - *hp
       - *legion5
+      - *legion5old
       - *akos01
 

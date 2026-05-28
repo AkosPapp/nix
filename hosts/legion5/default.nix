@@ -5,7 +5,7 @@
   MODULES.system.printing.enable = true;
   MODULES.hardware.nvidia.enable = true;
   USERS.akos.enable = true;
-  MODULES.networking.tailscale.hostIP = "100.125.194.29";
+  MODULES.networking.tailscale.hostIP = "100.126.232.60";
   PROFILES.zroot.enable = true;
   services.displayManager.gdm.enable = true;
 
@@ -36,30 +36,30 @@
     HandlePowerKey = "sleep";
   };
 
-  # services.znapzend = {
-  #   enable = true;
-  #   pure = true;
-  #   autoCreation = true;
-  #   logLevel = "debug";
-  #   logTo = "/var/log/znapzend.log";
-  #   # features = {
-  #   #   compressed = true;
-  #   #   lowmemRecurse = true;
-  #   #   skipIntermediates = true;
-  #   # };
-  #   zetup."zroot/persist" = {
-  #     recursive = true;
-  #     plan = "1h=>1min,1d=>1h,1w=>1d";
-  #     enable = true;
-  #     destinations = {
-  #       hp = {
-  #         host = "root@hp";
-  #         dataset = "zroot/persist/legion5";
-  #         plan = "1h=>1min,1d=>1h,1w=>1d";
-  #       };
-  #     };
-  #   };
-  # };
+  services.znapzend = {
+    enable = true;
+    pure = true;
+    autoCreation = true;
+    logLevel = "debug";
+    logTo = "/var/log/znapzend.log";
+    # features = {
+    #   compressed = true;
+    #   lowmemRecurse = true;
+    #   skipIntermediates = true;
+    # };
+    zetup."zroot/persist/legion5" = {
+      recursive = true;
+      plan = "1h=>1min,1d=>1h,1w=>1d";
+      enable = true;
+      destinations = {
+        # hp = {
+        #   host = "root@hp";
+        #   dataset = "zroot/persist/legion5";
+        #   plan = "1h=>1min,1d=>1h,1w=>1d";
+        # };
+      };
+    };
+  };
   #  systemd.services.znapzend.serviceConfig.ExecStart = let
   #    args = lib.concatStringsSep " " [
   #      "--logto=${config.services.znapzend.logTo}"
