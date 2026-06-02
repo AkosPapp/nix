@@ -25,6 +25,10 @@ in {
   };
 
   config = mkIf cfg.enable {
+    
+    sops.secrets."grafana/secret_key" = {
+      mode = "0400";
+    };
     services.grafana = {
       enable = true;
       settings = {
@@ -39,6 +43,7 @@ in {
         security =
           {
             admin_user = "admin";
+            secret_key = "$__file{${config.sops.secrets."grafana/secret_key".path}}";
           }
           // (lib.optionalAttrs (cfg.adminPassword != null) {
             admin_password = cfg.adminPassword;

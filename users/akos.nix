@@ -15,6 +15,10 @@
   };
 
   config = lib.mkIf config.USERS.akos.enable {
+    nixpkgs.config.permittedInsecurePackages = [
+      "electron-39.8.10"
+    ];
+    
     services.input-remapper.enable = true;
     services.input-remapper.enableUdevRules = true;
 
@@ -127,6 +131,7 @@
       pkgs-unstable.vscode
       pkgs-unstable.zed-editor
       pkgs-unstable.github-copilot-cli
+      pkgs-unstable.cursor-cli
       jetbrains.datagrip
       pkgs-unstable.gitkraken
       picocom
@@ -151,7 +156,7 @@
       logseq
       onlyoffice-desktopeditors
       libreoffice
-      youtube-music
+      pear-desktop
       freerdp
       sxiv
       kitty

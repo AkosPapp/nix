@@ -45,8 +45,11 @@ in {
     ipfsGateway = 5002;
 
     # external ports (open to network)
+    fastddsData = 42100;
+    fastddsDiscovery = 11811;
     i2pdRouter = 12345;
     ipfsSwarm = 4001;
+    mosquitto = 1883;
     traefikHttp = 80;
     transmissionPeer = 51413;
     cups = 631;

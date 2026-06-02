@@ -18,8 +18,8 @@
       supportedFilesystems = ["zfs"];
       zfs = {
         extraPools = ["zroot"];
-        forceImportRoot = true;
-        allowHibernation = false;
+        forceImportRoot = false;
+        unsafeAllowHibernation = false;
       };
     };
     fileSystems."/" = {

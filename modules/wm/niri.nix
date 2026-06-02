@@ -53,7 +53,6 @@
       wl-screenrec
       wofi
       xdg-desktop-portal-gnome
-      xorg.xrandr
       xwayland-satellite
       zbar
       shikane
