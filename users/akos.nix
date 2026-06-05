@@ -18,7 +18,7 @@
     nixpkgs.config.permittedInsecurePackages = [
       "electron-39.8.10"
     ];
-    
+
     services.input-remapper.enable = true;
     services.input-remapper.enableUdevRules = true;
 
@@ -75,7 +75,7 @@
       fzf
       rsync
       htop
-      btop
+      btop-cuda
       devcontainer
       ncdu
       deploy-rs

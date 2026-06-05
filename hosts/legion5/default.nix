@@ -1,4 +1,8 @@
-{pkgs, ...}: {
+{
+  pkgs,
+  config,
+  ...
+}: {
   imports = [./hardware-configuration.nix];
 
   MODULES.nix.substituters.akos01.enable = true;
@@ -17,8 +21,8 @@
     cudatoolkit
   ];
 
-  boot.extraModulePackages = with pkgs; [
-    linuxPackages_latest.lenovo-legion-module
+  boot.extraModulePackages = with config.boot.kernelPackages; [
+    lenovo-legion-module
   ];
 
   # Enable OpenGL

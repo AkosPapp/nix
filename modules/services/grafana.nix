@@ -25,7 +25,6 @@ in {
   };
 
   config = mkIf cfg.enable {
-    
     sops.secrets."grafana/secret_key" = {
       mode = "0400";
     };

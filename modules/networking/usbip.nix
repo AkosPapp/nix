@@ -14,11 +14,11 @@
   };
 
   config = lib.mkIf config.MODULES.networking.usbip.enable {
-    boot.extraModulePackages = with pkgs; [
-      linuxPackages_latest.usbip
-    ];
     environment.systemPackages = with pkgs; [
       linuxPackages_latest.usbip
+    ];
+    boot.extraModulePackages = with config.boot.kernelPackages; [
+      usbip
     ];
     boot.initrd.kernelModules = ["vhci_hcd"];
   };
