@@ -11,7 +11,8 @@
   USERS.akos.enable = true;
   MODULES.networking.tailscale.hostIP = "100.126.232.60";
   PROFILES.zroot.enable = true;
-  services.displayManager.gdm.enable = true;
+  # services.displayManager.gdm.enable = true;
+  services.displayManager.ly.enable = true;
 
   environment.systemPackages = with pkgs; [
     lenovo-legion
