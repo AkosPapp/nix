@@ -39,7 +39,7 @@
       tmux
     ];
 
-    MODULES.virtualisation.docker.enable = true;
+    # MODULES.virtualisation.docker.enable = true;
     PROFILES.zroot.enable = true;
 
     services.openssh.settings.PermitRootLogin = "prohibit-password";

@@ -1,6 +1,7 @@
 {
   pkgs,
   config,
+  lib,
   ...
 }: {
   imports = [./hardware-configuration.nix];
@@ -47,11 +48,11 @@
     autoCreation = true;
     logLevel = "debug";
     logTo = "/var/log/znapzend.log";
-    # features = {
-    #   compressed = true;
-    #   lowmemRecurse = true;
-    #   skipIntermediates = true;
-    # };
+    features = {
+      # compressed = true;
+      lowmemRecurse = true;
+      # skipIntermediates = true;
+    };
     zetup."zroot/persist/legion5" = {
       recursive = true;
       plan = "1h=>1min,1d=>1h,1w=>1d";
@@ -65,15 +66,15 @@
       };
     };
   };
-  #  systemd.services.znapzend.serviceConfig.ExecStart = let
-  #    args = lib.concatStringsSep " " [
-  #      "--logto=${config.services.znapzend.logTo}"
-  #      "--loglevel=${config.services.znapzend.logLevel}"
-  #      "--autoCreation"
-  #      "--debug"
-  #    ];
-  #  in
-  #    lib.mkForce "${pkgs.znapzend}/bin/znapzend ${args}";
+  systemd.services.znapzend.serviceConfig.ExecStart = let
+    args = lib.concatStringsSep " " [
+      "--logto=${config.services.znapzend.logTo}"
+      "--loglevel=${config.services.znapzend.logLevel}"
+      "--autoCreation"
+      "--debug"
+    ];
+  in
+    lib.mkForce "${pkgs.znapzend}/bin/znapzend ${args}";
 
   services.power-profiles-daemon.enable = true;
 

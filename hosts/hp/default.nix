@@ -27,12 +27,12 @@
   #   "/cups" = "http://127.0.0.1:${toString config.PORTS.cups}";
   # };
 
-  # MODULES.networking.traefik.enable = true;
-  # MODULES.services.homepage.enable = true;
-  # MODULES.services.grafana.enable = true;
-  # MODULES.services.prometheus.enable = true;
-  # MODULES.services.sftpgo.enable = true;
-  # MODULES.services.i2pd.enable = true;
+  MODULES.networking.traefik.enable = true;
+  MODULES.services.homepage.enable = true;
+  MODULES.services.grafana.enable = true;
+  MODULES.services.prometheus.enable = true;
+  MODULES.services.sftpgo.enable = true;
+  MODULES.services.i2pd.enable = true;
   # MODULES.services.transmission.enable = true;
   # MODULES.services.searx.enable = true;
   # MODULES.services.roundcube.enable = true;
@@ -41,9 +41,9 @@
 
   MODULES.nix.substituters.akos01.enable = true;
 
-  # networking = {
-  #   useDHCP = lib.mkForce true;
-  # };
+  networking = {
+    useDHCP = lib.mkForce true;
+  };
 
   services.logind.settings.Login = {
     HandleLidSwitch = "ignore";

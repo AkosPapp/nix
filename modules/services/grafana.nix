@@ -4,30 +4,25 @@
   pkgs,
   ...
 }: let
-  inherit (lib) mkEnableOption mkIf mkOption types;
+  inherit (lib) mkEnableOption mkIf;
 
   cfg = config.MODULES.services.grafana;
 in {
   options.MODULES.services.grafana = {
     enable = mkEnableOption "Grafana monitoring dashboard";
-
-    adminPassword = mkOption {
-      type = types.nullOr types.str;
-      default = null;
-      description = "Initial admin password for Grafana (plain text)";
-    };
-
-    adminPasswordHash = mkOption {
-      type = types.nullOr types.str;
-      default = "$2b$05$v2zNXA1NdFrRt7md85gdcOJzr98H5RNIBaHI1AE1jHg11uw6PFNV2";
-      description = "Initial admin password hash for Grafana (bcrypt)";
-    };
   };
 
   config = mkIf cfg.enable {
     sops.secrets."grafana/secret_key" = {
       mode = "0400";
+      owner = "grafana";
     };
+
+    sops.secrets."grafana/admin_password" = {
+      mode = "0400";
+      owner = "grafana";
+    };
+
     services.grafana = {
       enable = true;
       settings = {
@@ -39,17 +34,11 @@ in {
           serve_from_sub_path = true;
         };
         analytics.reporting_enabled = false;
-        security =
-          {
-            admin_user = "admin";
-            secret_key = "$__file{${config.sops.secrets."grafana/secret_key".path}}";
-          }
-          // (lib.optionalAttrs (cfg.adminPassword != null) {
-            admin_password = cfg.adminPassword;
-          })
-          // (lib.optionalAttrs (cfg.adminPasswordHash != null) {
-            admin_password = "$__file{${pkgs.writeText "grafana-admin-password-hash" cfg.adminPasswordHash}}";
-          });
+        security = {
+          admin_user = "admin";
+          secret_key = "$__file{${config.sops.secrets."grafana/secret_key".path}}";
+          admin_password = "$__file{${config.sops.secrets."grafana/admin_password".path}}";
+        };
       };
 
       provision = {

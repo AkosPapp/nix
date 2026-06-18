@@ -19,7 +19,7 @@
 
   config = lib.mkIf config.PROFILES.qemu-vm.enable {
     MODULES.networking.tailscale.enable = true;
-    MODULES.virtualisation.docker.enable = true;
+    # MODULES.virtualisation.docker.enable = true;
     MODULES.networking.sshd.enable = true;
 
     boot.loader.grub.enable = true;
