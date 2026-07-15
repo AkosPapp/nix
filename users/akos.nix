@@ -112,6 +112,7 @@
       killall
       fuse
       tesseract
+      wifi-qr
 
       (python313.withPackages (
         ps:
