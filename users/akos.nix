@@ -153,6 +153,7 @@
       direnv
       devenv
       devpod
+      devpod-desktop
 
       #k8s
       pkgs-unstable.kubectl
