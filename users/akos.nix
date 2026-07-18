@@ -143,6 +143,7 @@
       pkgs-unstable.zed-editor
       pkgs-unstable.github-copilot-cli
       pkgs-unstable.claude-code
+      pkgs-unstable.claude-agent-acp
       pkgs-unstable.cursor-cli
       jetbrains.datagrip
       pkgs-unstable.gitkraken
