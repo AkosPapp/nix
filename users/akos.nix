@@ -3,7 +3,6 @@
   pkgs,
   lib,
   pkgs-unstable,
-  my-nixvim,
   ...
 }: {
   options = {
@@ -152,6 +151,8 @@
       gparted
       perf-tools
       direnv
+      devenv
+      devpod
 
       #k8s
       pkgs-unstable.kubectl

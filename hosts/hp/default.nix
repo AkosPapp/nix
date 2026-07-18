@@ -12,6 +12,7 @@
     # extraSetFlags = ["--accept-dns=true" "--accept-routes=true"];
     useRoutingFeatures = "both";
   };
+  networking.enableIPv6 = false;
 
   PROFILES.zroot.enable = true;
   PROFILES.server.enable = true;
@@ -32,7 +33,7 @@
   MODULES.services.grafana.enable = true;
   MODULES.services.prometheus.enable = true;
   MODULES.services.sftpgo.enable = true;
-  MODULES.services.i2pd.enable = true;
+  MODULES.services.i2pd.enable = false;
   # MODULES.services.transmission.enable = true;
   # MODULES.services.searx.enable = true;
   # MODULES.services.roundcube.enable = true;
