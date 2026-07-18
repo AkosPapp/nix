@@ -22,6 +22,17 @@
     services.input-remapper.enable = true;
     services.input-remapper.enableUdevRules = true;
 
+    programs.nix-ld.enable = true;
+    programs.nix-ld.libraries = with pkgs; [
+      stdenv.cc.cc.lib # libstdc++, libgcc_s
+      zlib
+      openssl
+      icu
+      curl
+      libunwind
+      # add more here if you see "error loading shared library" for something specific
+    ];
+
     users.users.akos = {
       isNormalUser = true;
       shell = pkgs.zsh;
@@ -132,6 +143,7 @@
       pkgs-unstable.vscode
       pkgs-unstable.zed-editor
       pkgs-unstable.github-copilot-cli
+      pkgs-unstable.claude-code
       pkgs-unstable.cursor-cli
       jetbrains.datagrip
       pkgs-unstable.gitkraken
