@@ -3,7 +3,6 @@
   pkgs,
   lib,
   niri,
-  inputs,
   pkgs-unstable,
   ...
 }: {
@@ -17,7 +16,6 @@
 
   imports = [niri.nixosModules.niri];
   config = lib.mkIf config.MODULES.wm.niri.enable {
-    MODULES.nix.substituters.noctalia.enable = true;
     nixpkgs.overlays = [niri.overlays.niri];
 
     niri-flake.cache.enable = true;
@@ -38,7 +36,7 @@
       grim
       hyprlock
       imagemagick
-      inputs.noctalia.packages.${pkgs.stdenv.hostPlatform.system}.default
+      noctalia-shell
       mako
       pkgs-unstable.wl-mirror
       slurp
