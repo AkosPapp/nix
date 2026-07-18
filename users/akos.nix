@@ -145,16 +145,16 @@
       pkgs-unstable.claude-code
       pkgs-unstable.claude-agent-acp
       pkgs-unstable.cursor-cli
-      jetbrains.datagrip
       pkgs-unstable.gitkraken
-      picocom
-      rpi-imager
-      gparted
-      perf-tools
-      direnv
-      devenv
-      devpod
-      devpod-desktop
+      pkgs-unstable.picocom
+      pkgs-unstable.rpi-imager
+      pkgs-unstable.gparted
+      pkgs-unstable.perf-tools
+      pkgs-unstable.direnv
+      pkgs-unstable.devenv
+      pkgs-unstable.devpod
+      pkgs-unstable.devpod-desktop
+      pkgs-unstable.neovide
 
       #k8s
       pkgs-unstable.kubectl
