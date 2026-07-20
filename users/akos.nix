@@ -156,6 +156,7 @@
       pkgs-unstable.devpod-desktop
       pkgs-unstable.neovide
       pkgs-unstable.vscode-extensions.vadimcn.vscode-lldb
+      pkgs.vscode-extensions.vadimcn.vscode-lldb.adapter
       lldb
       gdb
 
