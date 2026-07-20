@@ -155,6 +155,9 @@
       pkgs-unstable.devpod
       pkgs-unstable.devpod-desktop
       pkgs-unstable.neovide
+      pkgs-unstable.vscode-extensions.vadimcn.vscode-lldb
+      lldb
+      gdb
 
       #k8s
       pkgs-unstable.kubectl
