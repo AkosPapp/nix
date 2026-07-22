@@ -125,6 +125,7 @@
       wifi-qr
       openconnect
       networkmanager-openconnect
+      oath-toolkit
 
       (python313.withPackages (
         ps:
