@@ -11,17 +11,24 @@
 
     VPN_HOST="vpn.tuwien.ac.at"
 
-    USER=$(cat ${config.sops.secrets."tu/vpn/user".path})
-    PASS=$(cat ${config.sops.secrets."tu/vpn/pass".path})
-    TOTP_SECRET=$(cat ${config.sops.secrets."tu/vpn/totp".path})
-
-    PROFILE=$(printf "1_TU_getunnelt\n2_Alles_getunnelt\n" | \
-      ${pkgs.wofi}/bin/wofi --dmenu --prompt="Select VPN profile" --lines=2)
+    PROFILE=$(printf "1_TU_getunnelt\n2_Alles_getunnelt\n3_TU_ohne_fixe_Adresse\nDisconnect\n" | \
+      ${pkgs.wofi}/bin/wofi --dmenu --prompt="Select VPN profile" --lines=4)
 
     if [[ -z "$PROFILE" ]]; then
       echo "No profile selected, aborting." >&2
       exit 1
     fi
+
+    sudo ${pkgs.psmisc}/bin/killall openconnect || true
+
+    if [[ "$PROFILE" == "Disconnect" ]]; then
+      echo "Disconnected from $VPN_HOST."
+      exit 0
+    fi
+
+    USER=$(cat ${config.sops.secrets."tu/vpn/user".path})
+    PASS=$(cat ${config.sops.secrets."tu/vpn/pass".path})
+    TOTP_SECRET=$(cat ${config.sops.secrets."tu/vpn/totp".path})
 
     OTP=$(${pkgs.oath-toolkit}/bin/oathtool --totp -b "$TOTP_SECRET")
 
@@ -37,6 +44,16 @@
         --passwd-on-stdin \
         "$VPN_HOST"
   '';
+
+  tuvpn-connect-desktop = pkgs.makeDesktopItem {
+    name = "tuvpn-connect";
+    desktopName = "TU VPN";
+    comment = "Connect to or disconnect from the TU Wien VPN";
+    icon = "network-vpn";
+    exec = "${tuvpn-connect}/bin/tuvpn-connect";
+    terminal = false;
+    categories = ["Network"];
+  };
 in {
   options = {
     MODULES.networking.tuvpn.enable = lib.mkOption {
@@ -63,6 +80,7 @@ in {
 
     environment.systemPackages = [
       tuvpn-connect
+      tuvpn-connect-desktop
     ];
 
     security.sudo.extraRules = [
@@ -71,6 +89,10 @@ in {
         commands = [
           {
             command = "${pkgs.openconnect}/bin/openconnect";
+            options = ["NOPASSWD"];
+          }
+          {
+            command = "${pkgs.psmisc}/bin/killall openconnect";
             options = ["NOPASSWD"];
           }
         ];
