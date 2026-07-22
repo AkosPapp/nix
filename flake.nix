@@ -23,16 +23,21 @@
       url = "github:AkosPapp/nix_autobuild";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    nix_serve_proxy = {
+      url = "github:AkosPapp/nix_serve_proxy";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
-    self,
+    deploy-rs,
+    disko,
+    nix_autobuild,
+    nix_serve_proxy,
     nixpkgs,
     nixpkgs-unstable,
-    disko,
+    self,
     sops-nix,
-    deploy-rs,
-    nix_autobuild,
     ...
   } @ inputs: let
     nixos-version = builtins.elemAt (builtins.match "([0-9][0-9]\.[0-9][0-9]).*" inputs.nixpkgs.lib.version) 0;
@@ -80,6 +85,7 @@
             sops-nix.nixosModules.sops
             disko.nixosModules.disko
             nix_autobuild.nixosModules.nix_autobuild
+            nix_serve_proxy.nixosModules.nix_autobuild
           ]
           ++ module_files;
       }))

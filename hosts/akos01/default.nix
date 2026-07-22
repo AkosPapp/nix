@@ -17,6 +17,8 @@
     MODULES.services.fastdds.enable = true;
     MODULES.services.mosquitto.enable = true;
     MODULES.services.searx.enable = true;
+    MODULES.nix.substituters.proxy.enable = true;
+    MODULES.nix.serve.enable = true;
 
     sops.secrets."git.robo4you.at/akos01-nix-autobuild" = {
       mode = "0400";
@@ -45,7 +47,7 @@
             build_depth = 2;
           }
           {
-            url = "github.com/AkosPapp/nix_ssh_serve_proxy";
+            url = "github.com/AkosPapp/nix_serve_proxy";
             poll_interval_sec = 30;
             branches = ["main"];
             build_depth = 2;
@@ -100,16 +102,6 @@
       useRoutingFeatures = "both";
     };
 
-    sops.secrets."nix-serve/akos01.airlab/private_key" = {
-      mode = "0400";
-      #owner = "nix-serve";
-      #group = "nix-serve";
-    };
-    services.nix-serve = {
-      enable = true;
-      secretKeyFile = config.sops.secrets."nix-serve/akos01.airlab/private_key".path;
-      package = pkgs.nix-serve-ng;
-    };
     networking.firewall.allowedTCPPorts = [5000];
 
     nix.settings = {

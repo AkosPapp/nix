@@ -44,10 +44,6 @@
       group = "users";
     };
 
-    services.nix-serve = {
-      enable = true;
-      secretKeyFile = "/var/cache-priv-key.pem";
-    };
     nix = {
       settings = {
         trusted-users = ["builder" "@nixbld" "root" "@root" "@wheel"];
