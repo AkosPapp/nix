@@ -12,16 +12,15 @@
   };
 
   config = lib.mkIf config.MODULES.nix.substituters.proxy.enable {
-    services.nix_ssh_serve_proxy = {
+    services.nix_serve_proxy = {
       proxy = {
         enable = true;
-        hosts = [
-          "http://akos01.airlab:5001"
-          "http://hp.tail546fb.ts.net:5001"
-          "http://cache.nixos.org"
-        ];
+        hosts =
+          lib.optional (config.networking.hostName != "akos01") "http://akos01.airlab:5001"
+          ++ lib.optional (config.networking.hostName != "hp") "http://hp.tail546fb.ts.net:5001"
+          ++ ["http://cache.nixos.org"];
         http_port = 5000;
-        http_bind_address = "0.0.0.0";
+        http_bind_address = "127.0.0.1";
         availability_cache_ttl_secs = 300;
         narinfo_cache_ttl_secs = 300;
         download_size = 10000;

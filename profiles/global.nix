@@ -42,6 +42,37 @@
       my-nixvim.packages.${pkgs.system}.default
       gnumake
       rsync
+      (pkgs.writeShellScriptBin "nix-switch-to-generation" ''
+        set -euo pipefail
+
+        PROFILE=/nix/var/nix/profiles/system
+
+        # List generations and format them nicely for fzf
+        selected=$(${pkgs.nix}/bin/nix-env --list-generations --profile "$PROFILE" \
+          | ${pkgs.fzf}/bin/fzf \
+              --header="Select a NixOS generation to switch to" \
+              --tac \
+              --no-sort \
+              --reverse)
+
+        if [ -z "$selected" ]; then
+          echo "No generation selected, aborting."
+          exit 1
+        fi
+
+        # Extract the generation number (first whitespace-separated field)
+        gen_number=$(echo "$selected" | awk '{print $1}')
+
+        gen_link="$PROFILE-$gen_number-link"
+
+        if [ ! -e "$gen_link" ]; then
+          echo "Error: could not find $gen_link"
+          exit 1
+        fi
+
+        echo "Switching to generation $gen_number..."
+        exec sudo "$gen_link/bin/switch-to-configuration" switch
+      '')
     ];
     networking = {
       extraHosts = ''

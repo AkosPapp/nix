@@ -7,7 +7,6 @@
   imports = [./hardware-configuration.nix];
 
   MODULES.nix.substituters.proxy.enable = true;
-  MODULES.nix.serve.enable = true;
   MODULES.system.printing.enable = true;
   MODULES.hardware.nvidia.enable = true;
   USERS.akos.enable = true;
