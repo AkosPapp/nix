@@ -39,8 +39,6 @@
   # MODULES.services.roundcube.enable = true;
   # MODULES.services.nextcloud.enable = true;
   # MODULES.services.nextcloud.hostName = config.networking.fqdn;
-
-  MODULES.nix.substituters.akos01.enable = true;
   MODULES.nix.substituters.proxy.enable = true;
   MODULES.nix.serve.enable = true;
 

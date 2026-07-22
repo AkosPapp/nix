@@ -6,7 +6,6 @@
 }: {
   imports = [./hardware-configuration.nix];
 
-  MODULES.nix.substituters.akos01.enable = true;
   MODULES.nix.substituters.proxy.enable = true;
   MODULES.nix.serve.enable = true;
   MODULES.system.printing.enable = true;
@@ -14,7 +13,6 @@
   USERS.akos.enable = true;
   MODULES.networking.tailscale.hostIP = "100.126.232.60";
   PROFILES.zroot.enable = true;
-  # services.displayManager.gdm.enable = true;
   services.displayManager.ly.enable = true;
 
   environment.systemPackages = with pkgs; [
