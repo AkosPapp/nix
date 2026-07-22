@@ -173,6 +173,7 @@
       discord
       obs-studio
       signal-desktop
+      element-desktop
       logseq
       onlyoffice-desktopeditors
       libreoffice
