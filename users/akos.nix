@@ -123,6 +123,8 @@
       fuse
       tesseract
       wifi-qr
+      openconnect
+      networkmanager-openconnect
 
       (python313.withPackages (
         ps:
