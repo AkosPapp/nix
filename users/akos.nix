@@ -62,6 +62,7 @@
       hardware.perifirals.keyboards.kanata.enable = true;
       hardware.perifirals.mice.razer.enable = true;
       networking.usbip.enable = true;
+      networking.tuvpn.enable = true;
       system.bluetooth.enable = true;
       system.gpg.enable = true;
       system.pipewire.enable = true;
