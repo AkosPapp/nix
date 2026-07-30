@@ -1,14 +1,35 @@
 {
   config,
   lib,
+  pkgs,
   ...
 }: let
-  inherit (lib) mkEnableOption mkIf;
+  inherit (lib) mkIf mkOption types;
 
   cfg = config.MODULES.services.prometheus;
 in {
   options.MODULES.services.prometheus = {
-    enable = mkEnableOption "Prometheus monitoring";
+    enable = mkOption {
+      type = types.bool;
+      default = config.MODULES.services.immich.enable;
+      defaultText = lib.literalExpression "config.MODULES.services.immich.enable";
+      description = ''
+        Whether to enable Prometheus monitoring. Defaults to on automatically wherever Immich is
+        enabled, since Immich's own metrics (see the immich-api/immich-microservices scrape jobs
+        below) need a local Prometheus to scrape them - set this to `false` explicitly to run
+        Immich without Prometheus, or `true` to opt in on a host without Immich.
+      '';
+    };
+
+    rulesDir = mkOption {
+      type = types.str;
+      default = "/var/lib/prometheus-rules";
+      description = ''
+        Directory Prometheus loads alerting/recording rules from (*.yml, *.yaml). Synced via
+        Syncthing to every other machine that also enables Prometheus, so dropping a rules file
+        here propagates everywhere; Prometheus reloads automatically when the directory changes.
+      '';
+    };
   };
 
   config = lib.mkMerge [
@@ -60,6 +81,35 @@ in {
       };
     })
 
+    (mkIf cfg.enable {
+      services.prometheus = {
+        enableReload = true;
+
+        # ruleFiles glob into a directory that Syncthing populates at runtime, so the files
+        # don't exist during the Nix build and promtool can't check them there. Prometheus
+        # still validates on reload and keeps the last-good config if a rule file is broken.
+        checkConfig = false;
+        ruleFiles = ["${cfg.rulesDir}/*.yml" "${cfg.rulesDir}/*.yaml"];
+      };
+
+      systemd.tmpfiles.rules = ["d ${cfg.rulesDir} 0755 ${config.services.syncthing.user} ${config.services.syncthing.group} - -"];
+
+      # Reload Prometheus whenever Syncthing adds/updates/removes a rule file
+      systemd.paths.prometheus-rules-reload = {
+        wantedBy = ["multi-user.target"];
+        pathConfig.PathChanged = cfg.rulesDir;
+      };
+
+      systemd.services.prometheus-rules-reload.serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${pkgs.systemd}/bin/systemctl reload prometheus.service";
+      };
+
+      # Sync this machine's rules with every other machine that also enables Prometheus
+      MODULES.services.syncthing.enable = true;
+      MODULES.services.syncthing.shares = [cfg.rulesDir];
+    })
+
     (mkIf (cfg.enable && config.MODULES.networking.traefik.enable) {
       MODULES.networking.traefik.path_routes."/prometheus" = "http://127.0.0.1:${toString config.PORTS.prometheus}/prometheus";
 
@@ -75,6 +125,21 @@ in {
           static_configs = [
             {
               targets = ["127.0.0.1:${toString config.PORTS.traefikDashboard}"];
+            }
+          ];
+        }
+      ];
+    })
+
+    (mkIf (cfg.enable && config.services.syncthing.enable) {
+      # Syncthing exposes its own Prometheus metrics natively at /metrics on the GUI/API port -
+      # no separate exporter binary needed, same as the traefik job above.
+      services.prometheus.scrapeConfigs = [
+        {
+          job_name = "syncthing";
+          static_configs = [
+            {
+              targets = ["127.0.0.1:${toString config.PORTS.syncthingWebui}"];
             }
           ];
         }
@@ -172,6 +237,35 @@ in {
           static_configs = [
             {
               targets = ["127.0.0.1:${toString config.services.prometheus.exporters.tailscale.port}"];
+            }
+          ];
+        }
+      ];
+    })
+
+    (mkIf (cfg.enable && config.MODULES.services.immich.enable) {
+      # Immich exposes its own OTel/Prometheus metrics natively (no separate exporter binary),
+      # same as the traefik/syncthing jobs above - just needs telemetry collection switched on.
+      services.immich.environment = {
+        IMMICH_TELEMETRY_INCLUDE = "all";
+        IMMICH_API_METRICS_PORT = toString config.PORTS.prometheusImmichApiExporter;
+        IMMICH_MICROSERVICES_METRICS_PORT = toString config.PORTS.prometheusImmichMicroservicesExporter;
+      };
+
+      services.prometheus.scrapeConfigs = [
+        {
+          job_name = "immich-api";
+          static_configs = [
+            {
+              targets = ["127.0.0.1:${toString config.PORTS.prometheusImmichApiExporter}"];
+            }
+          ];
+        }
+        {
+          job_name = "immich-microservices";
+          static_configs = [
+            {
+              targets = ["127.0.0.1:${toString config.PORTS.prometheusImmichMicroservicesExporter}"];
             }
           ];
         }

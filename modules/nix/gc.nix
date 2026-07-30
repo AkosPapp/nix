@@ -16,7 +16,7 @@
     nix.gc = {
       automatic = true;
       dates = "weekly";
-      options = "--delete-older-than 1m";
+      options = "--delete-older-than 7d";
       persistent = true;
     };
     systemd.services.nix-gc = {

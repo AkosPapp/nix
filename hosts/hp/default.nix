@@ -7,6 +7,7 @@
   imports = [./hardware-configuration.nix];
 
   MODULES.networking.tailscale.hostIP = "100.92.36.52";
+  MODULES.services.syncthing.deviceID = "ST66PS2-5LYQY5J-LNI3FR4-3VLG7W3-F4ZHRS2-72NZMBG-QVWV2QD-6SB2DQF";
   services.tailscale = {
     extraSetFlags = ["--advertise-exit-node=true"];
     # extraSetFlags = ["--accept-dns=true" "--accept-routes=true"];
@@ -36,11 +37,8 @@
   MODULES.services.i2pd.enable = false;
   # MODULES.services.transmission.enable = true;
   # MODULES.services.searx.enable = true;
-  # MODULES.services.roundcube.enable = true;
-  # MODULES.services.nextcloud.enable = true;
-  # MODULES.services.nextcloud.hostName = config.networking.fqdn;
-  MODULES.nix.substituters.proxy.enable = true;
-  MODULES.nix.serve.enable = true;
+  # MODULES.nix.substituters.proxy.enable = true;
+  # MODULES.nix.serve.enable = true;
 
   networking = {
     useDHCP = lib.mkForce true;

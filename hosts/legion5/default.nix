@@ -6,11 +6,40 @@
 }: {
   imports = [./hardware-configuration.nix];
 
-  MODULES.nix.substituters.proxy.enable = true;
+  #MODULES.nix.substituters.proxy.enable = true;
   MODULES.system.printing.enable = true;
   MODULES.hardware.nvidia.enable = true;
   USERS.akos.enable = true;
   MODULES.networking.tailscale.hostIP = "100.126.232.60";
+  MODULES.services.syncthing.deviceID = "U6G2UZ4-RX5WVKR-5MAIXOA-4GX6ZL6-PGTAPWD-KXLK3V4-N4EPLT3-GWR7MQ7";
+  # Shares live under akos's home directory, which the default "syncthing" system user can't
+  # read; run as akos instead (see MODULES.services.syncthing.user's description for why
+  # running as root doesn't work for this).
+  MODULES.services.syncthing.user = "akos";
+  MODULES.services.syncthing.group = "users";
+  MODULES.services.syncthing.shares = [
+    {
+      path = "/home/akos/Pictures/dcim";
+      copyOwnershipFromParent = true;
+      extra_devices = ["phone"];
+    }
+    {
+      # Everything under ~/Pictures (including dcim, see above) mirrored to hp - moving a phone
+      # photo out of dcim into any other spot under here is how it stops being tied to the phone's
+      # camera roll: from then on it's just a plain legion5<->hp synced file, immune to whatever
+      # happens on the phone. dcim itself is excluded here since it's already its own folder above
+      # (synced with the phone too) - without excluding it, this folder and the dcim one above
+      # would both try to manage the same files, which Syncthing does not handle well.
+      path = "/home/akos/Pictures";
+      copyOwnershipFromParent = true;
+      ignorePatterns = ["/dcim"];
+    }
+    {
+      path = "/home/akos/notes";
+      copyOwnershipFromParent = true;
+      extra_devices = ["phone"];
+    }
+  ];
   PROFILES.zroot.enable = true;
   services.displayManager.ly.enable = true;
 
@@ -54,14 +83,15 @@
     };
     zetup."zroot/persist/legion5" = {
       recursive = true;
-      plan = "1h=>1min,1d=>1h,1w=>1d";
+      plan = "1h=>1min,1d=>1h,1w=>1d,5m=>1w";
+      #plan = "1h=>1min,1d=>1h,1w=>1d";
       enable = true;
       destinations = {
-        hp = {
-          host = "root@hp";
-          dataset = "zroot/persist/legion5";
-          plan = "1h=>1min,1d=>1h,1w=>1d";
-        };
+        # hp = {
+        # host = "root@hp";
+        # dataset = "zroot/persist/legion5";
+        # plan = "1h=>1min,1d=>1h,1w=>1d";
+        # };
       };
     };
   };

@@ -95,6 +95,19 @@ in {
       MODULES.services.homepage.services.homepage.icon = "/homepage/homepage.ico";
     })
     (mkIf (cfg.enable && config.MODULES.services.grafana.enable) {
+      # homepage-dashboard runs with systemd's DynamicUser (a random per-boot uid), so it can't
+      # be granted read access to grafana.nix's own admin_password secret (owner = "grafana",
+      # mode 0400) the same way grafana itself is. This is a second sops.secrets declaration
+      # pointing at the *same* underlying value (via `key`) but world-readable, since the
+      # dynamic uid can't be predicted ahead of time to target it more narrowly.
+      sops.secrets."homepage/grafana_admin_password" = {
+        key = "grafana/admin_password";
+        mode = "0444";
+      };
+
+      systemd.services.homepage-dashboard.environment.HOMEPAGE_FILE_GRAFANA_PASSWORD =
+        config.sops.secrets."homepage/grafana_admin_password".path;
+
       MODULES.services.homepage.services.grafana = {
         href = "/grafana";
         icon = "/grafana/public/img/fav32.png";
@@ -103,7 +116,10 @@ in {
           version = 2;
           url = "http://127.0.0.1:${toString config.PORTS.grafana}/grafana/";
           username = "admin";
-          password = "admin";
+          # {{HOMEPAGE_FILE_X}} is homepage's own templating syntax: it substitutes the contents
+          # of the file at $HOMEPAGE_FILE_X, so the actual password never has to be embedded in
+          # this config (which ends up world-readable in the Nix store).
+          password = "{{HOMEPAGE_FILE_GRAFANA_PASSWORD}}";
         };
       };
     })
@@ -153,6 +169,20 @@ in {
     })
     (mkIf (cfg.enable && config.MODULES.services.nextcloud.enable) {
       MODULES.services.homepage.services.nextcloud.icon = "/nextcloud/core/img/logo/logo.svg";
+    })
+    (mkIf (cfg.enable && config.MODULES.services.immich.enable) {
+      # Immich isn't behind Traefik (see immich.nix - its clients need the API at the server
+      # root), so it gets an absolute href to its own Tailscale-served port instead of a subpath.
+      MODULES.services.homepage.services.immich = {
+        href = "https://${config.networking.fqdn}:${toString config.PORTS.immich}";
+        icon = "immich.png";
+      };
+    })
+    (mkIf (cfg.enable && config.MODULES.services.syncthing.enable) {
+      MODULES.services.homepage.services.syncthing = {
+        href = "/syncthing";
+        icon = "syncthing.png";
+      };
     })
     {
       MODULES.services.homepage.services = lib.mkMerge (

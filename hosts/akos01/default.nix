@@ -9,6 +9,7 @@
     MODULES.nix.builders.airlab = true;
     MODULES.security.sops.enable = true;
     MODULES.networking.tailscale.hostIP = "100.83.255.5";
+    MODULES.services.syncthing.deviceID = "ZNMNOF4-NH6MXMO-VCFTEPL-4CUQ2DC-Y7VR6WI-NHFOUKS-OK2GXAR-A7SVWQ2";
     MODULES.networking.traefik.enable = true;
     MODULES.services.vaultwarden.enable = true;
     MODULES.services.grafana.enable = true;
@@ -17,8 +18,9 @@
     MODULES.services.fastdds.enable = true;
     MODULES.services.mosquitto.enable = true;
     MODULES.services.searx.enable = true;
-    MODULES.nix.substituters.proxy.enable = true;
-    MODULES.nix.serve.enable = true;
+    MODULES.services.immich.enable = true;
+    # MODULES.nix.substituters.proxy.enable = true;
+    # MODULES.nix.serve.enable = true;
 
     sops.secrets."git.robo4you.at/akos01-nix-autobuild" = {
       mode = "0400";

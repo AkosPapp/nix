@@ -17,6 +17,7 @@ in {
     grafana = 8030;
     homepage = 8082;
     i2pdWebui = 8070;
+    immich = 2283;
     nextcloud = 8088;
     nixAutobuild = 8085;
     nginxStatus = 8087;
@@ -25,11 +26,14 @@ in {
     searx = 8081;
     sftpgoHttp = 8090;
     sftpgoWebdav = 8091;
+    syncthingWebui = 8092;
     traefikDashboard = 8888;
     vaultwarden = 8222;
     transmissionRpc = 8001;
 
     # prometheus exporters
+    prometheusImmichApiExporter = 9201;
+    prometheusImmichMicroservicesExporter = 9202;
     prometheusNginxExporter = 9113;
     prometheusNextcloudExporter = 9205;
     prometheusNodeExporter = 9100;
@@ -43,6 +47,7 @@ in {
     i2pdSocksProxy = 4447;
     ipfsApi = 5001;
     ipfsGateway = 5002;
+    syncthingSync = 22000;
 
     # external ports (open to network)
     fastddsData = 42100;
