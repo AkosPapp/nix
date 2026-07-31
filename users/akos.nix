@@ -56,6 +56,11 @@
     programs.zsh.enable = true;
     services.gnome.gnome-keyring.enable = true;
 
+    fonts.packages = with pkgs; [
+      noto-fonts
+      noto-fonts-color-emoji
+    ];
+
     MODULES = {
       fonts.nerdfonts.enable = true;
       games.steam.enable = true;
