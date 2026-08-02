@@ -133,6 +133,14 @@ in {
         };
       };
     })
+    (mkIf (cfg.enable && config.MODULES.services.loki.enable) {
+      # Loki has no web UI of its own (just an HTTP push/query API) - logs are actually browsed
+      # through Grafana's Explore view instead, using the Loki datasource wired up in loki.nix.
+      MODULES.services.homepage.services.loki = {
+        href = "/grafana/explore";
+        icon = "loki.png";
+      };
+    })
     (mkIf (cfg.enable && config.MODULES.networking.traefik.enable) {
       MODULES.services.homepage.services.traefik = {
         href = "/traefik";

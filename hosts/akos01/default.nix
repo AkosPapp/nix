@@ -15,6 +15,7 @@
     MODULES.services.grafana.enable = true;
     MODULES.services.homepage.enable = true;
     MODULES.services.prometheus.enable = true;
+    MODULES.services.loki.enable = true;
     MODULES.services.fastdds.enable = true;
     MODULES.services.mosquitto.enable = true;
     MODULES.services.searx.enable = true;
@@ -216,6 +217,11 @@
             type = "zfs_fs";
             mountpoint = "/nix";
             options.canmount = "noauto";
+          };
+          immich-pictures = {
+            type = "zfs_fs";
+            mountpoint = "/var/lib/immich-pictures";
+            options.compression = "lz4";
           };
         };
       };

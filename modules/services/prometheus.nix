@@ -231,6 +231,19 @@ in {
         environmentFile = config.sops.secrets."tailscale/exporter_environment_file".path;
       };
 
+      # This exporter talks to the Tailscale Cloud API, not the local tailscaled - it only needs
+      # working internet/DNS, but the module's default unit is merely `after = network.target`,
+      # which is reached well before that on boot. It then fails a burst of quick retries (Restart
+      # = "always" with systemd's default RestartSec) and permanently start-limit-hits before
+      # network actually comes up. Wait for real connectivity and don't let early failures disable
+      # further retries.
+      systemd.services.prometheus-tailscale-exporter = {
+        after = ["network-online.target"];
+        wants = ["network-online.target"];
+        startLimitIntervalSec = 0;
+        serviceConfig.RestartSec = 5;
+      };
+
       services.prometheus.scrapeConfigs = [
         {
           job_name = "tailscale";

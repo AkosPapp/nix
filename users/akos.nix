@@ -101,6 +101,8 @@
       sanoid
       rclone
       sops
+      immich-go
+      immich-cli
 
       # system tools
       libnotify

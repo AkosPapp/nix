@@ -2,8 +2,34 @@
   pkgs,
   config,
   lib,
+  nixosConfigurations,
+  configName,
   ...
-}: {
+}: let
+  # Every /var/lib/* share any other host in the flake exposes over Syncthing (e.g. Grafana's
+  # dashboardsDir, Prometheus's rulesDir), mirrored here read/write so they're all browsable
+  # under one directory rather than scattered across legion5's own /var/lib. Stored under
+  # ~/servers instead of literally at /var/lib since none of these services actually run here.
+  otherHostNames = builtins.filter (h: h != configName) (builtins.attrNames nixosConfigurations);
+
+  varLibSharePaths = lib.unique (
+    lib.flatten (map (
+        host:
+          map (s: s.path) (
+            builtins.filter (s: lib.hasPrefix "/var/lib" s.path)
+            (nixosConfigurations.${host}.config.MODULES.services.syncthing.shares)
+          )
+      )
+      otherHostNames)
+  );
+
+  varLibShares =
+    map (path: {
+      inherit path;
+      override_path = "/home/akos/servers${path}";
+    })
+    varLibSharePaths;
+in {
   imports = [./hardware-configuration.nix];
 
   #MODULES.nix.substituters.proxy.enable = true;
@@ -17,29 +43,31 @@
   # running as root doesn't work for this).
   MODULES.services.syncthing.user = "akos";
   MODULES.services.syncthing.group = "users";
-  MODULES.services.syncthing.shares = [
-    {
-      path = "/home/akos/Pictures/dcim";
-      copyOwnershipFromParent = true;
-      extra_devices = ["phone"];
-    }
-    {
-      # Everything under ~/Pictures (including dcim, see above) mirrored to hp - moving a phone
-      # photo out of dcim into any other spot under here is how it stops being tied to the phone's
-      # camera roll: from then on it's just a plain legion5<->hp synced file, immune to whatever
-      # happens on the phone. dcim itself is excluded here since it's already its own folder above
-      # (synced with the phone too) - without excluding it, this folder and the dcim one above
-      # would both try to manage the same files, which Syncthing does not handle well.
-      path = "/home/akos/Pictures";
-      copyOwnershipFromParent = true;
-      ignorePatterns = ["/dcim"];
-    }
-    {
-      path = "/home/akos/notes";
-      copyOwnershipFromParent = true;
-      extra_devices = ["phone"];
-    }
-  ];
+  MODULES.services.syncthing.shares =
+    [
+      {
+        path = "/home/akos/Pictures/dcim";
+        copyOwnershipFromParent = true;
+        extra_devices = ["phone"];
+      }
+      {
+        # Everything under ~/Pictures (including dcim, see above) mirrored to hp - moving a phone
+        # photo out of dcim into any other spot under here is how it stops being tied to the phone's
+        # camera roll: from then on it's just a plain legion5<->hp synced file, immune to whatever
+        # happens on the phone. dcim itself is excluded here since it's already its own folder above
+        # (synced with the phone too) - without excluding it, this folder and the dcim one above
+        # would both try to manage the same files, which Syncthing does not handle well.
+        path = "/home/akos/Pictures";
+        copyOwnershipFromParent = true;
+        ignorePatterns = ["/dcim"];
+      }
+      {
+        path = "/home/akos/notes";
+        copyOwnershipFromParent = true;
+        extra_devices = ["phone"];
+      }
+    ]
+    ++ varLibShares;
   PROFILES.zroot.enable = true;
   services.displayManager.ly.enable = true;
 

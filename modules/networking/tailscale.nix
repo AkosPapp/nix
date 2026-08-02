@@ -197,13 +197,21 @@ in {
               else "";
             svc = {
               description = "Tailscale ${serviceType} ${name}";
-              after = ["tailscaled.service" "network.target"];
-              wants = ["tailscaled.service"];
+              after = ["tailscaled.service" "network-online.target"];
+              wants = ["tailscaled.service" "network-online.target"];
               wantedBy = ["multi-user.target"];
+              # On boot, tailscaled.service becomes "active" as soon as the daemon process starts,
+              # well before it has actually reconnected to the tailnet - `tailscale serve` run any
+              # earlier than that fails immediately. Block here until the node has a Tailscale IP
+              # (ie. is actually connected), and don't let the burst of quick failures that
+              # produces permanently disable retries via systemd's start-limit.
+              startLimitIntervalSec = 0;
               serviceConfig = {
+                ExecStartPre = "${pkgs.bash}/bin/bash -c 'until ${pkgs-unstable.tailscale}/bin/tailscale ip -4 >/dev/null 2>&1; do sleep 1; done'";
                 ExecStart = "${pkgs-unstable.tailscale}/bin/tailscale ${serviceType} ${buildServeFlags s} ${targetArg}";
                 User = "root";
                 Restart = "always";
+                RestartSec = 5;
               };
             };
           in

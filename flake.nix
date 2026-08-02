@@ -16,7 +16,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     niri = {
-      url = "github:sodiboo/niri-flake";
+      url = "github:sodiboo/niri-flake/main";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     nix_autobuild = {
