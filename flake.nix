@@ -23,17 +23,12 @@
       url = "github:AkosPapp/nix_autobuild";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    nix_serve_proxy = {
-      url = "github:AkosPapp/nix_serve_proxy";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
   };
 
   outputs = {
     deploy-rs,
     disko,
     nix_autobuild,
-    nix_serve_proxy,
     nixpkgs,
     nixpkgs-unstable,
     self,
@@ -85,7 +80,6 @@
             sops-nix.nixosModules.sops
             disko.nixosModules.disko
             nix_autobuild.nixosModules.nix_autobuild
-            nix_serve_proxy.nixosModules.nix_serve_proxy
           ]
           ++ module_files;
       }))

@@ -20,8 +20,8 @@
     MODULES.services.mosquitto.enable = true;
     MODULES.services.searx.enable = true;
     MODULES.services.immich.enable = true;
-    # MODULES.nix.substituters.proxy.enable = true;
-    # MODULES.nix.serve.enable = true;
+    MODULES.nix.substituters.airlab-attic.enable = true;
+    MODULES.nix.substituters.airlab-attic.push.enable = true;
 
     sops.secrets."git.robo4you.at/akos01-nix-autobuild" = {
       mode = "0400";
@@ -50,13 +50,7 @@
             build_depth = 2;
           }
           {
-            url = "github.com/AkosPapp/nix_serve_proxy";
-            poll_interval_sec = 30;
-            branches = ["main"];
-            build_depth = 2;
-          }
-          {
-            url = "git.robo4you.at/akos.papp/DA";
+            url = "git.robo4you.at/akos.papp/DA2";
             poll_interval_sec = 30;
             branches = ["main"];
             build_depth = 2;
@@ -100,12 +94,9 @@
         "--accept-dns=true"
         "--accept-routes=false"
         "--advertise-exit-node=true"
-        "--advertise-routes=10.50.0.0/23,10.44.0.0/24,172.18.0.252/32,172.18.2.112/32,172.18.2.21/32"
       ];
       useRoutingFeatures = "both";
     };
-
-    networking.firewall.allowedTCPPorts = [5000];
 
     nix.settings = {
       download-buffer-size = 524288000; # 500 MiB
@@ -218,11 +209,11 @@
             mountpoint = "/nix";
             options.canmount = "noauto";
           };
-          immich-pictures = {
-            type = "zfs_fs";
-            mountpoint = "/var/lib/immich-pictures";
-            options.compression = "lz4";
-          };
+          # immich-pictures = {
+          #   type = "zfs_fs";
+          #   mountpoint = "/var/lib/immich";
+          #   options.compression = "lz4";
+          # };
         };
       };
     };

@@ -103,6 +103,7 @@
       sops
       immich-go
       immich-cli
+      md2pdf
 
       # system tools
       libnotify
@@ -149,6 +150,7 @@
       git-lfs
 
       # dev tools
+      pkgs-unstable.foxglove-cli
       pkgs-unstable.foxglove-studio
       pkgs-unstable.vscode
       pkgs-unstable.zed-editor

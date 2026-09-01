@@ -48,6 +48,7 @@ in {
     i2pdSocksProxy = 4447;
     ipfsApi = 5001;
     ipfsGateway = 5002;
+    immichMachineLearning = 3003;
     syncthingSync = 22000;
 
     # external ports (open to network)

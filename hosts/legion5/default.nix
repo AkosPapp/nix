@@ -32,7 +32,18 @@
 in {
   imports = [./hardware-configuration.nix];
 
-  #MODULES.nix.substituters.proxy.enable = true;
+  MODULES.services.immich.machineLearning.enable = true;
+  # legion5 has an nvidia GPU (MODULES.hardware.nvidia.enable below) - prioritize it over hp's
+  # CPU-only worker so it's actually the one doing the work instead of sitting idle behind hp,
+  # which otherwise always wins by sorting first alphabetically in the failover chain.
+  MODULES.services.immich.machineLearning.priority = 10;
+  # CUDA support pulled in a from-scratch build of magma and hwloc (no cache hit for this
+  # capability/nixpkgs combination) - not worth the build time, so this stays on CPU inference.
+  # Gunicorn worker processes for immich-machine-learning - bumped from the default of 1 to let
+  # it handle more than one request at a time.
+  services.immich.machine-learning.environment.MACHINE_LEARNING_WORKERS = lib.mkForce "2";
+  MODULES.security.sops.enable = true;
+  MODULES.nix.substituters.airlab-attic.enable = true;
   MODULES.system.printing.enable = true;
   MODULES.hardware.nvidia.enable = true;
   USERS.akos.enable = true;
@@ -111,15 +122,15 @@ in {
     };
     zetup."zroot/persist/legion5" = {
       recursive = true;
-      plan = "1h=>1min,1d=>1h,1w=>1d,5m=>1w";
-      #plan = "1h=>1min,1d=>1h,1w=>1d";
+      # plan = "1h=>1min,1d=>1h,1w=>1d,5m=>1w";
+      plan = "1h=>1min,1d=>1h,1w=>1d";
       enable = true;
       destinations = {
-        # hp = {
-        # host = "root@hp";
-        # dataset = "zroot/persist/legion5";
-        # plan = "1h=>1min,1d=>1h,1w=>1d";
-        # };
+        hp = {
+          host = "root@hp";
+          dataset = "zroot/persist/legion5";
+          plan = "1h=>1min,1d=>1h,1w=>1d";
+        };
       };
     };
   };
