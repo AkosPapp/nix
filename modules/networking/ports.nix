@@ -14,6 +14,7 @@ in {
 
   config.PORTS = {
     # internal services (bound to localhost)
+    fireflyIii = 8093;
     grafana = 8030;
     homepage = 8082;
     i2pdWebui = 8070;
@@ -22,6 +23,7 @@ in {
     nextcloud = 8088;
     nixAutobuild = 8085;
     nginxStatus = 8087;
+    ollama = 11434;
     prometheus = 8009;
     roundcube = 8086;
     searx = 8081;
@@ -38,6 +40,7 @@ in {
     prometheusNginxExporter = 9113;
     prometheusNextcloudExporter = 9205;
     prometheusNodeExporter = 9100;
+    prometheusPhpFpmExporter = 9253;
     prometheusPostgresExporter = 9187;
     prometheusTailscaleExporter = 9200;
     prometheusZfsExporter = 9134;

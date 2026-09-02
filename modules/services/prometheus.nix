@@ -285,6 +285,42 @@ in {
       ];
     })
 
+    (mkIf (cfg.enable && config.MODULES.services.firefly-iii.enable) {
+      # Firefly III is a PHP app with no metrics endpoint of its own. Its database and its nginx
+      # front end are already covered by the postgres/nginx blocks above (both switch themselves
+      # on as soon as firefly-iii.nix enables those services); what's left is the php-fpm pool
+      # actually executing the app, which is where request saturation and worker exhaustion show
+      # up first. php-fpm publishes that over its own status endpoint on the pool's unix socket.
+      services.prometheus.exporters.php-fpm = {
+        enable = true;
+        listenAddress = "127.0.0.1";
+        port = config.PORTS.prometheusPhpFpmExporter;
+        extraFlags = [
+          "--phpfpm.scrape-uri 'unix://${config.services.phpfpm.pools.firefly-iii.socket};${config.services.firefly-iii.poolConfig."pm.status_path"}'"
+        ];
+      };
+
+      systemd.services.prometheus-php-fpm-exporter.serviceConfig = {
+        # The exporters framework hardens every exporter down to AF_INET/AF_INET6 on the
+        # assumption it scrapes over TCP; this one talks FastCGI over a unix socket instead.
+        RestrictAddressFamilies = ["AF_UNIX"];
+        # That socket is mode 0660, owned by the firefly-iii user and the pool's group - and the
+        # exporter runs under a DynamicUser, so joining the group is the only way in.
+        SupplementaryGroups = [config.services.firefly-iii.group];
+      };
+
+      services.prometheus.scrapeConfigs = [
+        {
+          job_name = "php-fpm";
+          static_configs = [
+            {
+              targets = ["127.0.0.1:${toString config.services.prometheus.exporters.php-fpm.port}"];
+            }
+          ];
+        }
+      ];
+    })
+
     (mkIf (cfg.enable && config.boot.supportedFilesystems.zfs or false) {
       services.prometheus.exporters.zfs = {
         enable = true;

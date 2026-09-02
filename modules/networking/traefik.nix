@@ -16,6 +16,30 @@ in {
       description = "Mapping of URL patterns to backend URLs.";
     };
 
+    pass_host_header = mkOption {
+      type = types.attrsOf types.bool;
+      default = {};
+      description = ''
+        Per-path override of whether the client's Host header reaches the backend (Traefik's
+        default) or is replaced by the backend's own host:port. Set a path to `false` when its
+        backend validates the Host header and rejects the public name - ollama, for one, answers
+        403 to any Host that isn't loopback or the machine's own hostname.
+      '';
+    };
+
+    favicon = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = ''
+        Backend URL, path included, to answer the site-wide /favicon.ico with. Every app here
+        lives on one shared origin, so any page that declares no `<link rel="icon">` of its own -
+        Firefly III's login and register pages, for two - sends the browser to /favicon.ico at
+        the root. No path route claims that, so it otherwise falls through to the catch-all and
+        comes back 502 on every one of those page loads. Null leaves it doing exactly that.
+      '';
+      example = "http://127.0.0.1:8082/homepage.ico";
+    };
+
     defaultPage = mkOption {
       type = types.nullOr types.str;
       default = "/homepage";
@@ -36,6 +60,14 @@ in {
         entryPoints = {
           web = {
             address = ":${toString config.PORTS.traefikHttp}";
+            # Traefik is reached through `tailscale serve`, which terminates TLS out on the
+            # tailnet and proxies here over loopback, passing the original scheme along in
+            # X-Forwarded-Proto. Traefik drops that header as untrusted by default and
+            # substitutes its own view of the request - plain http - so backends that build
+            # absolute URLs from it (Firefly III, any Laravel app) hand out http:// links that
+            # nothing on the tailnet actually serves. Trust the header, but only from loopback:
+            # that is exactly the tailscaled hop and nothing else.
+            forwardedHeaders.trustedIPs = ["127.0.0.1/32" "::1/128"];
           };
           traefik = {
             address = "127.0.0.1:${toString config.PORTS.traefikDashboard}";
@@ -75,6 +107,43 @@ in {
           parts = builtins.split "/" afterProtocol;
         in
           (builtins.length parts) > 1;
+
+        # Split "http://host:port/some/path" into its origin and its path halves. The per-path
+        # generators below inline this same parse; these are for the favicon route, which isn't
+        # driven by path_routes.
+        urlOrigin = url: let
+          parts = builtins.split "://" url;
+          afterProtocol = builtins.elemAt parts 2;
+        in "${builtins.head parts}://${builtins.head (builtins.split "/" afterProtocol)}";
+
+        urlPath = url: let
+          afterProtocol = builtins.elemAt (builtins.split "://" url) 2;
+        in
+          builtins.substring
+          (builtins.stringLength (builtins.head (builtins.split "/" afterProtocol)))
+          (builtins.stringLength afterProtocol)
+          afterProtocol;
+
+        # Site-wide /favicon.ico, served out of whichever backend cfg.favicon names.
+        faviconRouter = {
+          favicon-router = {
+            rule = "Path(`/favicon.ico`)";
+            service = "favicon-service";
+            middlewares = ["favicon-replacepath"];
+            entryPoints = ["web"];
+            priority = 200;
+          };
+        };
+
+        faviconMiddleware = {
+          favicon-replacepath.replacePath.path = urlPath cfg.favicon;
+        };
+
+        faviconService = {
+          favicon-service.loadBalancer.servers = [
+            {url = urlOrigin cfg.favicon;}
+          ];
+        };
 
         # Generate routers for each path route
         pathRouters = lib.listToAttrs (lib.mapAttrsToList (
@@ -250,11 +319,15 @@ in {
             in {
               name = "${routerName}-service";
               value = {
-                loadBalancer = {
-                  servers = [
-                    {url = baseUrl;}
-                  ];
-                };
+                loadBalancer =
+                  {
+                    servers = [
+                      {url = baseUrl;}
+                    ];
+                  }
+                  // optionalAttrs (cfg.pass_host_header ? ${path}) {
+                    passHostHeader = cfg.pass_host_header.${path};
+                  };
               };
             }
           )
@@ -271,9 +344,9 @@ in {
         };
       in {
         http = {
-          routers = pathRouters // refererRouters // (optionalAttrs (cfg.defaultPage != null) rootRedirectRouter) // catchAllRouter;
-          middlewares = pathMiddlewares // (optionalAttrs (cfg.defaultPage != null) rootRedirectMiddleware);
-          services = pathServices // notFoundService;
+          routers = pathRouters // refererRouters // (optionalAttrs (cfg.defaultPage != null) rootRedirectRouter) // (optionalAttrs (cfg.favicon != null) faviconRouter) // catchAllRouter;
+          middlewares = pathMiddlewares // (optionalAttrs (cfg.defaultPage != null) rootRedirectMiddleware) // (optionalAttrs (cfg.favicon != null) faviconMiddleware);
+          services = pathServices // notFoundService // (optionalAttrs (cfg.favicon != null) faviconService);
         };
       };
     };

@@ -1,0 +1,1983 @@
+{
+  "log": {
+    "version": "1.2",
+    "creator": {
+      "name": "WebInspector",
+      "version": "537.36"
+    },
+    "pages": [
+      {
+        "startedDateTime": "2026-09-02T11:47:41.848Z",
+        "id": "page_4",
+        "title": "https://hp.tail546fb.ts.net/firefly/register",
+        "pageTimings": {
+          "onContentLoad": 831.33099999759,
+          "onLoad": 1067.230999997264
+        }
+      }
+    ],
+    "entries": [
+      {
+        "_initiator": {
+          "type": "other"
+        },
+        "_priority": "VeryHigh",
+        "_resourceType": "document",
+        "cache": {},
+        "connection": "443",
+        "request": {
+          "method": "GET",
+          "url": "https://hp.tail546fb.ts.net/firefly/register",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": ":authority",
+              "value": "hp.tail546fb.ts.net"
+            },
+            {
+              "name": ":method",
+              "value": "GET"
+            },
+            {
+              "name": ":path",
+              "value": "/firefly/register"
+            },
+            {
+              "name": ":scheme",
+              "value": "https"
+            },
+            {
+              "name": "accept",
+              "value": "text/html,application/xhtml+xml,application/xml;q=0.9,image/jxl,image/avif,image/webp,image/apng,*/*;q=0.8"
+            },
+            {
+              "name": "accept-encoding",
+              "value": "gzip, deflate, br, zstd"
+            },
+            {
+              "name": "accept-language",
+              "value": "en-US,en;q=0.7"
+            },
+            {
+              "name": "cache-control",
+              "value": "no-cache"
+            },
+            {
+              "name": "pragma",
+              "value": "no-cache"
+            },
+            {
+              "name": "priority",
+              "value": "u=0, i"
+            },
+            {
+              "name": "sec-ch-ua",
+              "value": "\"Not=A?Brand\";v=\"99\", \"Brave\";v=\"151\", \"Chromium\";v=\"151\""
+            },
+            {
+              "name": "sec-ch-ua-mobile",
+              "value": "?0"
+            },
+            {
+              "name": "sec-ch-ua-platform",
+              "value": "\"Linux\""
+            },
+            {
+              "name": "sec-fetch-dest",
+              "value": "document"
+            },
+            {
+              "name": "sec-fetch-mode",
+              "value": "navigate"
+            },
+            {
+              "name": "sec-fetch-site",
+              "value": "none"
+            },
+            {
+              "name": "sec-fetch-user",
+              "value": "?1"
+            },
+            {
+              "name": "sec-gpc",
+              "value": "1"
+            },
+            {
+              "name": "upgrade-insecure-requests",
+              "value": "1"
+            },
+            {
+              "name": "user-agent",
+              "value": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+            }
+          ],
+          "queryString": [],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": "cache-control",
+              "value": "no-cache, private"
+            },
+            {
+              "name": "content-encoding",
+              "value": "gzip"
+            },
+            {
+              "name": "content-security-policy",
+              "value": "default-src 'none'; object-src 'none'; script-src 'unsafe-eval' 'strict-dynamic' 'nonce-6MNcz5TABt7s4GDN9iDwTA=='; style-src 'self' 'unsafe-inline'; base-uri 'self'; font-src 'self' data:; connect-src 'self' https://api.pwnedpasswords.com ; img-src 'self' data: 'nonce-6MNcz5TABt7s4GDN9iDwTA==' ; manifest-src 'self'"
+            },
+            {
+              "name": "content-type",
+              "value": "text/html; charset=utf-8"
+            },
+            {
+              "name": "date",
+              "value": "Wed, 02 Sep 2026 11:47:41 GMT"
+            },
+            {
+              "name": "feature-policy",
+              "value": "geolocation 'none'; midi 'none'; sync-xhr 'self'; microphone 'none'; camera 'none'; magnetometer 'none'; gyroscope 'none'; fullscreen 'self'; payment 'none'"
+            },
+            {
+              "name": "referrer-policy",
+              "value": "no-referrer"
+            },
+            {
+              "name": "server",
+              "value": "nginx"
+            },
+            {
+              "name": "vary",
+              "value": "Accept-Encoding"
+            },
+            {
+              "name": "x-content-type-options",
+              "value": "nosniff"
+            },
+            {
+              "name": "x-frame-options",
+              "value": "deny"
+            },
+            {
+              "name": "x-permitted-cross-domain-policies",
+              "value": "none"
+            },
+            {
+              "name": "x-powered-by",
+              "value": "PHP/8.5.9"
+            },
+            {
+              "name": "x-robots-tag",
+              "value": "none"
+            },
+            {
+              "name": "x-xss-protection",
+              "value": "1; mode=block"
+            }
+          ],
+          "cookies": [],
+          "content": {
+            "size": 9119,
+            "mimeType": "text/html"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": -1,
+          "_transferSize": 4156,
+          "_error": null,
+          "_fetchedViaServiceWorker": false
+        },
+        "serverIPAddress": "100.92.36.52",
+        "startedDateTime": "2026-09-02T11:47:41.844Z",
+        "time": 121.49000000293856,
+        "timings": {
+          "blocked": 5.254000002254965,
+          "dns": 0.9410000000000001,
+          "ssl": 37.223,
+          "connect": 53.584,
+          "send": 0.4960000000000022,
+          "wait": 57.33400000013667,
+          "receive": 3.881000000546919,
+          "_blocked_queueing": 4.015000002254965,
+          "_workerStart": -1,
+          "_workerReady": -1,
+          "_workerFetchStart": -1,
+          "_workerRespondWithSettled": -1
+        },
+        "_connectionId": "54529",
+        "pageref": "page_4"
+      },
+      {
+        "_initiator": {
+          "type": "parser",
+          "url": "https://hp.tail546fb.ts.net/firefly/register",
+          "lineNumber": 64
+        },
+        "_priority": "VeryHigh",
+        "_resourceType": "stylesheet",
+        "cache": {},
+        "connection": "443",
+        "request": {
+          "method": "GET",
+          "url": "https://hp.tail546fb.ts.net/firefly/build/assets/app-BMcc-bMa.css",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": ":authority",
+              "value": "hp.tail546fb.ts.net"
+            },
+            {
+              "name": ":method",
+              "value": "GET"
+            },
+            {
+              "name": ":path",
+              "value": "/firefly/build/assets/app-BMcc-bMa.css"
+            },
+            {
+              "name": ":scheme",
+              "value": "https"
+            },
+            {
+              "name": "accept",
+              "value": "text/css,*/*;q=0.1"
+            },
+            {
+              "name": "accept-encoding",
+              "value": "gzip, deflate, br, zstd"
+            },
+            {
+              "name": "accept-language",
+              "value": "en-US,en;q=0.7"
+            },
+            {
+              "name": "cache-control",
+              "value": "no-cache"
+            },
+            {
+              "name": "pragma",
+              "value": "no-cache"
+            },
+            {
+              "name": "priority",
+              "value": "u=0"
+            },
+            {
+              "name": "sec-ch-ua",
+              "value": "\"Not=A?Brand\";v=\"99\", \"Brave\";v=\"151\", \"Chromium\";v=\"151\""
+            },
+            {
+              "name": "sec-ch-ua-mobile",
+              "value": "?0"
+            },
+            {
+              "name": "sec-ch-ua-platform",
+              "value": "\"Linux\""
+            },
+            {
+              "name": "sec-fetch-dest",
+              "value": "style"
+            },
+            {
+              "name": "sec-fetch-mode",
+              "value": "no-cors"
+            },
+            {
+              "name": "sec-fetch-site",
+              "value": "same-origin"
+            },
+            {
+              "name": "sec-gpc",
+              "value": "1"
+            },
+            {
+              "name": "user-agent",
+              "value": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+            }
+          ],
+          "queryString": [],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": "content-encoding",
+              "value": "gzip"
+            },
+            {
+              "name": "content-type",
+              "value": "text/css"
+            },
+            {
+              "name": "date",
+              "value": "Wed, 02 Sep 2026 11:47:42 GMT"
+            },
+            {
+              "name": "etag",
+              "value": "W/\"7n4h1n474j6y8w2bk12fy02xfqmzc61d-5e2a4\""
+            },
+            {
+              "name": "server",
+              "value": "nginx"
+            },
+            {
+              "name": "vary",
+              "value": "Accept-Encoding"
+            }
+          ],
+          "cookies": [],
+          "content": {
+            "size": 385700,
+            "mimeType": "text/css"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": -1,
+          "_transferSize": 65253,
+          "_error": null,
+          "_fetchedViaServiceWorker": false
+        },
+        "serverIPAddress": "100.92.36.52",
+        "startedDateTime": "2026-09-02T11:47:41.975Z",
+        "time": 65.37799999932759,
+        "timings": {
+          "blocked": 21.658999999359484,
+          "dns": -1,
+          "ssl": -1,
+          "connect": -1,
+          "send": 0.24400000000000022,
+          "wait": 18.075000001341802,
+          "receive": 25.3999999986263,
+          "_blocked_queueing": 19.480999999359483,
+          "_workerStart": -1,
+          "_workerReady": -1,
+          "_workerFetchStart": -1,
+          "_workerRespondWithSettled": -1
+        },
+        "_connectionId": "54529",
+        "pageref": "page_4"
+      },
+      {
+        "_initiator": {
+          "type": "parser",
+          "url": "https://hp.tail546fb.ts.net/firefly/register",
+          "lineNumber": 69
+        },
+        "_priority": "Low",
+        "_resourceType": "image",
+        "cache": {},
+        "connection": "443",
+        "request": {
+          "method": "GET",
+          "url": "https://hp.tail546fb.ts.net/firefly/images/logo-session.png",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": ":authority",
+              "value": "hp.tail546fb.ts.net"
+            },
+            {
+              "name": ":method",
+              "value": "GET"
+            },
+            {
+              "name": ":path",
+              "value": "/firefly/images/logo-session.png"
+            },
+            {
+              "name": ":scheme",
+              "value": "https"
+            },
+            {
+              "name": "accept",
+              "value": "image/jxl,image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+            },
+            {
+              "name": "accept-encoding",
+              "value": "gzip, deflate, br, zstd"
+            },
+            {
+              "name": "accept-language",
+              "value": "en-US,en;q=0.7"
+            },
+            {
+              "name": "cache-control",
+              "value": "no-cache"
+            },
+            {
+              "name": "pragma",
+              "value": "no-cache"
+            },
+            {
+              "name": "priority",
+              "value": "i"
+            },
+            {
+              "name": "sec-ch-ua",
+              "value": "\"Not=A?Brand\";v=\"99\", \"Brave\";v=\"151\", \"Chromium\";v=\"151\""
+            },
+            {
+              "name": "sec-ch-ua-mobile",
+              "value": "?0"
+            },
+            {
+              "name": "sec-ch-ua-platform",
+              "value": "\"Linux\""
+            },
+            {
+              "name": "sec-fetch-dest",
+              "value": "image"
+            },
+            {
+              "name": "sec-fetch-mode",
+              "value": "no-cors"
+            },
+            {
+              "name": "sec-fetch-site",
+              "value": "same-origin"
+            },
+            {
+              "name": "sec-gpc",
+              "value": "1"
+            },
+            {
+              "name": "user-agent",
+              "value": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+            }
+          ],
+          "queryString": [],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": "accept-ranges",
+              "value": "bytes"
+            },
+            {
+              "name": "content-length",
+              "value": "12753"
+            },
+            {
+              "name": "content-type",
+              "value": "image/png"
+            },
+            {
+              "name": "date",
+              "value": "Wed, 02 Sep 2026 11:47:42 GMT"
+            },
+            {
+              "name": "etag",
+              "value": "\"7n4h1n474j6y8w2bk12fy02xfqmzc61d-31d1\""
+            },
+            {
+              "name": "server",
+              "value": "nginx"
+            }
+          ],
+          "cookies": [],
+          "content": {
+            "size": 12753,
+            "mimeType": "image/png"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": -1,
+          "_transferSize": 12845,
+          "_error": null,
+          "_fetchedViaServiceWorker": false
+        },
+        "serverIPAddress": "100.92.36.52",
+        "startedDateTime": "2026-09-02T11:47:41.975Z",
+        "time": 72.74999999935972,
+        "timings": {
+          "blocked": 21.957999999551802,
+          "dns": -1,
+          "ssl": -1,
+          "connect": -1,
+          "send": 0.1070000000000002,
+          "wait": 43.44500000080676,
+          "receive": 7.2399999990011565,
+          "_blocked_queueing": 19.6749999995518,
+          "_workerStart": -1,
+          "_workerReady": -1,
+          "_workerFetchStart": -1,
+          "_workerRespondWithSettled": -1
+        },
+        "_connectionId": "54529",
+        "pageref": "page_4"
+      },
+      {
+        "_initiator": {
+          "type": "parser",
+          "url": "https://hp.tail546fb.ts.net/firefly/register",
+          "lineNumber": 178
+        },
+        "_priority": "Medium",
+        "_resourceType": "script",
+        "cache": {},
+        "connection": "443",
+        "request": {
+          "method": "GET",
+          "url": "https://hp.tail546fb.ts.net/firefly/v1/js/ff/auth/register.js",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": ":authority",
+              "value": "hp.tail546fb.ts.net"
+            },
+            {
+              "name": ":method",
+              "value": "GET"
+            },
+            {
+              "name": ":path",
+              "value": "/firefly/v1/js/ff/auth/register.js"
+            },
+            {
+              "name": ":scheme",
+              "value": "https"
+            },
+            {
+              "name": "accept",
+              "value": "*/*"
+            },
+            {
+              "name": "accept-encoding",
+              "value": "gzip, deflate, br, zstd"
+            },
+            {
+              "name": "accept-language",
+              "value": "en-US,en;q=0.7"
+            },
+            {
+              "name": "cache-control",
+              "value": "no-cache"
+            },
+            {
+              "name": "pragma",
+              "value": "no-cache"
+            },
+            {
+              "name": "priority",
+              "value": "u=2"
+            },
+            {
+              "name": "sec-ch-ua",
+              "value": "\"Not=A?Brand\";v=\"99\", \"Brave\";v=\"151\", \"Chromium\";v=\"151\""
+            },
+            {
+              "name": "sec-ch-ua-mobile",
+              "value": "?0"
+            },
+            {
+              "name": "sec-ch-ua-platform",
+              "value": "\"Linux\""
+            },
+            {
+              "name": "sec-fetch-dest",
+              "value": "script"
+            },
+            {
+              "name": "sec-fetch-mode",
+              "value": "no-cors"
+            },
+            {
+              "name": "sec-fetch-site",
+              "value": "same-origin"
+            },
+            {
+              "name": "sec-gpc",
+              "value": "1"
+            },
+            {
+              "name": "user-agent",
+              "value": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+            }
+          ],
+          "queryString": [],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": "content-encoding",
+              "value": "gzip"
+            },
+            {
+              "name": "content-length",
+              "value": "1433"
+            },
+            {
+              "name": "content-type",
+              "value": "text/javascript"
+            },
+            {
+              "name": "date",
+              "value": "Wed, 02 Sep 2026 11:47:42 GMT"
+            },
+            {
+              "name": "etag",
+              "value": "W/\"7n4h1n474j6y8w2bk12fy02xfqmzc61d-dd0\""
+            },
+            {
+              "name": "server",
+              "value": "nginx"
+            },
+            {
+              "name": "vary",
+              "value": "Accept-Encoding"
+            }
+          ],
+          "cookies": [],
+          "content": {
+            "size": 3536,
+            "mimeType": "text/javascript"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": -1,
+          "_transferSize": 1507,
+          "_error": null,
+          "_fetchedViaServiceWorker": false
+        },
+        "serverIPAddress": "100.92.36.52",
+        "startedDateTime": "2026-09-02T11:47:41.975Z",
+        "time": 75.6569999975909,
+        "timings": {
+          "blocked": 22.353999997779493,
+          "dns": -1,
+          "ssl": -1,
+          "connect": -1,
+          "send": 0.12700000000000022,
+          "wait": 50.44199999830127,
+          "receive": 2.7340000015101396,
+          "_blocked_queueing": 20.421999997779494,
+          "_workerStart": -1,
+          "_workerReady": -1,
+          "_workerFetchStart": -1,
+          "_workerRespondWithSettled": -1
+        },
+        "_connectionId": "54529",
+        "pageref": "page_4"
+      },
+      {
+        "_initiator": {
+          "type": "parser",
+          "url": "https://hp.tail546fb.ts.net/firefly/build/assets/app-BMcc-bMa.css"
+        },
+        "_priority": "VeryHigh",
+        "_resourceType": "font",
+        "cache": {},
+        "connection": "443",
+        "request": {
+          "method": "GET",
+          "url": "https://hp.tail546fb.ts.net/firefly/build/assets/fa-solid-900-DRAAbZTg.woff2",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": ":authority",
+              "value": "hp.tail546fb.ts.net"
+            },
+            {
+              "name": ":method",
+              "value": "GET"
+            },
+            {
+              "name": ":path",
+              "value": "/firefly/build/assets/fa-solid-900-DRAAbZTg.woff2"
+            },
+            {
+              "name": ":scheme",
+              "value": "https"
+            },
+            {
+              "name": "accept",
+              "value": "*/*"
+            },
+            {
+              "name": "accept-encoding",
+              "value": "gzip, deflate, br, zstd"
+            },
+            {
+              "name": "accept-language",
+              "value": "en-US,en;q=0.7"
+            },
+            {
+              "name": "cache-control",
+              "value": "no-cache"
+            },
+            {
+              "name": "origin",
+              "value": "https://hp.tail546fb.ts.net"
+            },
+            {
+              "name": "pragma",
+              "value": "no-cache"
+            },
+            {
+              "name": "priority",
+              "value": "u=0"
+            },
+            {
+              "name": "referer",
+              "value": "https://hp.tail546fb.ts.net/firefly/build/assets/app-BMcc-bMa.css"
+            },
+            {
+              "name": "sec-ch-ua",
+              "value": "\"Not=A?Brand\";v=\"99\", \"Brave\";v=\"151\", \"Chromium\";v=\"151\""
+            },
+            {
+              "name": "sec-ch-ua-mobile",
+              "value": "?0"
+            },
+            {
+              "name": "sec-ch-ua-platform",
+              "value": "\"Linux\""
+            },
+            {
+              "name": "sec-fetch-dest",
+              "value": "font"
+            },
+            {
+              "name": "sec-fetch-mode",
+              "value": "cors"
+            },
+            {
+              "name": "sec-fetch-site",
+              "value": "same-origin"
+            },
+            {
+              "name": "sec-gpc",
+              "value": "1"
+            },
+            {
+              "name": "user-agent",
+              "value": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+            }
+          ],
+          "queryString": [],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": "accept-ranges",
+              "value": "bytes"
+            },
+            {
+              "name": "content-length",
+              "value": "114740"
+            },
+            {
+              "name": "content-type",
+              "value": "font/woff2"
+            },
+            {
+              "name": "date",
+              "value": "Wed, 02 Sep 2026 11:47:42 GMT"
+            },
+            {
+              "name": "etag",
+              "value": "\"7n4h1n474j6y8w2bk12fy02xfqmzc61d-1c034\""
+            },
+            {
+              "name": "server",
+              "value": "nginx"
+            }
+          ],
+          "cookies": [],
+          "content": {
+            "size": 114740,
+            "mimeType": "font/woff2"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": -1,
+          "_transferSize": 114884,
+          "_error": null,
+          "_fetchedViaServiceWorker": false
+        },
+        "serverIPAddress": "100.92.36.52",
+        "startedDateTime": "2026-09-02T11:47:42.621Z",
+        "time": 86.75600000060513,
+        "timings": {
+          "blocked": 1.6849999994561076,
+          "dns": -1,
+          "ssl": -1,
+          "connect": -1,
+          "send": 0.2290000000000001,
+          "wait": 17.726999999499412,
+          "receive": 67.1150000016496,
+          "_blocked_queueing": 1.1159999994561076,
+          "_workerStart": -1,
+          "_workerReady": -1,
+          "_workerFetchStart": -1,
+          "_workerRespondWithSettled": -1
+        },
+        "_connectionId": "54529",
+        "pageref": "page_4"
+      },
+      {
+        "_initiator": {
+          "type": "other"
+        },
+        "_priority": "High",
+        "_resourceType": "other",
+        "cache": {},
+        "connection": "443",
+        "request": {
+          "method": "GET",
+          "url": "https://hp.tail546fb.ts.net/favicon.ico",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": ":authority",
+              "value": "hp.tail546fb.ts.net"
+            },
+            {
+              "name": ":method",
+              "value": "GET"
+            },
+            {
+              "name": ":path",
+              "value": "/favicon.ico"
+            },
+            {
+              "name": ":scheme",
+              "value": "https"
+            },
+            {
+              "name": "accept",
+              "value": "image/jxl,image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+            },
+            {
+              "name": "accept-encoding",
+              "value": "gzip, deflate, br, zstd"
+            },
+            {
+              "name": "accept-language",
+              "value": "en-US,en;q=0.7"
+            },
+            {
+              "name": "cache-control",
+              "value": "no-cache"
+            },
+            {
+              "name": "pragma",
+              "value": "no-cache"
+            },
+            {
+              "name": "priority",
+              "value": "u=1, i"
+            },
+            {
+              "name": "sec-ch-ua",
+              "value": "\"Not=A?Brand\";v=\"99\", \"Brave\";v=\"151\", \"Chromium\";v=\"151\""
+            },
+            {
+              "name": "sec-ch-ua-mobile",
+              "value": "?0"
+            },
+            {
+              "name": "sec-ch-ua-platform",
+              "value": "\"Linux\""
+            },
+            {
+              "name": "sec-fetch-dest",
+              "value": "image"
+            },
+            {
+              "name": "sec-fetch-mode",
+              "value": "no-cors"
+            },
+            {
+              "name": "sec-fetch-site",
+              "value": "same-origin"
+            },
+            {
+              "name": "sec-gpc",
+              "value": "1"
+            },
+            {
+              "name": "user-agent",
+              "value": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+            }
+          ],
+          "queryString": [],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 502,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": "content-length",
+              "value": "11"
+            },
+            {
+              "name": "content-type",
+              "value": "text/plain; charset=utf-8"
+            },
+            {
+              "name": "date",
+              "value": "Wed, 02 Sep 2026 11:47:42 GMT"
+            }
+          ],
+          "cookies": [],
+          "content": {
+            "size": 11,
+            "mimeType": "text/plain"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": -1,
+          "_transferSize": 58,
+          "_error": null,
+          "_fetchedViaServiceWorker": false
+        },
+        "serverIPAddress": "100.92.36.52",
+        "startedDateTime": "2026-09-02T11:47:42.929Z",
+        "time": 26.75499999895692,
+        "timings": {
+          "blocked": 4.333000002516666,
+          "dns": -1,
+          "ssl": -1,
+          "connect": -1,
+          "send": 0.129,
+          "wait": 19.658999999679857,
+          "receive": 2.6339999967603944,
+          "_blocked_queueing": 3.3710000025166664,
+          "_workerStart": -1,
+          "_workerReady": -1,
+          "_workerFetchStart": -1,
+          "_workerRespondWithSettled": -1
+        },
+        "_connectionId": "54529",
+        "pageref": "page_4"
+      }
+    ]
+  }
+}
+
+{
+  "log": {
+    "version": "1.2",
+    "creator": {
+      "name": "WebInspector",
+      "version": "537.36"
+    },
+    "pages": [
+      {
+        "startedDateTime": "2026-09-02T11:47:41.848Z",
+        "id": "page_4",
+        "title": "https://hp.tail546fb.ts.net/firefly/register",
+        "pageTimings": {
+          "onContentLoad": 831.33099999759,
+          "onLoad": 1067.230999997264
+        }
+      }
+    ],
+    "entries": [
+      {
+        "_initiator": {
+          "type": "other"
+        },
+        "_priority": "VeryHigh",
+        "_resourceType": "document",
+        "cache": {},
+        "connection": "443",
+        "request": {
+          "method": "GET",
+          "url": "https://hp.tail546fb.ts.net/firefly/register",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": ":authority",
+              "value": "hp.tail546fb.ts.net"
+            },
+            {
+              "name": ":method",
+              "value": "GET"
+            },
+            {
+              "name": ":path",
+              "value": "/firefly/register"
+            },
+            {
+              "name": ":scheme",
+              "value": "https"
+            },
+            {
+              "name": "accept",
+              "value": "text/html,application/xhtml+xml,application/xml;q=0.9,image/jxl,image/avif,image/webp,image/apng,*/*;q=0.8"
+            },
+            {
+              "name": "accept-encoding",
+              "value": "gzip, deflate, br, zstd"
+            },
+            {
+              "name": "accept-language",
+              "value": "en-US,en;q=0.7"
+            },
+            {
+              "name": "cache-control",
+              "value": "no-cache"
+            },
+            {
+              "name": "pragma",
+              "value": "no-cache"
+            },
+            {
+              "name": "priority",
+              "value": "u=0, i"
+            },
+            {
+              "name": "sec-ch-ua",
+              "value": "\"Not=A?Brand\";v=\"99\", \"Brave\";v=\"151\", \"Chromium\";v=\"151\""
+            },
+            {
+              "name": "sec-ch-ua-mobile",
+              "value": "?0"
+            },
+            {
+              "name": "sec-ch-ua-platform",
+              "value": "\"Linux\""
+            },
+            {
+              "name": "sec-fetch-dest",
+              "value": "document"
+            },
+            {
+              "name": "sec-fetch-mode",
+              "value": "navigate"
+            },
+            {
+              "name": "sec-fetch-site",
+              "value": "none"
+            },
+            {
+              "name": "sec-fetch-user",
+              "value": "?1"
+            },
+            {
+              "name": "sec-gpc",
+              "value": "1"
+            },
+            {
+              "name": "upgrade-insecure-requests",
+              "value": "1"
+            },
+            {
+              "name": "user-agent",
+              "value": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+            }
+          ],
+          "queryString": [],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": "cache-control",
+              "value": "no-cache, private"
+            },
+            {
+              "name": "content-encoding",
+              "value": "gzip"
+            },
+            {
+              "name": "content-security-policy",
+              "value": "default-src 'none'; object-src 'none'; script-src 'unsafe-eval' 'strict-dynamic' 'nonce-6MNcz5TABt7s4GDN9iDwTA=='; style-src 'self' 'unsafe-inline'; base-uri 'self'; font-src 'self' data:; connect-src 'self' https://api.pwnedpasswords.com ; img-src 'self' data: 'nonce-6MNcz5TABt7s4GDN9iDwTA==' ; manifest-src 'self'"
+            },
+            {
+              "name": "content-type",
+              "value": "text/html; charset=utf-8"
+            },
+            {
+              "name": "date",
+              "value": "Wed, 02 Sep 2026 11:47:41 GMT"
+            },
+            {
+              "name": "feature-policy",
+              "value": "geolocation 'none'; midi 'none'; sync-xhr 'self'; microphone 'none'; camera 'none'; magnetometer 'none'; gyroscope 'none'; fullscreen 'self'; payment 'none'"
+            },
+            {
+              "name": "referrer-policy",
+              "value": "no-referrer"
+            },
+            {
+              "name": "server",
+              "value": "nginx"
+            },
+            {
+              "name": "vary",
+              "value": "Accept-Encoding"
+            },
+            {
+              "name": "x-content-type-options",
+              "value": "nosniff"
+            },
+            {
+              "name": "x-frame-options",
+              "value": "deny"
+            },
+            {
+              "name": "x-permitted-cross-domain-policies",
+              "value": "none"
+            },
+            {
+              "name": "x-powered-by",
+              "value": "PHP/8.5.9"
+            },
+            {
+              "name": "x-robots-tag",
+              "value": "none"
+            },
+            {
+              "name": "x-xss-protection",
+              "value": "1; mode=block"
+            }
+          ],
+          "cookies": [],
+          "content": {
+            "size": 9119,
+            "mimeType": "text/html"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": -1,
+          "_transferSize": 4156,
+          "_error": null,
+          "_fetchedViaServiceWorker": false
+        },
+        "serverIPAddress": "100.92.36.52",
+        "startedDateTime": "2026-09-02T11:47:41.844Z",
+        "time": 121.49000000293856,
+        "timings": {
+          "blocked": 5.254000002254965,
+          "dns": 0.9410000000000001,
+          "ssl": 37.223,
+          "connect": 53.584,
+          "send": 0.4960000000000022,
+          "wait": 57.33400000013667,
+          "receive": 3.881000000546919,
+          "_blocked_queueing": 4.015000002254965,
+          "_workerStart": -1,
+          "_workerReady": -1,
+          "_workerFetchStart": -1,
+          "_workerRespondWithSettled": -1
+        },
+        "_connectionId": "54529",
+        "pageref": "page_4"
+      },
+      {
+        "_initiator": {
+          "type": "parser",
+          "url": "https://hp.tail546fb.ts.net/firefly/register",
+          "lineNumber": 64
+        },
+        "_priority": "VeryHigh",
+        "_resourceType": "stylesheet",
+        "cache": {},
+        "connection": "443",
+        "request": {
+          "method": "GET",
+          "url": "https://hp.tail546fb.ts.net/firefly/build/assets/app-BMcc-bMa.css",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": ":authority",
+              "value": "hp.tail546fb.ts.net"
+            },
+            {
+              "name": ":method",
+              "value": "GET"
+            },
+            {
+              "name": ":path",
+              "value": "/firefly/build/assets/app-BMcc-bMa.css"
+            },
+            {
+              "name": ":scheme",
+              "value": "https"
+            },
+            {
+              "name": "accept",
+              "value": "text/css,*/*;q=0.1"
+            },
+            {
+              "name": "accept-encoding",
+              "value": "gzip, deflate, br, zstd"
+            },
+            {
+              "name": "accept-language",
+              "value": "en-US,en;q=0.7"
+            },
+            {
+              "name": "cache-control",
+              "value": "no-cache"
+            },
+            {
+              "name": "pragma",
+              "value": "no-cache"
+            },
+            {
+              "name": "priority",
+              "value": "u=0"
+            },
+            {
+              "name": "sec-ch-ua",
+              "value": "\"Not=A?Brand\";v=\"99\", \"Brave\";v=\"151\", \"Chromium\";v=\"151\""
+            },
+            {
+              "name": "sec-ch-ua-mobile",
+              "value": "?0"
+            },
+            {
+              "name": "sec-ch-ua-platform",
+              "value": "\"Linux\""
+            },
+            {
+              "name": "sec-fetch-dest",
+              "value": "style"
+            },
+            {
+              "name": "sec-fetch-mode",
+              "value": "no-cors"
+            },
+            {
+              "name": "sec-fetch-site",
+              "value": "same-origin"
+            },
+            {
+              "name": "sec-gpc",
+              "value": "1"
+            },
+            {
+              "name": "user-agent",
+              "value": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+            }
+          ],
+          "queryString": [],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": "content-encoding",
+              "value": "gzip"
+            },
+            {
+              "name": "content-type",
+              "value": "text/css"
+            },
+            {
+              "name": "date",
+              "value": "Wed, 02 Sep 2026 11:47:42 GMT"
+            },
+            {
+              "name": "etag",
+              "value": "W/\"7n4h1n474j6y8w2bk12fy02xfqmzc61d-5e2a4\""
+            },
+            {
+              "name": "server",
+              "value": "nginx"
+            },
+            {
+              "name": "vary",
+              "value": "Accept-Encoding"
+            }
+          ],
+          "cookies": [],
+          "content": {
+            "size": 385700,
+            "mimeType": "text/css"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": -1,
+          "_transferSize": 65253,
+          "_error": null,
+          "_fetchedViaServiceWorker": false
+        },
+        "serverIPAddress": "100.92.36.52",
+        "startedDateTime": "2026-09-02T11:47:41.975Z",
+        "time": 65.37799999932759,
+        "timings": {
+          "blocked": 21.658999999359484,
+          "dns": -1,
+          "ssl": -1,
+          "connect": -1,
+          "send": 0.24400000000000022,
+          "wait": 18.075000001341802,
+          "receive": 25.3999999986263,
+          "_blocked_queueing": 19.480999999359483,
+          "_workerStart": -1,
+          "_workerReady": -1,
+          "_workerFetchStart": -1,
+          "_workerRespondWithSettled": -1
+        },
+        "_connectionId": "54529",
+        "pageref": "page_4"
+      },
+      {
+        "_initiator": {
+          "type": "parser",
+          "url": "https://hp.tail546fb.ts.net/firefly/register",
+          "lineNumber": 69
+        },
+        "_priority": "Low",
+        "_resourceType": "image",
+        "cache": {},
+        "connection": "443",
+        "request": {
+          "method": "GET",
+          "url": "https://hp.tail546fb.ts.net/firefly/images/logo-session.png",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": ":authority",
+              "value": "hp.tail546fb.ts.net"
+            },
+            {
+              "name": ":method",
+              "value": "GET"
+            },
+            {
+              "name": ":path",
+              "value": "/firefly/images/logo-session.png"
+            },
+            {
+              "name": ":scheme",
+              "value": "https"
+            },
+            {
+              "name": "accept",
+              "value": "image/jxl,image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+            },
+            {
+              "name": "accept-encoding",
+              "value": "gzip, deflate, br, zstd"
+            },
+            {
+              "name": "accept-language",
+              "value": "en-US,en;q=0.7"
+            },
+            {
+              "name": "cache-control",
+              "value": "no-cache"
+            },
+            {
+              "name": "pragma",
+              "value": "no-cache"
+            },
+            {
+              "name": "priority",
+              "value": "i"
+            },
+            {
+              "name": "sec-ch-ua",
+              "value": "\"Not=A?Brand\";v=\"99\", \"Brave\";v=\"151\", \"Chromium\";v=\"151\""
+            },
+            {
+              "name": "sec-ch-ua-mobile",
+              "value": "?0"
+            },
+            {
+              "name": "sec-ch-ua-platform",
+              "value": "\"Linux\""
+            },
+            {
+              "name": "sec-fetch-dest",
+              "value": "image"
+            },
+            {
+              "name": "sec-fetch-mode",
+              "value": "no-cors"
+            },
+            {
+              "name": "sec-fetch-site",
+              "value": "same-origin"
+            },
+            {
+              "name": "sec-gpc",
+              "value": "1"
+            },
+            {
+              "name": "user-agent",
+              "value": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+            }
+          ],
+          "queryString": [],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": "accept-ranges",
+              "value": "bytes"
+            },
+            {
+              "name": "content-length",
+              "value": "12753"
+            },
+            {
+              "name": "content-type",
+              "value": "image/png"
+            },
+            {
+              "name": "date",
+              "value": "Wed, 02 Sep 2026 11:47:42 GMT"
+            },
+            {
+              "name": "etag",
+              "value": "\"7n4h1n474j6y8w2bk12fy02xfqmzc61d-31d1\""
+            },
+            {
+              "name": "server",
+              "value": "nginx"
+            }
+          ],
+          "cookies": [],
+          "content": {
+            "size": 12753,
+            "mimeType": "image/png"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": -1,
+          "_transferSize": 12845,
+          "_error": null,
+          "_fetchedViaServiceWorker": false
+        },
+        "serverIPAddress": "100.92.36.52",
+        "startedDateTime": "2026-09-02T11:47:41.975Z",
+        "time": 72.74999999935972,
+        "timings": {
+          "blocked": 21.957999999551802,
+          "dns": -1,
+          "ssl": -1,
+          "connect": -1,
+          "send": 0.1070000000000002,
+          "wait": 43.44500000080676,
+          "receive": 7.2399999990011565,
+          "_blocked_queueing": 19.6749999995518,
+          "_workerStart": -1,
+          "_workerReady": -1,
+          "_workerFetchStart": -1,
+          "_workerRespondWithSettled": -1
+        },
+        "_connectionId": "54529",
+        "pageref": "page_4"
+      },
+      {
+        "_initiator": {
+          "type": "parser",
+          "url": "https://hp.tail546fb.ts.net/firefly/register",
+          "lineNumber": 178
+        },
+        "_priority": "Medium",
+        "_resourceType": "script",
+        "cache": {},
+        "connection": "443",
+        "request": {
+          "method": "GET",
+          "url": "https://hp.tail546fb.ts.net/firefly/v1/js/ff/auth/register.js",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": ":authority",
+              "value": "hp.tail546fb.ts.net"
+            },
+            {
+              "name": ":method",
+              "value": "GET"
+            },
+            {
+              "name": ":path",
+              "value": "/firefly/v1/js/ff/auth/register.js"
+            },
+            {
+              "name": ":scheme",
+              "value": "https"
+            },
+            {
+              "name": "accept",
+              "value": "*/*"
+            },
+            {
+              "name": "accept-encoding",
+              "value": "gzip, deflate, br, zstd"
+            },
+            {
+              "name": "accept-language",
+              "value": "en-US,en;q=0.7"
+            },
+            {
+              "name": "cache-control",
+              "value": "no-cache"
+            },
+            {
+              "name": "pragma",
+              "value": "no-cache"
+            },
+            {
+              "name": "priority",
+              "value": "u=2"
+            },
+            {
+              "name": "sec-ch-ua",
+              "value": "\"Not=A?Brand\";v=\"99\", \"Brave\";v=\"151\", \"Chromium\";v=\"151\""
+            },
+            {
+              "name": "sec-ch-ua-mobile",
+              "value": "?0"
+            },
+            {
+              "name": "sec-ch-ua-platform",
+              "value": "\"Linux\""
+            },
+            {
+              "name": "sec-fetch-dest",
+              "value": "script"
+            },
+            {
+              "name": "sec-fetch-mode",
+              "value": "no-cors"
+            },
+            {
+              "name": "sec-fetch-site",
+              "value": "same-origin"
+            },
+            {
+              "name": "sec-gpc",
+              "value": "1"
+            },
+            {
+              "name": "user-agent",
+              "value": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+            }
+          ],
+          "queryString": [],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": "content-encoding",
+              "value": "gzip"
+            },
+            {
+              "name": "content-length",
+              "value": "1433"
+            },
+            {
+              "name": "content-type",
+              "value": "text/javascript"
+            },
+            {
+              "name": "date",
+              "value": "Wed, 02 Sep 2026 11:47:42 GMT"
+            },
+            {
+              "name": "etag",
+              "value": "W/\"7n4h1n474j6y8w2bk12fy02xfqmzc61d-dd0\""
+            },
+            {
+              "name": "server",
+              "value": "nginx"
+            },
+            {
+              "name": "vary",
+              "value": "Accept-Encoding"
+            }
+          ],
+          "cookies": [],
+          "content": {
+            "size": 3536,
+            "mimeType": "text/javascript"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": -1,
+          "_transferSize": 1507,
+          "_error": null,
+          "_fetchedViaServiceWorker": false
+        },
+        "serverIPAddress": "100.92.36.52",
+        "startedDateTime": "2026-09-02T11:47:41.975Z",
+        "time": 75.6569999975909,
+        "timings": {
+          "blocked": 22.353999997779493,
+          "dns": -1,
+          "ssl": -1,
+          "connect": -1,
+          "send": 0.12700000000000022,
+          "wait": 50.44199999830127,
+          "receive": 2.7340000015101396,
+          "_blocked_queueing": 20.421999997779494,
+          "_workerStart": -1,
+          "_workerReady": -1,
+          "_workerFetchStart": -1,
+          "_workerRespondWithSettled": -1
+        },
+        "_connectionId": "54529",
+        "pageref": "page_4"
+      },
+      {
+        "_initiator": {
+          "type": "parser",
+          "url": "https://hp.tail546fb.ts.net/firefly/build/assets/app-BMcc-bMa.css"
+        },
+        "_priority": "VeryHigh",
+        "_resourceType": "font",
+        "cache": {},
+        "connection": "443",
+        "request": {
+          "method": "GET",
+          "url": "https://hp.tail546fb.ts.net/firefly/build/assets/fa-solid-900-DRAAbZTg.woff2",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": ":authority",
+              "value": "hp.tail546fb.ts.net"
+            },
+            {
+              "name": ":method",
+              "value": "GET"
+            },
+            {
+              "name": ":path",
+              "value": "/firefly/build/assets/fa-solid-900-DRAAbZTg.woff2"
+            },
+            {
+              "name": ":scheme",
+              "value": "https"
+            },
+            {
+              "name": "accept",
+              "value": "*/*"
+            },
+            {
+              "name": "accept-encoding",
+              "value": "gzip, deflate, br, zstd"
+            },
+            {
+              "name": "accept-language",
+              "value": "en-US,en;q=0.7"
+            },
+            {
+              "name": "cache-control",
+              "value": "no-cache"
+            },
+            {
+              "name": "origin",
+              "value": "https://hp.tail546fb.ts.net"
+            },
+            {
+              "name": "pragma",
+              "value": "no-cache"
+            },
+            {
+              "name": "priority",
+              "value": "u=0"
+            },
+            {
+              "name": "referer",
+              "value": "https://hp.tail546fb.ts.net/firefly/build/assets/app-BMcc-bMa.css"
+            },
+            {
+              "name": "sec-ch-ua",
+              "value": "\"Not=A?Brand\";v=\"99\", \"Brave\";v=\"151\", \"Chromium\";v=\"151\""
+            },
+            {
+              "name": "sec-ch-ua-mobile",
+              "value": "?0"
+            },
+            {
+              "name": "sec-ch-ua-platform",
+              "value": "\"Linux\""
+            },
+            {
+              "name": "sec-fetch-dest",
+              "value": "font"
+            },
+            {
+              "name": "sec-fetch-mode",
+              "value": "cors"
+            },
+            {
+              "name": "sec-fetch-site",
+              "value": "same-origin"
+            },
+            {
+              "name": "sec-gpc",
+              "value": "1"
+            },
+            {
+              "name": "user-agent",
+              "value": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+            }
+          ],
+          "queryString": [],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": "accept-ranges",
+              "value": "bytes"
+            },
+            {
+              "name": "content-length",
+              "value": "114740"
+            },
+            {
+              "name": "content-type",
+              "value": "font/woff2"
+            },
+            {
+              "name": "date",
+              "value": "Wed, 02 Sep 2026 11:47:42 GMT"
+            },
+            {
+              "name": "etag",
+              "value": "\"7n4h1n474j6y8w2bk12fy02xfqmzc61d-1c034\""
+            },
+            {
+              "name": "server",
+              "value": "nginx"
+            }
+          ],
+          "cookies": [],
+          "content": {
+            "size": 114740,
+            "mimeType": "font/woff2"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": -1,
+          "_transferSize": 114884,
+          "_error": null,
+          "_fetchedViaServiceWorker": false
+        },
+        "serverIPAddress": "100.92.36.52",
+        "startedDateTime": "2026-09-02T11:47:42.621Z",
+        "time": 86.75600000060513,
+        "timings": {
+          "blocked": 1.6849999994561076,
+          "dns": -1,
+          "ssl": -1,
+          "connect": -1,
+          "send": 0.2290000000000001,
+          "wait": 17.726999999499412,
+          "receive": 67.1150000016496,
+          "_blocked_queueing": 1.1159999994561076,
+          "_workerStart": -1,
+          "_workerReady": -1,
+          "_workerFetchStart": -1,
+          "_workerRespondWithSettled": -1
+        },
+        "_connectionId": "54529",
+        "pageref": "page_4"
+      },
+      {
+        "_initiator": {
+          "type": "other"
+        },
+        "_priority": "High",
+        "_resourceType": "other",
+        "cache": {},
+        "connection": "443",
+        "request": {
+          "method": "GET",
+          "url": "https://hp.tail546fb.ts.net/favicon.ico",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": ":authority",
+              "value": "hp.tail546fb.ts.net"
+            },
+            {
+              "name": ":method",
+              "value": "GET"
+            },
+            {
+              "name": ":path",
+              "value": "/favicon.ico"
+            },
+            {
+              "name": ":scheme",
+              "value": "https"
+            },
+            {
+              "name": "accept",
+              "value": "image/jxl,image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+            },
+            {
+              "name": "accept-encoding",
+              "value": "gzip, deflate, br, zstd"
+            },
+            {
+              "name": "accept-language",
+              "value": "en-US,en;q=0.7"
+            },
+            {
+              "name": "cache-control",
+              "value": "no-cache"
+            },
+            {
+              "name": "pragma",
+              "value": "no-cache"
+            },
+            {
+              "name": "priority",
+              "value": "u=1, i"
+            },
+            {
+              "name": "sec-ch-ua",
+              "value": "\"Not=A?Brand\";v=\"99\", \"Brave\";v=\"151\", \"Chromium\";v=\"151\""
+            },
+            {
+              "name": "sec-ch-ua-mobile",
+              "value": "?0"
+            },
+            {
+              "name": "sec-ch-ua-platform",
+              "value": "\"Linux\""
+            },
+            {
+              "name": "sec-fetch-dest",
+              "value": "image"
+            },
+            {
+              "name": "sec-fetch-mode",
+              "value": "no-cors"
+            },
+            {
+              "name": "sec-fetch-site",
+              "value": "same-origin"
+            },
+            {
+              "name": "sec-gpc",
+              "value": "1"
+            },
+            {
+              "name": "user-agent",
+              "value": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+            }
+          ],
+          "queryString": [],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 502,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "headers": [
+            {
+              "name": "content-length",
+              "value": "11"
+            },
+            {
+              "name": "content-type",
+              "value": "text/plain; charset=utf-8"
+            },
+            {
+              "name": "date",
+              "value": "Wed, 02 Sep 2026 11:47:42 GMT"
+            }
+          ],
+          "cookies": [],
+          "content": {
+            "size": 11,
+            "mimeType": "text/plain"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": -1,
+          "_transferSize": 58,
+          "_error": null,
+          "_fetchedViaServiceWorker": false
+        },
+        "serverIPAddress": "100.92.36.52",
+        "startedDateTime": "2026-09-02T11:47:42.929Z",
+        "time": 26.75499999895692,
+        "timings": {
+          "blocked": 4.333000002516666,
+          "dns": -1,
+          "ssl": -1,
+          "connect": -1,
+          "send": 0.129,
+          "wait": 19.658999999679857,
+          "receive": 2.6339999967603944,
+          "_blocked_queueing": 3.3710000025166664,
+          "_workerStart": -1,
+          "_workerReady": -1,
+          "_workerFetchStart": -1,
+          "_workerRespondWithSettled": -1
+        },
+        "_connectionId": "54529",
+        "pageref": "page_4"
+      }
+    ]
+  }
+}

@@ -31,8 +31,16 @@
 
   MODULES.networking.traefik.enable = true;
   MODULES.services.homepage.enable = true;
+  MODULES.services.firefly-iii.enable = true;
+  # Reads queued receipt photos with a local VLM. createTransactions stays off until Firefly III
+  # has a user to mint an API token from - until then receipts pile up in pending/, already read.
+  MODULES.services.firefly-iii.receipts.enable = true;
   MODULES.services.grafana.enable = true;
   MODULES.services.loki.enable = true;
+  # Vega 8 iGPU: no ROCm support for gfx902 and only a sliver of carved-out VRAM, so CPU
+  # inference on the 3500U's 8 threads is the honest option here.
+  MODULES.services.ollama.enable = true;
+  MODULES.services.ollama.acceleration = "cpu";
   MODULES.services.prometheus.enable = true;
   MODULES.services.sftpgo.enable = true;
   MODULES.services.i2pd.enable = false;

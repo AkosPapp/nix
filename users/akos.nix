@@ -144,6 +144,7 @@
             ipykernel
           ]
       ))
+      uv
 
       # git
       gitFull

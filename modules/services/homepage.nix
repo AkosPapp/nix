@@ -91,6 +91,10 @@ in {
       # Add to traefik routes
       MODULES.networking.traefik.path_routes."/homepage" = "http://127.0.0.1:${toString config.PORTS.homepage}";
       MODULES.networking.traefik.defaultPage = "/homepage";
+      # Homepage is the site's front door, so its icon is the one to hand out at the origin root.
+      # The path here is the backend's, not the proxied one: Traefik strips "/homepage" before
+      # forwarding, so what answers on 8082 is /homepage.ico.
+      MODULES.networking.traefik.favicon = "http://127.0.0.1:${toString config.PORTS.homepage}/homepage.ico";
 
       MODULES.services.homepage.services.homepage.icon = "/homepage/homepage.ico";
     })
@@ -184,6 +188,47 @@ in {
       MODULES.services.homepage.services.immich = {
         href = "https://${config.networking.fqdn}:${toString config.PORTS.immich}";
         icon = "immich.png";
+      };
+    })
+    (mkIf (cfg.enable && config.MODULES.services.firefly-iii.enable) {
+      MODULES.services.homepage.services.firefly.icon = "firefly-iii.png";
+    })
+    (mkIf (cfg.enable && config.MODULES.services.firefly-iii.homepageWidget.enable) {
+      # Same trick as the grafana block above: a second, world-readable sops declaration pointing
+      # at the one underlying token, because homepage-dashboard's DynamicUser can't be named as an
+      # owner ahead of time. The token itself has to be minted from inside Firefly III, so this
+      # whole block is gated behind an option that is off until someone has done that.
+      sops.secrets."homepage/firefly_api_token" = {
+        key = "firefly-iii/homepage-api-token";
+        mode = "0444";
+      };
+
+      systemd.services.homepage-dashboard.environment.HOMEPAGE_FILE_FIREFLY_API_TOKEN =
+        config.sops.secrets."homepage/firefly_api_token".path;
+
+      MODULES.services.homepage.services.firefly.widget = {
+        type = "firefly";
+        url = "http://127.0.0.1:${toString config.PORTS.fireflyIii}";
+        key = "{{HOMEPAGE_FILE_FIREFLY_API_TOKEN}}";
+      };
+    })
+    (mkIf (cfg.enable && config.MODULES.services.ollama.enable) {
+      # Homepage has no ollama widget, but ollama's model list is a plain unauthenticated JSON
+      # endpoint, so customapi can report how many models are downloaded and how many are
+      # currently resident in memory - i.e. whether the next prompt pays the load-time penalty.
+      MODULES.services.homepage.services.ollama = {
+        icon = "ollama.png";
+        widget = {
+          type = "customapi";
+          url = "http://127.0.0.1:${toString config.PORTS.ollama}/api/tags";
+          mappings = [
+            {
+              field = "models";
+              label = "Models";
+              format = "size";
+            }
+          ];
+        };
       };
     })
     (mkIf (cfg.enable && config.MODULES.services.syncthing.enable) {
