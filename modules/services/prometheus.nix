@@ -321,6 +321,42 @@ in {
       ];
     })
 
+    (mkIf (cfg.enable && config.MODULES.services.open-webui.enable) {
+      # Open WebUI serves no /metrics endpoint and there's no exporter for it; its only
+      # instrumentation is OpenTelemetry, which pushes rather than being scraped (request counts
+      # and latency histograms per route, plus gauges for total/active/active-today users).
+      # Prometheus 3 can receive OTLP directly, so it takes the push itself instead of an
+      # otel-collector sitting in between - the receiver is off unless this flag is passed.
+      services.prometheus.extraFlags = ["--web.enable-otlp-receiver"];
+
+      # nixpkgs' open-webui is missing opentelemetry-instrumentation-system-metrics, which
+      # open_webui/utils/telemetry/instrumentors.py imports unconditionally - so ENABLE_OTEL
+      # below turns a working service into a ModuleNotFoundError crash-loop on the stock
+      # package. Patched in here rather than in open-webui.nix because this is the block that
+      # switches OTel on, and the override costs a local rebuild (of the Python app only - the
+      # npm frontend is a separate derivation and still comes from the binary cache).
+      services.open-webui.package = pkgs.open-webui.overridePythonAttrs (old: {
+        dependencies = old.dependencies ++ [pkgs.python3Packages.opentelemetry-instrumentation-system-metrics];
+      });
+
+      services.open-webui.environment = {
+        ENABLE_OTEL = "True";
+        # Metrics only. Traces are gated separately and would need somewhere to put spans;
+        # Prometheus isn't that, and nothing here runs Tempo/Jaeger.
+        ENABLE_OTEL_METRICS = "True";
+        # Open WebUI defaults to the OTLP/gRPC exporter, which Prometheus's receiver doesn't
+        # speak - it accepts OTLP over HTTP only.
+        OTEL_METRICS_OTLP_SPAN_EXPORTER = "http";
+        # Passed to the exporter verbatim (no /v1/metrics is appended for us), and the whole
+        # path sits behind the --web.route-prefix=/prometheus set above. Samples arrive tagged
+        # job="open-webui" from OTEL_SERVICE_NAME's default.
+        OTEL_METRICS_EXPORTER_OTLP_ENDPOINT = "http://127.0.0.1:${toString config.PORTS.prometheus}/prometheus/api/v1/otlp/v1/metrics";
+        # Match globalConfig.scrape_interval above rather than the 10s OTel default, so pushed
+        # series have the same resolution as every scraped one.
+        OTEL_METRICS_EXPORT_INTERVAL_MILLIS = "5000";
+      };
+    })
+
     (mkIf (cfg.enable && config.boot.supportedFilesystems.zfs or false) {
       services.prometheus.exporters.zfs = {
         enable = true;

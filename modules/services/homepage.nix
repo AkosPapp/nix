@@ -231,6 +231,17 @@ in {
         };
       };
     })
+    (mkIf (cfg.enable && config.MODULES.services.open-webui.enable) {
+      # Open WebUI has an origin of its own rather than a path on this one (see open-webui.nix),
+      # so it isn't in path_routes and the generic block at the bottom never picks it up - hence
+      # the absolute href, same as immich above. No widget: homepage has no open-webui
+      # integration, and everything Open WebUI reports about itself past /health sits behind an
+      # API key that would have to be minted by hand in the UI first.
+      MODULES.services.homepage.services.open-webui = {
+        href = "https://${config.networking.fqdn}:${toString config.PORTS.openWebui}";
+        icon = "open-webui.png";
+      };
+    })
     (mkIf (cfg.enable && config.MODULES.services.syncthing.enable) {
       MODULES.services.homepage.services.syncthing = {
         href = "/syncthing";

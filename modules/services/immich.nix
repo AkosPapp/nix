@@ -1,6 +1,7 @@
 {
   config,
   lib,
+  pkgs-unstable,
   nixosConfigurations,
   configName,
   ...
@@ -70,6 +71,20 @@ in {
   };
 
   config = mkMerge [
+    # nixpkgs 26.05 is stuck on Immich 2.7.5, which upstream has stopped updating - 3.x only
+    # reaches stable with 26.11 - so take the package from unstable instead. That picks up the
+    # fix for CVE-2026-59258 (an editor on a shared album could demote the owner and take it
+    # over, fixed in 3.0.3); CVE-2026-82272 (locked assets still readable through albums and
+    # shared links) has no released fix yet - it's patched in git but 3.1.0 is the newest tag.
+    # Drop this override once the flake's stable nixpkgs is 26.11 or later.
+    #
+    # One option covers both the server and the machine-learning worker (the latter is a
+    # passthru of the same derivation), and Immich requires the two to be on the same version,
+    # so every host in the flake has to be deployed together when this moves.
+    (mkIf (cfg.enable || cfg.machineLearning.enable) {
+      services.immich.package = pkgs-unstable.immich;
+    })
+
     (mkIf cfg.enable {
       services.immich = {
         enable = true;

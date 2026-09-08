@@ -24,6 +24,7 @@ in {
     nixAutobuild = 8085;
     nginxStatus = 8087;
     ollama = 11434;
+    openWebui = 8094;
     prometheus = 8009;
     roundcube = 8086;
     searx = 8081;
