@@ -19,11 +19,11 @@ in {
     homepage = 8082;
     i2pdWebui = 8070;
     immich = 2283;
+    litellm = 8095;
     loki = 8031;
     nextcloud = 8088;
     nixAutobuild = 8085;
     nginxStatus = 8087;
-    ollama = 11434;
     openWebui = 8094;
     prometheus = 8009;
     roundcube = 8086;

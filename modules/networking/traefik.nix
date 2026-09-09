@@ -22,8 +22,9 @@ in {
       description = ''
         Per-path override of whether the client's Host header reaches the backend (Traefik's
         default) or is replaced by the backend's own host:port. Set a path to `false` when its
-        backend validates the Host header and rejects the public name - ollama, for one, answers
-        403 to any Host that isn't loopback or the machine's own hostname.
+        backend validates the Host header and rejects the public name - a defence against DNS
+        rebinding that some servers apply to any Host which isn't loopback or the machine's own
+        short hostname, and which fires on the public name Traefik forwards.
       '';
     };
 

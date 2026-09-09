@@ -1,0 +1,378 @@
+{
+  config,
+  lib,
+  nixosConfigurations,
+  configName,
+  ...
+}: let
+  inherit (lib) mkEnableOption mkIf mkOption types;
+
+  cfg = config.MODULES.services.litellm;
+
+  # Same auto-discovery pattern as immich.nix: every host in the flake is inspected, and the
+  # ones running vLLM contribute their instances here. Adding a model to a host's catalogue is
+  # therefore the only edit needed - the gateway's routing table follows from it, and there is
+  # no second list of endpoints to keep in step.
+  allHostNames = builtins.attrNames nixosConfigurations;
+  hostConfig = host: nixosConfigurations.${host}.config;
+  hostVllm = host: (hostConfig host).MODULES.services.vllm;
+
+  vllmHosts = builtins.filter (host: (hostVllm host).enable) allHostNames;
+
+  # Whether any backend is started on demand rather than held resident. Decides whether probing
+  # deployments on a timer is harmless monitoring or an alarm clock - see general_settings.
+  anyLazyBackend = lib.any (host: (hostVllm host).idleTimeout != null) vllmHosts;
+
+  useTraefik = cfg.traefikPath != null && config.MODULES.networking.traefik.enable;
+
+  # The local host's own servers are on loopback; everyone else's are reached over Tailscale,
+  # which is the only network these machines share.
+  hostAddress = host:
+    if host == configName
+    then "127.0.0.1"
+    else (hostConfig host).MODULES.networking.tailscale.hostIP;
+
+  isLocal = host: host == configName;
+
+  # One LiteLLM deployment per (host, model). Two hosts serving the same catalogue entry produce
+  # two deployments under one `model_name`, which is exactly what the router wants: it treats
+  # them as interchangeable replicas and moves traffic to the survivor when one stops answering.
+  deploymentsFor = host:
+    lib.mapAttrsToList (name: instance: {
+      model_name = name;
+      litellm_params =
+        {
+          # `hosted_vllm/` is LiteLLM's provider prefix for a vLLM OpenAI-compatible server; the
+          # part after it is the name vLLM itself serves the model under (--served-model-name).
+          model = "hosted_vllm/${instance.model.servedName}";
+          api_base = "http://${hostAddress host}:${toString instance.port}/v1";
+          # vLLM is bound to loopback behind Tailscale and does not check this, but the OpenAI
+          # client library refuses to send a request without something in the field.
+          api_key = "unused";
+
+          # Long, because the request that wakes a sleeping instance blocks for the whole model
+          # load - see MODULES.services.vllm.idleTimeout. This is also the reason a host being
+          # down cannot simply be inferred from slowness: the two look identical for the first
+          # minute, which is what the cooldowns below are for.
+          timeout = cfg.requestTimeout;
+
+          # Relative share of the traffic for this model_name. Only has an effect where more
+          # than one host serves the entry, which is the case worth configuring: the router
+          # dispatches concurrent requests to both, and without a weight it would send as many
+          # to the CPU host as to the GPU one.
+          weight = (hostVllm host).weight;
+        }
+        // lib.optionalAttrs (!isLocal host) {
+          # A remote host that is powered off still resolves and routes on the tailnet, so a
+          # request to it hangs rather than being refused. Retrying it on the spot is pointless
+          # - the router should give up on this deployment and try another host's copy instead.
+          num_retries = 0;
+        };
+
+      model_info = {
+        # Stable, unique per deployment so cooldowns are applied to the one host that failed
+        # rather than to the model name as a whole.
+        id = "${host}-${name}";
+        inherit host;
+      };
+    })
+    (hostVllm host).instances;
+
+  deployments = lib.concatMap deploymentsFor vllmHosts;
+
+  modelNamesOn = host: lib.attrNames (hostVllm host).instances;
+
+  localModels =
+    if builtins.elem configName vllmHosts
+    then modelNamesOn configName
+    else [];
+
+  allModels = lib.unique (lib.sort (a: b: a < b) (lib.concatMap modelNamesOn vllmHosts));
+
+  # Models this host cannot serve itself. If the only host that has one goes down there is no
+  # replica to fail over to, so they get an explicit fallback onto something local: a degraded
+  # answer from the small CPU model beats a connection error.
+  remoteOnlyModels = builtins.filter (m: !(builtins.elem m localModels)) allModels;
+
+  fallbackTarget =
+    if cfg.fallbackModel != null
+    then cfg.fallbackModel
+    else if localModels != []
+    then builtins.head (lib.sort (a: b: a < b) localModels)
+    else null;
+
+  fallbacks =
+    lib.optionals (fallbackTarget != null)
+    (map (m: {${m} = [fallbackTarget];})
+      (builtins.filter (m: m != fallbackTarget) remoteOnlyModels));
+in {
+  options.MODULES.services.litellm = {
+    enable = mkEnableOption ''
+      the LiteLLM proxy, a single OpenAI-compatible endpoint in front of every vLLM instance in
+      the flake. It auto-discovers them: any host with MODULES.services.vllm.enable contributes
+      its whole catalogue, local ones over loopback and remote ones over Tailscale.
+
+      Where two hosts serve the same catalogue entry, their instances become replicas of one
+      model name and the router spreads concurrent requests across both machines in the
+      proportions set by each host's MODULES.services.vllm.weight - so parallel load really does
+      run on several GPUs at once, and one host going down costs throughput rather than
+      availability. Entries only one host serves have no replica to spread onto and rely on
+      `fallbackModel` instead
+    '';
+
+    requestTimeout = mkOption {
+      type = types.int;
+      default = 900;
+      description = ''
+        Seconds LiteLLM waits for a vLLM instance before giving up on it. Deliberately large:
+        with on-demand loading the first request to an idle instance pays the model's entire
+        load time, and a timeout tuned for a warm server would abort exactly the requests that
+        are supposed to be slow. The cost of the generous value is that a genuinely wedged
+        backend also occupies a slot for this long, which `allowedFails` limits the damage from.
+      '';
+    };
+
+    allowedFails = mkOption {
+      type = types.int;
+      default = 1;
+      description = ''
+        Failures a single deployment may accumulate before the router takes it out of rotation
+        for `cooldownTime`. One, because the common failure here is a whole host being off
+        rather than a flaky request: there is nothing to be gained by discovering that twice.
+      '';
+    };
+
+    cooldownTime = mkOption {
+      type = types.int;
+      default = 60;
+      description = ''
+        Seconds a failed deployment stays out of rotation before the router will try it again.
+        Short enough that a host coming back is picked up without intervention, long enough that
+        a host which is off does not have every request stall on it first.
+      '';
+    };
+
+    routingStrategy = mkOption {
+      type = types.enum [
+        "simple-shuffle"
+        "least-busy"
+        "latency-based-routing"
+        "usage-based-routing-v2"
+      ];
+      default = "simple-shuffle";
+      description = ''
+        How the router picks between the deployments that share a `model_name` - which is what
+        makes concurrent requests to one model fan out across hosts instead of queueing on one.
+        Every host serving a given catalogue entry contributes a deployment under that name, so
+        this only has anything to choose between for models more than one host serves; a model
+        only legion5 has goes to legion5 whatever this says.
+
+        "simple-shuffle" picks at random in the proportions set by each host's
+        MODULES.services.vllm.weight, and is the default for two reasons. It is the only
+        strategy that reads `weight` at all - LiteLLM honours that key in simple_shuffle and
+        nowhere else, so under any other setting the weights silently stop applying and a CPU
+        host gets the same share as a GPU one. And it is the only one that does not
+        systematically prefer a cold instance: the backends here are socket-activated, so an
+        unloaded model reports zero in-flight requests and zero latency, which is exactly the
+        profile "least-busy" and "latency-based-routing" chase - they would steer traffic
+        towards whichever replica is asleep and pay a full model load to do it.
+
+        The load-aware strategies become the better choice if idleTimeout is ever set to null,
+        where every instance is always resident and those signals mean what they claim to.
+
+        Note this is only the outer layer of parallelism. vLLM batches concurrent requests
+        inside a single instance continuously, so one instance already serves many at once -
+        spreading across hosts adds throughput on top of that rather than being what makes
+        concurrency possible.
+      '';
+    };
+
+    fallbackModel = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = "qwen3-4b";
+      description = ''
+        Model to answer with when the request named one that only a now-unreachable host serves.
+        Null picks the alphabetically first locally-served model, which is the right instinct on
+        a gateway host that also runs its own CPU instances; set it explicitly to choose a
+        better-suited one. Models served by more than one host never reach this - the router
+        already treats those hosts as replicas of each other.
+      '';
+    };
+
+    metrics = mkOption {
+      type = types.bool;
+      default = config.MODULES.services.prometheus.enable;
+      defaultText = lib.literalExpression "config.MODULES.services.prometheus.enable";
+      description = ''
+        Enable LiteLLM's "prometheus" callback, which mounts a /metrics endpoint carrying
+        per-model request counts, latency histograms, token totals and - the useful part for
+        this stack - deployment state, so a host that has been cooled out of rotation is
+        visible rather than merely slow. Not a premium feature despite much of LiteLLM's
+        observability being so, and `prometheus-client` is already in the package's closure.
+      '';
+    };
+
+    traefikPath = mkOption {
+      type = types.nullOr types.str;
+      default = "/litellm";
+      description = ''
+        Path to mount the admin UI under on this host's shared Traefik origin, or null for no
+        Traefik route at all. Setting it also sets SERVER_ROOT_PATH, which is what makes the
+        UI's own asset and redirect URLs carry the prefix - without that the browser asks for
+        /ui/_next/... at the origin root and collects the catch-all instead.
+
+        This is the UI's address, not the API's. Because SERVER_ROOT_PATH rewrites those asset
+        links, the UI is reachable through Traefik and only through Traefik; the OpenAI API is
+        unaffected either way, since FastAPI's root_path changes generated URLs rather than
+        which paths the app answers on. Clients therefore keep using the dedicated
+        tailscale-serve origin below, where /v1/... is at the root where SDKs expect it.
+      '';
+    };
+
+    environmentFile = mkOption {
+      type = types.nullOr types.path;
+      default = null;
+      example = "/run/secrets/litellm/env";
+      description = ''
+        Environment file for the service, in KEY=value form. Set LITELLM_MASTER_KEY here to
+        require an Authorization header on every request - without it the proxy is open to
+        anything that can reach the tailnet, which includes every device signed into the
+        account. A path rather than the value, so it stays out of the world-readable Nix store.
+      '';
+    };
+
+    uiUsername = mkOption {
+      type = types.str;
+      default = "admin";
+      description = ''
+        Username for LiteLLM's built-in admin UI. The password comes from UI_PASSWORD in
+        `environmentFile`; with no master key and no password set, the UI is unauthenticated.
+      '';
+    };
+  };
+
+  config = mkIf cfg.enable {
+    assertions = [
+      {
+        assertion = cfg.fallbackModel == null || builtins.elem cfg.fallbackModel allModels;
+        message = ''
+          MODULES.services.litellm.fallbackModel is "${toString cfg.fallbackModel}", which no
+          host in the flake serves. Every model that only one host has would be given a
+          fallback onto a name the router cannot resolve, turning that host being down into a
+          confusing error rather than a degraded answer. Known models: ${
+            if allModels == []
+            then "(none)"
+            else lib.concatStringsSep ", " allModels
+          }.
+        '';
+      }
+      {
+        assertion = vllmHosts != [];
+        message = ''
+          MODULES.services.litellm.enable is set but no host in the flake has
+          MODULES.services.vllm.enable - the proxy would start with an empty model list and
+          answer 400 to everything.
+        '';
+      }
+    ];
+
+    services.litellm = {
+      enable = true;
+      host = "127.0.0.1";
+      port = config.PORTS.litellm;
+
+      environment =
+        {
+          # The upstream module's own defaults, repeated verbatim: defining `environment` at all
+          # replaces its default attrset wholesale rather than merging into it, and dropping these
+          # would silently switch the telemetry phone-home back on.
+          SCARF_NO_ANALYTICS = "True";
+          DO_NOT_TRACK = "True";
+          ANONYMIZED_TELEMETRY = "False";
+
+          UI_USERNAME = cfg.uiUsername;
+        }
+        // lib.optionalAttrs useTraefik {
+          SERVER_ROOT_PATH = cfg.traefikPath;
+        };
+
+      inherit (cfg) environmentFile;
+
+      settings = {
+        model_list = deployments;
+
+        router_settings = {
+          routing_strategy = cfg.routingStrategy;
+
+          inherit (cfg) allowedFails cooldownTime;
+
+          # Retries are what turn "legion5 is off" into a served request: the first attempt goes
+          # to whichever replica was shuffled first, and on failure the router moves to the next
+          # host's copy rather than reporting the error.
+          num_retries = 2;
+
+          # Only retry the errors that another host could plausibly answer. Retrying a 400 from
+          # a malformed request against every deployment in turn just multiplies the failure.
+          retry_policy = {
+            TimeoutErrorRetries = 2;
+            RateLimitErrorRetries = 2;
+            InternalServerErrorRetries = 2;
+            ContentPolicyViolationErrorRetries = 0;
+            AuthenticationErrorRetries = 0;
+            BadRequestErrorRetries = 0;
+          };
+
+          inherit fallbacks;
+        };
+
+        litellm_settings =
+          {
+            request_timeout = cfg.requestTimeout;
+            # Drop a deployment's cached client when it errors, so a host that went away and came
+            # back on a different path is not talked to over a dead connection.
+            drop_params = true;
+            set_verbose = false;
+          }
+          // lib.optionalAttrs cfg.metrics {
+            # Mounting /metrics is a side effect of registering the callback - there is no
+            # separate switch for the endpoint.
+            callbacks = ["prometheus"];
+          };
+
+        general_settings =
+          {
+            # Off whenever anything behind the gateway is socket-activated, which is the normal
+            # case here. A background health check opens a connection to every deployment on a
+            # timer, and against an on-demand instance that connection *is* the wake-up: the
+            # model loads, answers the probe, idles out, and loads again on the next sweep -
+            # turning "only resident when someone is using it" into a permanent reload cycle
+            # that never serves a real request. Losing it costs little, since the router already
+            # discovers a dead host through `allowedFails` on real traffic.
+            background_health_checks = !anyLazyBackend;
+          }
+          // lib.optionalAttrs (!anyLazyBackend) {
+            health_check_interval = 300;
+          }
+          // lib.optionalAttrs (cfg.environmentFile != null) {
+            # Read at startup from the environment file rather than written into the config in
+            # the store. LiteLLM resolves this indirection itself.
+            master_key = "os.environ/LITELLM_MASTER_KEY";
+          };
+      };
+    };
+
+    MODULES.networking.traefik.path_routes = lib.mkIf useTraefik {
+      ${cfg.traefikPath} = "http://127.0.0.1:${toString config.PORTS.litellm}";
+    };
+
+    # Clients here are OpenAI SDKs pointed at a base URL, and those append /v1/... to whatever
+    # they are given, so the proxy needs paths from the origin root - the same constraint that
+    # keeps Open WebUI and Immich off Traefik's shared subpath origin. tailscale serve
+    # terminates TLS on a port of its own and forwards straight to the backend.
+    MODULES.networking.tailscale.serve.litellm = {
+      target = "http://127.0.0.1:${toString config.PORTS.litellm}";
+      httpsPort = config.PORTS.litellm;
+    };
+  };
+}

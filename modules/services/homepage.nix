@@ -212,18 +212,30 @@ in {
         key = "{{HOMEPAGE_FILE_FIREFLY_API_TOKEN}}";
       };
     })
-    (mkIf (cfg.enable && config.MODULES.services.ollama.enable) {
-      # Homepage has no ollama widget, but ollama's model list is a plain unauthenticated JSON
-      # endpoint, so customapi can report how many models are downloaded and how many are
-      # currently resident in memory - i.e. whether the next prompt pays the load-time penalty.
-      MODULES.services.homepage.services.ollama = {
-        icon = "ollama.png";
+    (mkIf (cfg.enable && config.MODULES.services.litellm.enable) {
+      # Homepage has no LiteLLM widget, but /v1/models is a plain JSON endpoint (unauthenticated
+      # unless the gateway has been given a master key), so customapi can report how many models
+      # the gateway is currently routing. That count is the whole catalogue across every host in
+      # the flake, not what happens to be loaded: the vLLM instances behind it are
+      # socket-activated, so "available" and "resident in memory" are deliberately different
+      # things here and only the former is observable from outside.
+      MODULES.services.homepage.services.litellm = {
+        icon = "litellm.png";
+        # The UI lives on the shared Traefik origin (litellm.nix sets SERVER_ROOT_PATH to
+        # match), so this is a subpath like grafana's rather than an absolute href to a port of
+        # its own - even though the API does have such an origin, which is not what a link on a
+        # dashboard wants to open. Falls back to that origin if the Traefik route is turned off.
+        href =
+          if config.MODULES.services.litellm.traefikPath != null && config.MODULES.networking.traefik.enable
+          then config.MODULES.services.litellm.traefikPath
+          else "https://${config.networking.fqdn}:${toString config.PORTS.litellm}";
+        description = "LLM gateway";
         widget = {
           type = "customapi";
-          url = "http://127.0.0.1:${toString config.PORTS.ollama}/api/tags";
+          url = "http://127.0.0.1:${toString config.PORTS.litellm}/v1/models";
           mappings = [
             {
-              field = "models";
+              field = "data";
               label = "Models";
               format = "size";
             }

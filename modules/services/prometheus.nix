@@ -321,6 +321,31 @@ in {
       ];
     })
 
+    (mkIf (cfg.enable && config.MODULES.services.litellm.enable && config.MODULES.services.litellm.metrics) {
+      # LiteLLM serves its own /metrics once the "prometheus" callback is registered (see
+      # litellm.nix) - no exporter binary, same as the traefik/syncthing/immich jobs above.
+      # Worth having beyond the usual request rates and latencies: the gateway is the only
+      # component that can see a backend host being cooled out of rotation after a failure,
+      # and litellm_deployment_state carries that. It is also the only place token counts
+      # exist at all, since nothing scrapes the vLLM instances directly - they are
+      # socket-activated, and scraping them on a timer would defeat the idle unload exactly
+      # the way LiteLLM's own background health checks did.
+      #
+      # The path stays /metrics even with SERVER_ROOT_PATH set: FastAPI's root_path changes
+      # the URLs the app generates, not the ones it answers on, and this scrape goes straight
+      # to the backend port rather than through Traefik.
+      services.prometheus.scrapeConfigs = [
+        {
+          job_name = "litellm";
+          static_configs = [
+            {
+              targets = ["127.0.0.1:${toString config.PORTS.litellm}"];
+            }
+          ];
+        }
+      ];
+    })
+
     (mkIf (cfg.enable && config.MODULES.services.open-webui.enable) {
       # Open WebUI serves no /metrics endpoint and there's no exporter for it; its only
       # instrumentation is OpenTelemetry, which pushes rather than being scraped (request counts
