@@ -3,7 +3,15 @@
   pkgs,
   lib,
   ...
-}: {
+}: let
+  atticConfig = pkgs.writeText "attic-config.toml" ''
+    default-server = "airlab"
+
+    [servers.airlab]
+    endpoint = "https://attic.airlab.at/"
+    token-file = "${config.sops.secrets."attic/akos/token".path}"
+  '';
+in {
   options = {
     MODULES.nix.substituters.airlab-attic.enable = lib.mkOption {
       type = lib.types.bool;
@@ -48,18 +56,18 @@
           netrc-file = config.sops.templates."attic-netrc".path;
         };
       };
+
+      # Make the `attic` CLI usable as root (e.g. `sudo attic push akos ...`)
+      # without a manual `attic login`.
+      systemd.tmpfiles.rules = [
+        "d /root/.config 0700 root root -"
+        "d /root/.config/attic 0700 root root -"
+        "L+ /root/.config/attic/config.toml - - - - ${atticConfig}"
+      ];
     })
 
     (lib.mkIf config.MODULES.nix.substituters.airlab-attic.push.enable {
-      systemd.services.attic-watch-store = let
-        atticConfig = pkgs.writeText "attic-config.toml" ''
-          default-server = "airlab"
-
-          [servers.airlab]
-          endpoint = "https://attic.airlab.at/"
-          token-file = "${config.sops.secrets."attic/akos/token".path}"
-        '';
-      in {
+      systemd.services.attic-watch-store = {
         description = "Watch the Nix store and push new paths to attic.airlab.at/akos";
         wantedBy = ["multi-user.target"];
         after = ["network-online.target"];

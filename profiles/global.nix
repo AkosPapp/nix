@@ -29,6 +29,11 @@
     networking.hostName = configName;
 
     nix.settings.experimental-features = ["nix-command" "flakes"];
+    # Force the nix client to always talk to nix-daemon. Without this,
+    # copying dirty/uncommitted local flake inputs into the store bypasses
+    # the daemon and writes directly as the calling user, which fails under
+    # the default read-only /nix/store bind mount.
+    environment.sessionVariables.NIX_REMOTE = "daemon";
     nixpkgs.config.allowUnfree = true;
     nixpkgs.hostPlatform.system = system;
     system.stateVersion = nixos-version;

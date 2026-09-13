@@ -149,6 +149,7 @@
       # git
       gitFull
       git-lfs
+      gh
 
       # dev tools
       pkgs-unstable.foxglove-cli

@@ -61,7 +61,7 @@ in {
   #
   # gpuMemoryUtilization is below vLLM's 0.9 default because this GPU also drives a desktop
   # session, and 0.9 of 8 GiB leaves nothing for the display server.
-  MODULES.services.vllm.enable = true;
+  MODULES.services.vllm.enable = false;
   MODULES.services.vllm.acceleration = "cuda";
   MODULES.services.vllm.exclusive = true;
   # Share of the traffic for small-text, which hp also serves. Eight to hp's one is a guess at
