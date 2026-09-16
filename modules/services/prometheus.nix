@@ -397,27 +397,9 @@ in {
       };
     })
 
-    (mkIf (cfg.enable && config.MODULES.services.mcp-context-forge.enable && config.MODULES.services.mcp-context-forge.metrics) {
-      # Own endpoint, own path (/metrics/prometheus rather than /metrics), and unlike every
-      # other native-metrics job above, it requires a bearer JWT just to scrape. That token is
-      # minted at runtime from the container's own JWT_SECRET_KEY (see
-      # mcp-context-forge.nix's mcp-context-forge-tokens unit) rather than sops - it isn't a
-      # secret the user picks, so it can't live in sops/secrets.yaml. World-readable, since
-      # nixpkgs' services.prometheus runs under systemd's DynamicUser (no fixed uid to chown
-      # to), which is the same trade-off homepage.nix's DynamicUser secrets already accept.
-      services.prometheus.scrapeConfigs = [
-        {
-          job_name = "mcp-context-forge";
-          metrics_path = "/metrics/prometheus";
-          static_configs = [
-            {
-              targets = ["127.0.0.1:${toString config.PORTS.mcpContextForge}"];
-            }
-          ];
-          authorization.credentials_file = "/var/lib/mcp-context-forge/prometheus-token";
-        }
-      ];
-    })
+    # mcp-switchboard's own NixOS module registers its own scrape job directly on
+    # services.prometheus.scrapeConfigs when MODULES.services.mcp-switchboard.metrics is on
+    # (see mcp-switchboard.nix's `prometheus.register`) - nothing to add here.
 
     (mkIf (cfg.enable && config.MODULES.services.n8n.enable && config.MODULES.services.n8n.metrics) {
       # n8n serves its own /metrics natively (N8N_METRICS=true in n8n.nix) with no auth of its

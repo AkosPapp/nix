@@ -804,11 +804,13 @@ in {
             Type = "oneshot";
             RemainAfterExit = true;
           };
-          script = lib.concatMapStringsSep "\n" (name: ''
-            if ! ${pkgs.systemd}/bin/systemctl is-active --quiet vllm-${name}-proxy.service; then
-              ${pkgs.systemd}/bin/systemctl restart --no-block vllm-${name}.socket
-            fi
-          '') servedNames;
+          script =
+            lib.concatMapStringsSep "\n" (name: ''
+              if ! ${pkgs.systemd}/bin/systemctl is-active --quiet vllm-${name}-proxy.service; then
+                ${pkgs.systemd}/bin/systemctl restart --no-block vllm-${name}.socket
+              fi
+            '')
+            servedNames;
         };
       };
 

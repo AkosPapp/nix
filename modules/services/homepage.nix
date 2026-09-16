@@ -276,17 +276,13 @@ in {
         icon = "open-webui.png";
       };
     })
-    (mkIf (cfg.enable && config.MODULES.services.mcp-context-forge.enable) {
-      # Same shape as litellm's entry above: a subpath link when Traefik is carrying the Admin
-      # UI, otherwise the dedicated tailscale-serve origin (see mcp-context-forge.nix). No
-      # bundled dashboard-icons entry exists for this one yet (it's far newer than litellm/n8n),
-      # so an MDI glyph instead of a guessed png that would just come back broken.
-      MODULES.services.homepage.services.mcp-context-forge = {
+    (mkIf (cfg.enable && config.MODULES.services.mcp-switchboard.enable) {
+      # The console lives on its own tailscale-serve origin, not a Traefik subpath (see
+      # mcp-switchboard.nix). No bundled dashboard-icons entry exists for this one, so an MDI
+      # glyph instead of a guessed png that would just come back broken.
+      MODULES.services.homepage.services.mcp-switchboard = {
         icon = "mdi-graph-outline";
-        href =
-          if config.MODULES.services.mcp-context-forge.traefikPath != null && config.MODULES.networking.traefik.enable
-          then config.MODULES.services.mcp-context-forge.traefikPath
-          else "https://${config.networking.fqdn}:${toString config.PORTS.mcpContextForge}/admin";
+        href = "https://${config.networking.fqdn}:${toString config.PORTS.mcpSwitchboardPrivate}";
         description = "MCP gateway/registry";
       };
     })

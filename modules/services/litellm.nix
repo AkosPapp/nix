@@ -32,7 +32,8 @@
   # deployments on a timer is harmless monitoring or an alarm clock - see general_settings.
   # Ollama always is: keep_alive unloads idle models, and a health probe would load them again.
   anyLazyBackend =
-    ollamaHosts != []
+    ollamaHosts
+    != []
     || lib.any (host: (hostVllm host).idleTimeout != null) vllmHosts;
 
   useTraefik = cfg.traefikPath != null && config.MODULES.networking.traefik.enable;
@@ -50,34 +51,33 @@
   deploymentsFor = host:
     lib.mapAttrsToList (name: instance: {
       model_name = name;
-      litellm_params =
-        {
-          # `hosted_vllm/` is LiteLLM's provider prefix for a vLLM OpenAI-compatible server; the
-          # part after it is the name vLLM itself serves the model under (--served-model-name).
-          model = "hosted_vllm/${instance.model.servedName}";
-          api_base = "http://${hostAddress host}:${toString instance.port}/v1";
-          # vLLM checks no key - its ports are reachable only from the host and the tailnet - but
-          # the OpenAI client library refuses to send a request without something in the field.
-          api_key = "unused";
+      litellm_params = {
+        # `hosted_vllm/` is LiteLLM's provider prefix for a vLLM OpenAI-compatible server; the
+        # part after it is the name vLLM itself serves the model under (--served-model-name).
+        model = "hosted_vllm/${instance.model.servedName}";
+        api_base = "http://${hostAddress host}:${toString instance.port}/v1";
+        # vLLM checks no key - its ports are reachable only from the host and the tailnet - but
+        # the OpenAI client library refuses to send a request without something in the field.
+        api_key = "unused";
 
-          # Long, because the request that wakes a sleeping instance blocks for the whole model
-          # load - see MODULES.services.vllm.idleTimeout. This is also the reason a host being
-          # down cannot simply be inferred from slowness: the two look identical for the first
-          # minute, which is what the cooldowns below are for.
-          timeout = cfg.requestTimeout;
+        # Long, because the request that wakes a sleeping instance blocks for the whole model
+        # load - see MODULES.services.vllm.idleTimeout. This is also the reason a host being
+        # down cannot simply be inferred from slowness: the two look identical for the first
+        # minute, which is what the cooldowns below are for.
+        timeout = cfg.requestTimeout;
 
-          # Relative share of the traffic for this model_name. Only has an effect where more
-          # than one host serves the entry, which is the case worth configuring: the router
-          # dispatches concurrent requests to both, and without a weight it would send as many
-          # to the CPU host as to the GPU one.
-          # No per-deployment num_retries, deliberately. LiteLLM's router replaces the request's
-          # retry count with a failing deployment's own value, so num_retries = 0 on a remote host
-          # did not mean "don't retry this host" - it cancelled the router-level retry that moves
-          # the request to another host's replica, and a legion5 that refused the connection
-          # became a 500 even though hp serves the same model. A dead host is taken out of
-          # rotation after one failure instead (allowedFails), so the retry lands elsewhere.
-          weight = (hostVllm host).weight;
-        };
+        # Relative share of the traffic for this model_name. Only has an effect where more
+        # than one host serves the entry, which is the case worth configuring: the router
+        # dispatches concurrent requests to both, and without a weight it would send as many
+        # to the CPU host as to the GPU one.
+        # No per-deployment num_retries, deliberately. LiteLLM's router replaces the request's
+        # retry count with a failing deployment's own value, so num_retries = 0 on a remote host
+        # did not mean "don't retry this host" - it cancelled the router-level retry that moves
+        # the request to another host's replica, and a legion5 that refused the connection
+        # became a 500 even though hp serves the same model. A dead host is taken out of
+        # rotation after one failure instead (allowedFails), so the retry lands elsewhere.
+        weight = (hostVllm host).weight;
+      };
 
       model_info = {
         # Stable, unique per deployment so cooldowns are applied to the one host that failed

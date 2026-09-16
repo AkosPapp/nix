@@ -5,13 +5,11 @@
   ...
 }: {
   options.MODULES.virtualisation.mcpAgentsNetwork.enable = lib.mkEnableOption ''
-    the "mcp-agents" Docker bridge network. mcp-context-forge.nix and n8n.nix each turn this on
-    themselves when enabled, so the two containers can reach each other by container name
-    (Docker's embedded DNS resolves them on a user-defined bridge network, unlike the default
-    bridge) - the shared network the top-level task description asks for. Neither talks to
-    LiteLLM over it: LiteLLM runs with --network=host (see litellm.nix, which several other
-    hosts' vLLM backends depend on unchanged), so n8n reaches it via host.docker.internal
-    instead - see n8n.nix
+    the "mcp-agents" Docker bridge network. n8n.nix turns this on when enabled, though n8n's own
+    container currently runs with --network=host instead (see n8n.nix), reaching every other
+    local service over 127.0.0.1 directly rather than by container name on this bridge - kept
+    around for any future container-backed service that does need Docker's embedded DNS to
+    resolve a peer by name.
   '';
 
   config = lib.mkIf config.MODULES.virtualisation.mcpAgentsNetwork.enable {

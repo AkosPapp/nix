@@ -187,11 +187,13 @@ in {
       # re-resolves on a /model switch (model.context_length above only covers the default), so
       # it is the value the 64K floor is checked against after switching. No key: Hermes sends
       # "no-key-required" to a custom endpoint without one, and vLLM checks none.
-      settings.providers = lib.mapAttrs (name: ctx: {
-        api = "http://127.0.0.1:${toString vllm.instances.${name}.port}/v1";
-        default_model = vllm.instances.${name}.model.servedName;
-        context_length = ctx;
-      }) providerContexts;
+      settings.providers =
+        lib.mapAttrs (name: ctx: {
+          api = "http://127.0.0.1:${toString vllm.instances.${name}.port}/v1";
+          default_model = vllm.instances.${name}.model.servedName;
+          context_length = ctx;
+        })
+        providerContexts;
 
       backend = mkIf cfg.dashboard {
         mode = "dashboard";

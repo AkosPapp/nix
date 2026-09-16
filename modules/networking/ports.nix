@@ -21,7 +21,8 @@ in {
     immich = 2283;
     litellm = 8095;
     loki = 8031;
-    mcpContextForge = 8096;
+    mcpSwitchboardTunnel = 8096;
+    mcpSwitchboardPrivate = 8099;
     n8n = 8097;
     n8nSandbox = 8098;
     nextcloud = 8088;
@@ -65,7 +66,7 @@ in {
     # Tailscale Funnel only, not a raw firewall port: Funnel accepts exactly 443, 8443 or 10000,
     # and 443 is already Traefik's own tailscale-serve port (see traefik.nix). Registered here
     # anyway so the duplicate-port assertion below still catches a future collision.
-    mcpContextForgeFunnel = 8443;
+    mcpSwitchboardFunnel = 8443;
     ipfsSwarm = 4001;
     mosquitto = 1883;
     traefikHttp = 80;

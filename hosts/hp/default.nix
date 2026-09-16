@@ -68,18 +68,21 @@
   MODULES.services.litellm.rootPath = "/litellm";
   MODULES.services.prometheus.enable = true;
 
-  # MCP gateway/registry: custom MCP servers (devcontainers, other hosts) register against its
-  # API with a bearer token minted after first start (see mcp-context-forge.nix for where), and
-  # it aggregates whatever's currently registered behind one virtual-server MCP endpoint.
-  MODULES.services.mcp-context-forge.enable = true;
-  # Agent-building UI: LLM calls go through the gateway above, MCP tools through Context Forge's
-  # virtual server. apiKeySecret stays unset until the one-time manual step n8n.nix's
-  # `apiKeySecret` option documents (create a Public API key from n8n's own UI, since nothing
-  # can mint one before a human has logged in once) - until then it comes up with no
+  # MCP gateway/registry: remote MCP servers (devcontainers, other hosts) tunnel their local
+  # stdio servers in over an outbound WebSocket (see mcp-switchboard.nix), and the hub aggregates
+  # whatever's currently connected behind one Streamable HTTP /mcp endpoint.
+  MODULES.services.mcp-switchboard.enable = true;
+  # Agent-building UI: LLM calls go through the gateway above, MCP tools through the switchboard
+  # hub's /mcp endpoint (n8n.nix). apiKeySecret stays unset until the one-time manual step
+  # n8n.nix's `apiKeySecret` option documents (create a Public API key from n8n's own UI, since
+  # nothing can mint one before a human has logged in once) - until then it comes up with no
   # pre-created credentials, which is still a fully usable instance.
   MODULES.services.n8n.enable = true;
   MODULES.services.n8n.ownerEmail = "it.akos.papp@gmail.com";
   MODULES.services.n8n.sandbox.enable = true;
+  # AI Assistant/Agent code-execution sandbox (privileged Docker-in-Docker runner) - see
+  # n8n-sandbox.nix's enable option before running this alongside anything else on this host.
+  MODULES.services.n8n-sandbox.enable = true;
 
   MODULES.services.sftpgo.enable = true;
   MODULES.services.i2pd.enable = false;
