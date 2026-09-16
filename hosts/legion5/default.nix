@@ -37,51 +37,83 @@ in {
   # CPU-only worker so it's actually the one doing the work instead of sitting idle behind hp,
   # which otherwise always wins by sorting first alphabetically in the failover chain.
   MODULES.services.immich.machineLearning.priority = 10;
-  # CUDA support pulled in a from-scratch build of magma and hwloc (no cache hit for this
-  # capability/nixpkgs combination) - not worth the build time, so this stays on CPU inference.
+  # Inference runs on the 4060: MODULES.services.immich.machineLearning.acceleration defaults to
+  # "cuda" here off MODULES.hardware.accelerator. The earlier from-scratch magma/hwloc build that
+  # kept this on the CPU is gone - cache.nixos-cuda.org (MODULES.nix.substituters.cuda, enabled in
+  # profiles/global.nix) has the cudaSupport closure prebuilt, so the switch is a download.
   # Gunicorn worker processes for immich-machine-learning - bumped from the default of 1 to let
-  # it handle more than one request at a time.
+  # it handle more than one request at a time. Each worker loads its own copy of the models into
+  # VRAM now that they run on the card, on top of whatever Ollama is holding - drop back to 1 if
+  # the worker starts failing allocations.
   services.immich.machine-learning.environment.MACHINE_LEARNING_WORKERS = lib.mkForce "2";
   MODULES.security.sops.enable = true;
 
-  # The GPU worker. Both entries are FP8 checkpoints, and vLLM's FP8 path requires a CUDA
-  # device of compute capability 7.5 or better (Fp8Config.get_min_capability() == 75), so these
-  # exact repos are legion5-only. hp serves the same small-text model from the base bf16 repo
-  # instead, which is what keeps the name answerable while this laptop is shut.
+  MODULES.services.hermes-agent.enable = false;
+  MODULES.services.hermes-agent.extraModels.heretic.contextLength = 65536;
+
+  # The GPU worker: an RTX 4060 laptop card, 8 GiB, which also drives the desktop session. Ollama
+  # sizes memory to the loaded model plus its configured context and spills whatever does not fit
+  # onto the CPU, so a model larger than the card answers slowly rather than refusing to start.
+  # The CUDA build comes prebuilt from the cache.nixos-cuda.org substituter enabled in
+  # profiles/global.nix.
   #
-  # The card is an RTX 4060 Max-Q, 8 GiB, Ada (sm_89) - native FP8, so these load without the
-  # Marlin fallback. Two ~4B FP8 models is about 4.3 GiB of weights each, which is why
-  # `exclusive` is on: they cannot both be resident, and without it the second one to be woken
-  # dies with a CUDA OOM instead of evicting the first.
-  #
-  # maxModelLen is capped far below what these models allow (both go to 256K) because vLLM
-  # preallocates the KV cache for it up front: at 0.85 of 8 GiB, minus weights, there is roughly
-  # 2.5 GiB of cache to spend, and 8192 tokens leaves margin. Raise it if the card turns out to
-  # have more headroom than that estimate.
-  #
-  # gpuMemoryUtilization is below vLLM's 0.9 default because this GPU also drives a desktop
-  # session, and 0.9 of 8 GiB leaves nothing for the display server.
-  MODULES.services.vllm.enable = false;
-  MODULES.services.vllm.acceleration = "cuda";
-  MODULES.services.vllm.exclusive = true;
-  # Share of the traffic for small-text, which hp also serves. Eight to hp's one is a guess at
-  # the ratio between FP8 on an Ada card and bfloat16 on four Zen+ cores, not a measurement, but
-  # it is on the right side of the truth: an even split would put half the concurrent requests
-  # on the slow machine and let them set the latency anyone actually notices.
-  MODULES.services.vllm.weight = 8;
-  MODULES.services.vllm.models = {
-    # Names are the client-facing aliases, not the repo ids: these are what LiteLLM advertises
-    # as model_name and what goes in an OpenAI request's "model" field.
-    receipt-vision = {
-      repo = "Qwen/Qwen3-VL-4B-Instruct-FP8";
-      maxModelLen = 8192;
-      gpuMemoryUtilization = 0.85;
+  # Two coding models, split by how much the task is worth waiting for:
+  # - coder: Qwen2.5-Coder-7B, 4.7 GB, dense. The light one - it is the only entry whose weights
+  #   nearly fit the ~3.6 GiB the card offers after gpuOverheadMiB, so it is by far the fastest.
+  #   Its q8_0 cache costs ~30 KiB per token (28 layers x 4 KV heads x 128), so 64K x 2 parallel
+  #   slots is ~3.8 GiB on top of the weights: most of that lands in system RAM. Halving
+  #   contextLength is the lever if it feels slow.
+  # - gpt-oss: OpenAI's 20B, 13.8 GB, mixture-of-experts with ~3.6B parameters active per token.
+  #   For the complex jobs: far more capable than anything dense that fits here, and the small
+  #   active share keeps it usable even though most of it sits in RAM. It reasons before
+  #   answering, so the first token takes noticeably longer.
+  # - heretic: the Q6_K of p-e-w's decensored Qwen3-8B, 6.73 GB. 16384 context.
+  # - small-text: Qwen3-4B-2507 Q4_K_M. 8192, the cheap one, and what opencode uses for its side
+  #   jobs. receipt-vision is hp-only again - this host no longer carries a vision model.
+  MODULES.services.ollama.enable = true;
+  MODULES.services.ollama.weight = 8;
+  # Keep ~1.5 GiB of the card out of Ollama's layer placement. It sizes a model to the memory free
+  # at load time, but the desktop's share swings between ~0.9 and ~2.7 GiB and a vision model's
+  # image encoder allocates on top at request time - receipt-vision-7b died with "cudaMalloc
+  # failed: out of memory" mid-request. With the reserve, the layers that would not have fit run
+  # from system RAM on the CPU instead: slower for the large models, but they answer.
+  MODULES.services.ollama.gpuOverheadMiB = 1536;
+  MODULES.services.ollama.models = {
+    coder = {
+      source = "qwen2.5-coder:7b";
+      contextLength = 65536;
+    };
+    gpt-oss = {
+      source = "gpt-oss:20b";
+      contextLength = 65536;
+    };
+    heretic = {
+      # Ollama's hf.co/ source only pulls GGUF repositories. p-e-w publishes the heretic models as
+      # safetensors (p-e-w/Qwen3-8B-heretic is a single model.safetensors), so the pull failed;
+      # this is the GGUF build of that same model. Q6_K is 6.73 GB - closer to the original than
+      # Q4_K_M (5.03 GB), but already more than the ~5.16 GiB the desktop leaves free before any
+      # cache, so Ollama runs a sizeable share of its layers on the CPU and it is the slowest
+      # model here. Q4_K_M is the one to go back to if that becomes the bottleneck.
+      source = "hf.co/mradermacher/Qwen3-8B-heretic-GGUF:Q6_K";
+      # source = "p-e-w/gemma-3-12b-it-heretic"; # also safetensors-only - needs a GGUF build too
+      contextLength = 16384;
     };
     small-text = {
-      repo = "unsloth/Qwen3-4B-Instruct-2507-FP8";
-      maxModelLen = 8192;
-      gpuMemoryUtilization = 0.85;
+      source = "qwen3:4b-instruct-2507-q4_K_M";
+      contextLength = 16384;
     };
+  };
+
+  # opencode against this Ollama. receipt-vision is left out: Ollama serves qwen2.5vl without
+  # tool support, and opencode does everything through tool calls. coder and small-text are
+  # listed with tools in the Ollama library; heretic is a Hugging Face GGUF whose tool support
+  # depends on the chat template Ollama derives, so it may refuse tool calls. coder by default,
+  # small-text for opencode's side jobs (titles) so they don't swap the 32K coder out.
+  MODULES.services.ollama.opencode = {
+    enable = true;
+    models = ["coder" "gpt-oss" "heretic" "small-text"];
+    defaultModel = "coder";
+    smallModel = "small-text";
   };
 
   MODULES.nix.substituters.airlab-attic.enable = true;

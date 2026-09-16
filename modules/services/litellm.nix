@@ -1,6 +1,7 @@
 {
   config,
   lib,
+  pkgs,
   nixosConfigurations,
   configName,
   ...
@@ -9,19 +10,30 @@
 
   cfg = config.MODULES.services.litellm;
 
+  # Database and role share a name so ensureDBOwnership can tie them together.
+  dbName = "litellm";
+
   # Same auto-discovery pattern as immich.nix: every host in the flake is inspected, and the
-  # ones running vLLM contribute their instances here. Adding a model to a host's catalogue is
-  # therefore the only edit needed - the gateway's routing table follows from it, and there is
-  # no second list of endpoints to keep in step.
+  # ones running vLLM or Ollama contribute their catalogues here. Adding a model to a host's
+  # catalogue is therefore the only edit needed - the gateway's routing table follows from it,
+  # and there is no second list of endpoints to keep in step. The two runtimes are otherwise
+  # independent; this gateway is the one place they meet, and a name served by both - on one host
+  # or several - simply becomes more replicas of that model.
   allHostNames = builtins.attrNames nixosConfigurations;
   hostConfig = host: nixosConfigurations.${host}.config;
   hostVllm = host: (hostConfig host).MODULES.services.vllm;
+  hostOllama = host: (hostConfig host).MODULES.services.ollama;
 
   vllmHosts = builtins.filter (host: (hostVllm host).enable) allHostNames;
+  ollamaHosts = builtins.filter (host: (hostOllama host).enable) allHostNames;
+  backendHosts = lib.unique (vllmHosts ++ ollamaHosts);
 
   # Whether any backend is started on demand rather than held resident. Decides whether probing
   # deployments on a timer is harmless monitoring or an alarm clock - see general_settings.
-  anyLazyBackend = lib.any (host: (hostVllm host).idleTimeout != null) vllmHosts;
+  # Ollama always is: keep_alive unloads idle models, and a health probe would load them again.
+  anyLazyBackend =
+    ollamaHosts != []
+    || lib.any (host: (hostVllm host).idleTimeout != null) vllmHosts;
 
   useTraefik = cfg.traefikPath != null && config.MODULES.networking.traefik.enable;
 
@@ -31,8 +43,6 @@
     if host == configName
     then "127.0.0.1"
     else (hostConfig host).MODULES.networking.tailscale.hostIP;
-
-  isLocal = host: host == configName;
 
   # One LiteLLM deployment per (host, model). Two hosts serving the same catalogue entry produce
   # two deployments under one `model_name`, which is exactly what the router wants: it treats
@@ -46,8 +56,8 @@
           # part after it is the name vLLM itself serves the model under (--served-model-name).
           model = "hosted_vllm/${instance.model.servedName}";
           api_base = "http://${hostAddress host}:${toString instance.port}/v1";
-          # vLLM is bound to loopback behind Tailscale and does not check this, but the OpenAI
-          # client library refuses to send a request without something in the field.
+          # vLLM checks no key - its ports are reachable only from the host and the tailnet - but
+          # the OpenAI client library refuses to send a request without something in the field.
           api_key = "unused";
 
           # Long, because the request that wakes a sleeping instance blocks for the whole model
@@ -60,13 +70,13 @@
           # than one host serves the entry, which is the case worth configuring: the router
           # dispatches concurrent requests to both, and without a weight it would send as many
           # to the CPU host as to the GPU one.
+          # No per-deployment num_retries, deliberately. LiteLLM's router replaces the request's
+          # retry count with a failing deployment's own value, so num_retries = 0 on a remote host
+          # did not mean "don't retry this host" - it cancelled the router-level retry that moves
+          # the request to another host's replica, and a legion5 that refused the connection
+          # became a 500 even though hp serves the same model. A dead host is taken out of
+          # rotation after one failure instead (allowedFails), so the retry lands elsewhere.
           weight = (hostVllm host).weight;
-        }
-        // lib.optionalAttrs (!isLocal host) {
-          # A remote host that is powered off still resolves and routes on the tailnet, so a
-          # request to it hangs rather than being refused. Retrying it on the spot is pointless
-          # - the router should give up on this deployment and try another host's copy instead.
-          num_retries = 0;
         };
 
       model_info = {
@@ -78,16 +88,46 @@
     })
     (hostVllm host).instances;
 
-  deployments = lib.concatMap deploymentsFor vllmHosts;
+  # One deployment per (host, Ollama model). `ollama_chat/` is LiteLLM's native Ollama provider,
+  # which speaks /api/chat and passes tools and images through; api_base is the server root, not
+  # /v1. The model is the catalogue name, which ollama.nix creates from its Modelfile with the
+  # entry's context baked in - so nothing per request (num_ctx) has to be sent from here.
+  ollamaDeploymentsFor = host: let
+    ollama = hostOllama host;
+  in
+    lib.mapAttrsToList (name: _: {
+      model_name = name;
+      litellm_params = {
+        model = "ollama_chat/${name}";
+        api_base = "http://${hostAddress host}:${toString (hostConfig host).PORTS.ollama}";
+        # Long for the same reason as vLLM's: the request that finds the model unloaded waits
+        # for it to load, and on a CPU host for a long prefill besides.
+        timeout = cfg.requestTimeout;
+        inherit (ollama) weight;
+      };
+      model_info = {
+        # Distinct from a vLLM deployment of the same name on the same host, so cooldowns hit
+        # the runtime that failed.
+        id = "${host}-ollama-${name}";
+        inherit host;
+      };
+    })
+    ollama.models;
 
-  modelNamesOn = host: lib.attrNames (hostVllm host).instances;
+  deployments =
+    lib.concatMap deploymentsFor vllmHosts
+    ++ lib.concatMap ollamaDeploymentsFor ollamaHosts;
+
+  modelNamesOn = host:
+    lib.optionals (hostVllm host).enable (lib.attrNames (hostVllm host).instances)
+    ++ lib.optionals (hostOllama host).enable (lib.attrNames (hostOllama host).models);
 
   localModels =
-    if builtins.elem configName vllmHosts
-    then modelNamesOn configName
+    if builtins.elem configName backendHosts
+    then lib.unique (modelNamesOn configName)
     else [];
 
-  allModels = lib.unique (lib.sort (a: b: a < b) (lib.concatMap modelNamesOn vllmHosts));
+  allModels = lib.unique (lib.sort (a: b: a < b) (lib.concatMap modelNamesOn backendHosts));
 
   # Models this host cannot serve itself. If the only host that has one goes down there is no
   # replica to fail over to, so they get an explicit fallback onto something local: a degraded
@@ -105,6 +145,70 @@
     lib.optionals (fallbackTarget != null)
     (map (m: {${m} = [fallbackTarget];})
       (builtins.filter (m: m != fallbackTarget) remoteOnlyModels));
+
+  # The proxy's config.yaml, rendered into the store and bind-mounted into the container. Nothing
+  # secret goes in here: the master key is an os.environ/ indirection LiteLLM resolves at startup.
+  settings = {
+    model_list = deployments;
+
+    router_settings = {
+      routing_strategy = cfg.routingStrategy;
+
+      inherit (cfg) allowedFails cooldownTime;
+
+      # Retries are what turn "legion5 is off" into a served request: the first attempt goes
+      # to whichever replica was shuffled first, and on failure the router moves to the next
+      # host's copy rather than reporting the error.
+      num_retries = 2;
+
+      # Only retry the errors that another host could plausibly answer. Retrying a 400 from
+      # a malformed request against every deployment in turn just multiplies the failure.
+      retry_policy = {
+        TimeoutErrorRetries = 2;
+        RateLimitErrorRetries = 2;
+        InternalServerErrorRetries = 2;
+        ContentPolicyViolationErrorRetries = 0;
+        AuthenticationErrorRetries = 0;
+        BadRequestErrorRetries = 0;
+      };
+
+      inherit fallbacks;
+    };
+
+    litellm_settings =
+      {
+        request_timeout = cfg.requestTimeout;
+        # Drop a deployment's cached client when it errors, so a host that went away and came
+        # back on a different path is not talked to over a dead connection.
+        drop_params = true;
+        set_verbose = false;
+      }
+      // lib.optionalAttrs cfg.metrics {
+        # Mounting /metrics is a side effect of registering the callback - there is no
+        # separate switch for the endpoint.
+        callbacks = ["prometheus"];
+      };
+
+    general_settings =
+      {
+        # Off whenever anything behind the gateway is socket-activated, which is the normal
+        # case here. A background health check opens a connection to every deployment on a
+        # timer, and against an on-demand instance that connection *is* the wake-up: the
+        # model loads, answers the probe, idles out, and loads again on the next sweep -
+        # turning "only resident when someone is using it" into a permanent reload cycle
+        # that never serves a real request. Losing it costs little, since the router already
+        # discovers a dead host through `allowedFails` on real traffic.
+        background_health_checks = !anyLazyBackend;
+      }
+      // lib.optionalAttrs (!anyLazyBackend) {
+        health_check_interval = 300;
+      }
+      // lib.optionalAttrs (cfg.masterKeySecret != null || cfg.environmentFile != null) {
+        # Read at startup from the environment file rather than written into the config in
+        # the store. LiteLLM resolves this indirection itself.
+        master_key = "os.environ/LITELLM_MASTER_KEY";
+      };
+  };
 in {
   options.MODULES.services.litellm = {
     enable = mkEnableOption ''
@@ -230,15 +334,48 @@ in {
       '';
     };
 
+    rootPath = mkOption {
+      type = types.nullOr types.str;
+      default = cfg.traefikPath;
+      defaultText = lib.literalExpression "config.MODULES.services.litellm.traefikPath";
+      example = "/litellm";
+      description = ''
+        SERVER_ROOT_PATH: the prefix LiteLLM mounts its admin UI under (`<rootPath>/ui`), or
+        null for /ui at the origin root. Follows `traefikPath` by default, since a UI behind a
+        Traefik subpath needs its links to carry that subpath. Set it on its own to keep the
+        prefix on the gateway's tailscale-serve origin with no Traefik route at all. The API
+        answers at the root either way - this only moves the UI and the links it generates.
+      '';
+    };
+
+    masterKeySecret = mkOption {
+      type = types.nullOr types.str;
+      default =
+        if config.MODULES.security.sops.enable
+        then "litellm_master_key"
+        else null;
+      defaultText = lib.literalExpression ''if MODULES.security.sops.enable then "litellm_master_key" else null'';
+      description = ''
+        Name of the sops secret holding the bare master key, rendered into the service's
+        environment as LITELLM_MASTER_KEY. The key is what requires an Authorization header on
+        every request - without it the proxy is open to anything that can reach the tailnet -
+        and the admin UI refuses to load at all without one. It is also the UI's login password
+        unless UI_PASSWORD is set. By convention it starts with "sk-", like the virtual keys the
+        proxy mints from it.
+
+        Null leaves the key to `environmentFile`.
+      '';
+    };
+
     environmentFile = mkOption {
       type = types.nullOr types.path;
       default = null;
       example = "/run/secrets/litellm/env";
       description = ''
-        Environment file for the service, in KEY=value form. Set LITELLM_MASTER_KEY here to
-        require an Authorization header on every request - without it the proxy is open to
-        anything that can reach the tailnet, which includes every device signed into the
-        account. A path rather than the value, so it stays out of the world-readable Nix store.
+        Extra environment file for the service, in KEY=value form, for anything beyond the
+        master key (UI_PASSWORD, provider API keys). With `masterKeySecret` null it can carry
+        LITELLM_MASTER_KEY itself. A path rather than the value, so it stays out of the
+        world-readable Nix store.
       '';
     };
 
@@ -247,7 +384,19 @@ in {
       default = "admin";
       description = ''
         Username for LiteLLM's built-in admin UI. The password comes from UI_PASSWORD in
-        `environmentFile`; with no master key and no password set, the UI is unauthenticated.
+        `environmentFile`, and falls back to the master key when that is unset.
+      '';
+    };
+
+    image = mkOption {
+      type = types.str;
+      default = "ghcr.io/berriai/litellm-database:v1.86.0";
+      description = ''
+        Container image the gateway runs. The "-database" flavour, because it is the one that
+        bundles the Prisma client and engines LiteLLM needs to reach Postgres - which the admin
+        UI requires just to log in. Pinned to the same release nixpkgs 26.05 packaged, so moving
+        off the native service changed where LiteLLM runs, not which LiteLLM runs. Bumping the
+        tag is the upgrade path; LiteLLM applies any new schema migrations itself on start.
       '';
     };
   };
@@ -268,98 +417,112 @@ in {
         '';
       }
       {
-        assertion = vllmHosts != [];
+        assertion = backendHosts != [];
         message = ''
           MODULES.services.litellm.enable is set but no host in the flake has
-          MODULES.services.vllm.enable - the proxy would start with an empty model list and
-          answer 400 to everything.
+          MODULES.services.vllm.enable or MODULES.services.ollama.enable - the proxy would start
+          with an empty model list and answer 400 to everything.
         '';
       }
     ];
 
-    services.litellm = {
-      enable = true;
-      host = "127.0.0.1";
-      port = config.PORTS.litellm;
+    # LiteLLM runs from upstream's database image rather than nixpkgs' native package. The admin
+    # UI logs in by minting a key in Postgres, and the Prisma client LiteLLM reaches Postgres
+    # through cannot run on NixOS: prisma-client-py 0.15 is pinned to Prisma 5.17 while nixpkgs
+    # ships only 6.x and 7.x, Prisma publishes no engine binaries for NixOS, and
+    # litellm-proxy-extras (the schema migrations) is not packaged. The image carries all of it
+    # and applies the migrations itself on start.
+    virtualisation.docker.enable = true;
+    virtualisation.oci-containers.backend = "docker";
+
+    virtualisation.oci-containers.containers.litellm = {
+      inherit (cfg) image;
+      # Keeps the unit at litellm.service - the name open-webui.nix orders against and the sops
+      # template restarts - instead of docker-litellm.service.
+      serviceName = "litellm";
+      # The image's entrypoint is `exec litellm "$@"`, so these are plain proxy flags.
+      cmd = [
+        "--config"
+        "/app/config.yaml"
+        "--host"
+        "127.0.0.1"
+        "--port"
+        (toString config.PORTS.litellm)
+      ];
+
+      volumes = [
+        "${(pkgs.formats.yaml {}).generate "litellm-config.yaml" settings}:/app/config.yaml:ro"
+        # Postgres over its unix socket, authenticated by peer credentials (identMap below), so
+        # there is no database password to generate, store or rotate.
+        "/run/postgresql:/run/postgresql"
+      ];
 
       environment =
         {
-          # The upstream module's own defaults, repeated verbatim: defining `environment` at all
-          # replaces its default attrset wholesale rather than merging into it, and dropping these
-          # would silently switch the telemetry phone-home back on.
           SCARF_NO_ANALYTICS = "True";
           DO_NOT_TRACK = "True";
           ANONYMIZED_TELEMETRY = "False";
 
           UI_USERNAME = cfg.uiUsername;
+
+          # Prisma's unix-socket form: the host part is ignored in favour of `host=`. LiteLLM
+          # appends its own pool parameters to this with the existing query string preserved.
+          DATABASE_URL = "postgresql://${dbName}@localhost/${dbName}?host=/run/postgresql";
         }
-        // lib.optionalAttrs useTraefik {
-          SERVER_ROOT_PATH = cfg.traefikPath;
+        // lib.optionalAttrs (cfg.rootPath != null) {
+          SERVER_ROOT_PATH = cfg.rootPath;
         };
 
-      inherit (cfg) environmentFile;
+      environmentFiles =
+        lib.optional (cfg.masterKeySecret != null) config.sops.templates."litellm.env".path
+        ++ lib.optional (cfg.environmentFile != null) cfg.environmentFile;
 
-      settings = {
-        model_list = deployments;
+      # Host networking: the vLLM backends are on this host's loopback and on other hosts'
+      # Tailscale addresses, and Traefik, tailscale serve and Prometheus all expect the gateway
+      # on 127.0.0.1 - exactly as the native service was.
+      extraOptions = ["--network=host"];
+    };
 
-        router_settings = {
-          routing_strategy = cfg.routingStrategy;
+    # postgresql.target, not postgresql.service: the target also covers postgresql-setup, which
+    # is where ensureUsers creates the role. Ordering on the server alone would let LiteLLM
+    # connect before its role exists and fail its migrations on first boot.
+    systemd.services.litellm = {
+      requires = ["postgresql.target"];
+      after = ["postgresql.target"];
+    };
 
-          inherit (cfg) allowedFails cooldownTime;
+    services.postgresql = {
+      enable = true;
+      ensureDatabases = [dbName];
+      ensureUsers = [
+        {
+          name = dbName;
+          ensureDBOwnership = true;
+        }
+      ];
+      # The container runs as root and shares the host's uid namespace, so the socket's peer
+      # credentials say "root". Map that to the litellm role for this one database only, rather
+      # than handing root a way into every database.
+      identMap = ''
+        litellm root ${dbName}
+      '';
+      authentication = ''
+        local ${dbName} ${dbName} peer map=litellm
+      '';
+    };
 
-          # Retries are what turn "legion5 is off" into a served request: the first attempt goes
-          # to whichever replica was shuffled first, and on failure the router moves to the next
-          # host's copy rather than reporting the error.
-          num_retries = 2;
+    sops.secrets = lib.mkIf (cfg.masterKeySecret != null) {
+      ${cfg.masterKeySecret} = {};
+    };
 
-          # Only retry the errors that another host could plausibly answer. Retrying a 400 from
-          # a malformed request against every deployment in turn just multiplies the failure.
-          retry_policy = {
-            TimeoutErrorRetries = 2;
-            RateLimitErrorRetries = 2;
-            InternalServerErrorRetries = 2;
-            ContentPolicyViolationErrorRetries = 0;
-            AuthenticationErrorRetries = 0;
-            BadRequestErrorRetries = 0;
-          };
-
-          inherit fallbacks;
-        };
-
-        litellm_settings =
-          {
-            request_timeout = cfg.requestTimeout;
-            # Drop a deployment's cached client when it errors, so a host that went away and came
-            # back on a different path is not talked to over a dead connection.
-            drop_params = true;
-            set_verbose = false;
-          }
-          // lib.optionalAttrs cfg.metrics {
-            # Mounting /metrics is a side effect of registering the callback - there is no
-            # separate switch for the endpoint.
-            callbacks = ["prometheus"];
-          };
-
-        general_settings =
-          {
-            # Off whenever anything behind the gateway is socket-activated, which is the normal
-            # case here. A background health check opens a connection to every deployment on a
-            # timer, and against an on-demand instance that connection *is* the wake-up: the
-            # model loads, answers the probe, idles out, and loads again on the next sweep -
-            # turning "only resident when someone is using it" into a permanent reload cycle
-            # that never serves a real request. Losing it costs little, since the router already
-            # discovers a dead host through `allowedFails` on real traffic.
-            background_health_checks = !anyLazyBackend;
-          }
-          // lib.optionalAttrs (!anyLazyBackend) {
-            health_check_interval = 300;
-          }
-          // lib.optionalAttrs (cfg.environmentFile != null) {
-            # Read at startup from the environment file rather than written into the config in
-            # the store. LiteLLM resolves this indirection itself.
-            master_key = "os.environ/LITELLM_MASTER_KEY";
-          };
-      };
+    # The secret is the bare key, but --env-file wants KEY=value lines, so it is wrapped here.
+    # Root-owned 0400 is enough: the docker CLI in the unit runs as root and reads it before the
+    # container starts.
+    sops.templates."litellm.env" = lib.mkIf (cfg.masterKeySecret != null) {
+      content = ''
+        LITELLM_MASTER_KEY=${config.sops.placeholder.${cfg.masterKeySecret}}
+      '';
+      restartUnits = ["litellm.service"];
     };
 
     MODULES.networking.traefik.path_routes = lib.mkIf useTraefik {

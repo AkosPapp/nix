@@ -66,6 +66,14 @@
             base_url = "https://${config.networking.fqdn}/searx";
           };
 
+          # Enable JSON format for API calls like n8n
+          search = {
+            formats = [
+              "html"
+              "json"
+            ];
+          };
+
           # Basic settings
           general = {
             instance_name = "My Searx Instance";

@@ -212,9 +212,27 @@ in {
         key = "{{HOMEPAGE_FILE_FIREFLY_API_TOKEN}}";
       };
     })
+    (mkIf (cfg.enable && config.MODULES.services.litellm.enable && config.MODULES.services.litellm.masterKeySecret != null) {
+      # /v1/models needs the gateway's master key. Same trick as grafana above: a second,
+      # world-readable declaration of the same sops value, since homepage's DynamicUser uid
+      # can't be targeted. That makes the gateway's admin key readable by any local user on this
+      # host - acceptable on a single-user server, and the reason to swap it for a read-only
+      # virtual key minted in the LiteLLM UI if that ever stops being true.
+      sops.secrets."homepage/litellm_master_key" = {
+        key = config.MODULES.services.litellm.masterKeySecret;
+        mode = "0444";
+      };
+
+      systemd.services.homepage-dashboard.environment.HOMEPAGE_FILE_LITELLM_MASTER_KEY =
+        config.sops.secrets."homepage/litellm_master_key".path;
+
+      MODULES.services.homepage.services.litellm.widget.headers = {
+        Authorization = "Bearer {{HOMEPAGE_FILE_LITELLM_MASTER_KEY}}";
+      };
+    })
     (mkIf (cfg.enable && config.MODULES.services.litellm.enable) {
-      # Homepage has no LiteLLM widget, but /v1/models is a plain JSON endpoint (unauthenticated
-      # unless the gateway has been given a master key), so customapi can report how many models
+      # Homepage has no LiteLLM widget, but /v1/models is a plain JSON endpoint (authenticated
+      # with the master key set up in the block above), so customapi can report how many models
       # the gateway is currently routing. That count is the whole catalogue across every host in
       # the flake, not what happens to be loaded: the vLLM instances behind it are
       # socket-activated, so "available" and "resident in memory" are deliberately different
@@ -228,7 +246,11 @@ in {
         href =
           if config.MODULES.services.litellm.traefikPath != null && config.MODULES.networking.traefik.enable
           then config.MODULES.services.litellm.traefikPath
-          else "https://${config.networking.fqdn}:${toString config.PORTS.litellm}";
+          # The tailscale-serve origin has no landing page of its own at the root, so link
+          # straight to the UI, under whatever prefix the gateway mounts it at.
+          else "https://${config.networking.fqdn}:${toString config.PORTS.litellm}${
+            lib.optionalString (config.MODULES.services.litellm.rootPath != null) config.MODULES.services.litellm.rootPath
+          }/ui";
         description = "LLM gateway";
         widget = {
           type = "customapi";
@@ -252,6 +274,29 @@ in {
       MODULES.services.homepage.services.open-webui = {
         href = "https://${config.networking.fqdn}:${toString config.PORTS.openWebui}";
         icon = "open-webui.png";
+      };
+    })
+    (mkIf (cfg.enable && config.MODULES.services.mcp-context-forge.enable) {
+      # Same shape as litellm's entry above: a subpath link when Traefik is carrying the Admin
+      # UI, otherwise the dedicated tailscale-serve origin (see mcp-context-forge.nix). No
+      # bundled dashboard-icons entry exists for this one yet (it's far newer than litellm/n8n),
+      # so an MDI glyph instead of a guessed png that would just come back broken.
+      MODULES.services.homepage.services.mcp-context-forge = {
+        icon = "mdi-graph-outline";
+        href =
+          if config.MODULES.services.mcp-context-forge.traefikPath != null && config.MODULES.networking.traefik.enable
+          then config.MODULES.services.mcp-context-forge.traefikPath
+          else "https://${config.networking.fqdn}:${toString config.PORTS.mcpContextForge}/admin";
+        description = "MCP gateway/registry";
+      };
+    })
+    (mkIf (cfg.enable && config.MODULES.services.n8n.enable) {
+      # No Traefik route (see n8n.nix), so an absolute href to its own tailscale-serve origin -
+      # same pattern as open-webui and immich above, for the same reverse-proxy-subpath reason.
+      MODULES.services.homepage.services.n8n = {
+        href = "https://${config.networking.fqdn}:${toString config.PORTS.n8n}";
+        icon = "n8n.png";
+        description = "Agent workflow builder";
       };
     })
     (mkIf (cfg.enable && config.MODULES.services.syncthing.enable) {

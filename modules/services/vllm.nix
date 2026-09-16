@@ -2,9 +2,6 @@
   config,
   lib,
   pkgs,
-  pkgs-unstable,
-  inputs,
-  system,
   ...
 }: let
   inherit (lib) mkEnableOption mkIf mkOption types;
@@ -13,82 +10,25 @@
 
   accelerationBackends = ["cpu" "cuda" "rocm"];
 
-  # nixpkgs 26.05 ships vllm 0.16.0 with fifteen unfixed CVEs against it - it carries
-  # meta.knownVulnerabilities, so it will not even evaluate without permittedInsecurePackages.
-  # unstable is on 0.24.0 with a clean advisory list; same reasoning as the pkgs-unstable.immich
-  # override in immich.nix. Drop back to the stable set once it carries a version that isn't
-  # flagged.
+  # Set by MODULES.hardware.nvidia (e.g. "--device=nvidia.com/gpu=all") on hosts whose container
+  # runtime can hand the card to a container. Its presence is what makes CUDA the default
+  # backend, and it is passed straight to `docker run` so the container actually sees the GPU -
+  # Docker 25+ resolves the nvidia.com/gpu CDI name from the spec nvidia-container-toolkit
+  # generates.
+  gpuFlag = config.environment.variables.GPU_FLAG or null;
+
+  # vLLM runs from upstream's own images rather than a nixpkgs build. The nixpkgs route meant
+  # compiling torch and vLLM from source for anything but CPU (cache.nixos.org carries no
+  # cudaSupport/rocmSupport builds), patching vLLM's platform probe for the CPU build, and trailing
+  # upstream by several releases; the images are what upstream tests and ship.
   #
-  # The backend is chosen by torch's own cudaSupport/rocmSupport rather than by a flag on vllm,
-  # so a GPU build means instantiating nixpkgs a second time with that config - overriding vllm
-  # alone would hand a CUDA-enabled vllm a CPU-only torch and blow up at import. This is also
-  # why the wrong choice here is expensive rather than merely slow: cache.nixos.org carries no
-  # cudaSupport/rocmSupport builds at all, so anything but "cpu" compiles torch and vLLM from
-  # source on the target machine.
-  acceleratedPkgs = accelConfig:
-    import inputs.nixpkgs-unstable {
-      inherit system;
-      config =
-        {
-          allowUnfree = true;
-          allowBroken = true;
-        }
-        // accelConfig;
-    };
-
-  # The top-level `vllm` attribute is only a thin `toPythonApplication` wrapper whose sole
-  # argument is the Python package set, so the build flags cannot be reached through it -
-  # `pkgs.vllm.override { cudaSupport = ...; }` fails with "unexpected argument". Override the
-  # Python package, which is where those arguments actually live, and re-wrap it to get the
-  # `vllm` executable back.
-  # python313Packages, not python3Packages: unstable's default python3 is 3.14, which vLLM's
-  # dependency tree does not build against, and the top-level attribute pins 3.13 for that
-  # reason. Following python3Packages here instead resolves to 3.14 and fails far away from the
-  # cause, on an unrelated package that has no 3.14 build.
-  # vLLM picks its platform backend at runtime, and the CPU probe is literally
-  # `"cpu" in importlib.metadata.version("vllm")` - it is looking for the "+cpu" local version
-  # segment upstream stamps onto its CPU wheels. nixpkgs builds that exact same CPU target but
-  # leaves the version plain "0.24.0", so the probe says no; CUDA and ROCm then say no too, and
-  # every server dies at startup with "Failed to infer device type". 0.24 has no environment
-  # variable to override this, so it has to be said where the decision is made.
-  #
-  # CPU build only. The CUDA probe is the mirror image of this one - it requires
-  # `not vllm_version_matches_substr("cpu")` - so forcing the flag on a GPU build would make
-  # vLLM refuse to use the GPU it was just compiled for.
-  cpuPlatformPatch = ''
-    substituteInPlace vllm/platforms/__init__.py \
-      --replace-fail 'is_cpu = vllm_version_matches_substr("cpu")' 'is_cpu = True'
-  '';
-
-  vllmFrom = p: overrides: extraPostPatch:
-    p.python313Packages.toPythonApplication (
-      (p.python313Packages.vllm.override overrides).overridePythonAttrs (old: {
-        postPatch = (old.postPatch or "") + extraPostPatch;
-      })
-    );
-
-  packages = {
-    # torch.cudaSupport and torch.rocmSupport are both false in an unconfigured unstable, so
-    # this already is the CPU build; the flags are passed anyway so it doesn't silently change
-    # meaning if nixpkgs ever flips those defaults.
-    cpu =
-      vllmFrom pkgs-unstable {
-        cudaSupport = false;
-        rocmSupport = false;
-      }
-      cpuPlatformPatch;
-
-    # No explicit flag needed on these two: instantiating nixpkgs with cudaSupport/rocmSupport
-    # is what flips torch, and vllm's own defaults follow torch's.
-    cuda = vllmFrom (acceleratedPkgs {cudaSupport = true;}) {} "";
-
-    rocm =
-      vllmFrom (acceleratedPkgs {rocmSupport = true;})
-      (lib.optionalAttrs (cfg.rocmGpuTargets != []) {gpuTargets = cfg.rocmGpuTargets;})
-      "";
+  # Pinned to one vLLM release across all three backends, so hosts on different hardware still
+  # serve the same engine version behind LiteLLM.
+  defaultImages = {
+    cuda = "vllm/vllm-openai:v0.27.0";
+    cpu = "public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo:v0.27.0";
+    rocm = "rocm/vllm:rocm10.0.0_ubuntu24.04_py3.14_pytorch_2.12.0_vllm_0.27.0";
   };
-
-  vllmPackage = packages.${cfg.acceleration};
 
   isGpu = cfg.acceleration != "cpu";
 
@@ -154,7 +94,7 @@
   '';
 
   # A token, when configured, arrives as a systemd credential rather than in the environment or
-  # the store; both the fetch job and the servers pick it up through this snippet.
+  # the store.
   loadTokenSnippet = ''
     if [ -n "''${CREDENTIALS_DIRECTORY:-}" ] && [ -r "''${CREDENTIALS_DIRECTORY}/hf-token" ]; then
       HF_TOKEN="$(cat "''${CREDENTIALS_DIRECTORY}/hf-token")"
@@ -177,6 +117,19 @@
       prefetchNames}
   '';
 
+  # `docker run` has no way to read a systemd credential, so the token is turned into an
+  # --env-file in the unit's runtime directory just before the container starts. /run is tmpfs
+  # and the directory is removed with the unit, so the token still never touches disk or the store.
+  tokenEnvFile = name: "/run/vllm-${name}/hf-token.env";
+
+  writeTokenEnvScript = name:
+    pkgs.writeShellScript "vllm-${name}-token-env" ''
+      set -euo pipefail
+      ${loadTokenSnippet}
+      umask 0077
+      printf 'HF_TOKEN=%s\nHUGGING_FACE_HUB_TOKEN=%s\n' "$HF_TOKEN" "$HF_TOKEN" > ${tokenEnvFile name}
+    '';
+
   # Flags common to every instance. `--download-dir` is deliberately absent: it makes vLLM write
   # a flat per-model directory of its own instead of using the shared HF cache the prefetch unit
   # populates, which would fetch every model a second time.
@@ -186,8 +139,16 @@
     [
       "serve"
       m.repo
+      # The container shares the host's network namespace (see extraOptions below), so this is
+      # the host's own address. In lazy mode the server only takes the private backend port behind
+      # the proxy, which stays on loopback; with no proxy it owns the public port itself, and that
+      # one has to answer other hosts over Tailscale just like the socket would.
       "--host"
-      "127.0.0.1"
+      (
+        if lazy
+        then "127.0.0.1"
+        else "0.0.0.0"
+      )
       "--port"
       # In lazy mode the public port belongs to the .socket unit and the server sits behind the
       # proxy on its private one. With idleTimeout null there is no socket and no proxy, so the
@@ -212,13 +173,6 @@
     ]
     ++ m.extraArgs
     ++ cfg.extraArgs;
-
-  serveScript = instance:
-    pkgs.writeShellScript "vllm-serve-${instance.name}" ''
-      set -euo pipefail
-      ${loadTokenSnippet}
-      exec ${vllmPackage}/bin/vllm ${lib.escapeShellArgs (serveArgs instance)}
-    '';
 
   modelSubmodule = {name, ...}: {
     options = {
@@ -314,28 +268,26 @@ in {
 
     acceleration = mkOption {
       type = types.enum accelerationBackends;
-      default = "cpu";
+      default = config.MODULES.hardware.accelerator;
+      defaultText = lib.literalExpression "config.MODULES.hardware.accelerator";
       description = ''
-        Which hardware backend vLLM, and the torch underneath it, is built against: "cpu",
-        "cuda" (NVIDIA) or "rocm" (AMD). Left at "cpu" because it is the only one
-        cache.nixos.org can serve - "cuda" and "rocm" rebuild torch and vLLM from source on the
-        target machine, an hours-long and many-gigabyte job, so a wrong guess here is expensive
-        rather than merely slow.
+        Which hardware backend to run: "cpu", "cuda" (NVIDIA) or "rocm" (AMD). Selects the
+        default `image` and which devices the container is given. Follows GPU_FLAG by default,
+        since that variable is what says this host can pass a GPU into a container at all.
 
         "rocm" is only meaningful for GPUs ROCm actually supports (gfx900/906/908/90a/942/950 and
         RDNA3+); Vega-class integrated graphics are not among them, see `rocmGfxOverride`.
       '';
     };
 
-    rocmGpuTargets = mkOption {
-      type = types.listOf types.str;
-      default = [];
-      example = ["gfx1100"];
+    image = mkOption {
+      type = types.str;
+      default = defaultImages.${cfg.acceleration};
+      defaultText = lib.literalExpression (builtins.toJSON defaultImages + ".\${acceleration}");
       description = ''
-        Restrict the ROCm build to these GPU architectures instead of every target the ROCm
-        toolchain in nixpkgs enables. Only meaningful with `acceleration = "rocm"`; empty keeps
-        the default target list. Narrowing it to the one card that actually exists is a large
-        cut in build time, which on a from-source ROCm build is well worth taking.
+        Container image the servers run. Defaults to upstream's release image for the chosen
+        backend, pinned to one vLLM version. Docker pulls it on the first start and never again
+        for the same tag, so bumping the tag here is how an upgrade happens.
       '';
     };
 
@@ -386,11 +338,11 @@ in {
       default = lib.attrNames cfg.models;
       defaultText = lib.literalExpression "every model in `models`";
       description = ''
-        Which catalogue entries this host actually runs a vLLM process for. Defaults to all of
+        Which catalogue entries this host actually runs a vLLM container for. Defaults to all of
         them, which is right for a GPU host with a small catalogue and wrong as soon as the
-        models stop fitting side by side: each instance is a separate process that loads its own
-        weights and holds its own KV cache for as long as it runs, so N models cost N times the
-        memory - this is not a swap-on-demand pool the way ollama was.
+        models stop fitting side by side: each instance is a separate container that loads its
+        own weights and holds its own KV cache for as long as it runs, so N models cost N times
+        the memory - this is not a swap-on-demand pool the way ollama was.
       '';
     };
 
@@ -544,18 +496,15 @@ in {
         in "MODULES.services.vllm.serve names models that are not in the catalogue: ${lib.concatStringsSep ", " missing}";
       }
       {
-        assertion = cfg.acceleration != "rocm" || cfg.rocmGpuTargets != [];
+        assertion = cfg.acceleration != "cuda" || gpuFlag != null;
         message = ''
-          MODULES.services.vllm.acceleration = "rocm" with no rocmGpuTargets: the build would
-          default to every ROCm target nixpkgs enables, which is hours of compilation for
-          architectures this machine does not have. Set rocmGpuTargets to the card you own.
+          MODULES.services.vllm.acceleration = "cuda" but environment.variables.GPU_FLAG is not
+          set: the container would start without the GPU and vLLM would die with "Failed to
+          infer device type". Enable MODULES.hardware.nvidia, which sets it.
         '';
       }
     ];
 
-    # Registering the derived ports here rather than hardcoding them in ports.nix is what puts
-    # them under the flake-wide uniqueness assertion: a catalogue that grows past the next
-    # service's port becomes a build error instead of two daemons fighting over one socket.
     # Registering the derived ports here rather than hardcoding them in ports.nix is what puts
     # them under the flake-wide uniqueness assertion: a catalogue that grows past the next
     # service's port becomes a build error instead of two daemons fighting over one socket.
@@ -567,15 +516,85 @@ in {
         lib.mapAttrs' (name: i: lib.nameValuePair "vllm-${name}-backend" i.backendPort) instances
       );
 
-    users.users.vllm = {
-      isSystemUser = true;
-      group = "vllm";
-      home = stateDir;
-      # render/video own /dev/kfd and /dev/dri/renderD*; harmless on a CPU or NVIDIA host, and
-      # required for ROCm to see the card at all.
-      extraGroups = lib.optionals (cfg.acceleration == "rocm") ["render" "video"];
-    };
-    users.groups.vllm = {};
+    # The public ports are what LiteLLM on other hosts connects to over Tailscale. Opened on the
+    # tailnet interface only: vLLM has no authentication of its own, so the LAN must not reach it.
+    # Backend ports stay closed - they are loopback-only and only the local proxy talks to them.
+    networking.firewall.interfaces.tailscale0.allowedTCPPorts = lib.mapAttrsToList (_: i: i.port) instances;
+
+    virtualisation.docker.enable = true;
+    virtualisation.oci-containers.backend = "docker";
+
+    # One container per instance. `serviceName` keeps the generated unit at vllm-<n>.service
+    # rather than docker-vllm-<n>.service, which is the name the socket/proxy wiring below and
+    # the systemd overrides further down all refer to.
+    #
+    # The containers run as root, as the images expect, and the HF cache under /var/lib/vllm is
+    # root-owned to match - including the prefetch job's writes, since huggingface_hub takes
+    # lock files in the cache and a second owner would leave one side unable to write.
+    virtualisation.oci-containers.containers = lib.mapAttrs' (name: instance:
+      lib.nameValuePair "vllm-${name}" {
+        inherit (cfg) image;
+        serviceName = "vllm-${name}";
+        # In lazy mode nothing wants this at boot - the proxy pulls it in on the first request
+        # and StopWhenUnneeded drops it again when the proxy exits.
+        autoStart = !lazy;
+        entrypoint = "vllm";
+        cmd = serveArgs instance;
+
+        # Same path inside as outside, so the cache the host-side prefetch job fills is exactly
+        # the one vLLM reads and the environment below needs no translation.
+        volumes = ["${stateDir}:${stateDir}"];
+        environmentFiles = lib.optional (cfg.hfTokenFile != null) (tokenEnvFile name);
+
+        environment =
+          {
+            HF_HOME = "${stateDir}/huggingface";
+            HF_HUB_CACHE = hfCache;
+            # vLLM phones home with anonymous usage stats unless told not to.
+            VLLM_NO_USAGE_STATS = "1";
+            DO_NOT_TRACK = "1";
+            # Compilation artefacts and the torch inductor cache land here instead of inside the
+            # container's own filesystem, which is discarded on every stop. Keeping them on the
+            # host matters more in lazy mode than it would otherwise: this cache is most of what
+            # stops every reload from repeating the same compilation work.
+            VLLM_CACHE_ROOT = "${stateDir}/cache";
+            TRITON_CACHE_DIR = "${stateDir}/cache/triton";
+            XDG_CACHE_HOME = "${stateDir}/cache";
+            OUTLINES_CACHE_DIR = "${stateDir}/cache/outlines";
+          }
+          // lib.optionalAttrs (cfg.acceleration == "cpu") {
+            VLLM_CPU_KVCACHE_SPACE = toString cfg.cpuKvCacheSpaceGiB;
+          }
+          // lib.optionalAttrs (cfg.acceleration == "cuda") {
+            # Load kernels as they are first used rather than mapping every module in the
+            # binary at startup - a meaningful cut in both start latency and VRAM floor on a
+            # card this size, and it is the default from CUDA 12.2 on anyway.
+            CUDA_MODULE_LOADING = "LAZY";
+          }
+          // lib.optionalAttrs (cfg.rocmGfxOverride != null) {
+            HSA_OVERRIDE_GFX_VERSION = cfg.rocmGfxOverride;
+          };
+
+        # ROCm has no CDI spec to lean on; the kernel driver's nodes are passed by hand.
+        devices = lib.optionals (cfg.acceleration == "rocm") ["/dev/kfd" "/dev/dri"];
+
+        extraOptions =
+          [
+            # Host networking keeps `--host 127.0.0.1` meaning the host's loopback, so the
+            # proxies, LiteLLM and the health poll all reach the server exactly as they did
+            # natively, with no port publishing to keep in sync with PORTS.
+            "--network=host"
+            # vLLM's worker processes share tensors over /dev/shm, and Docker's default 64 MiB
+            # segment is far too small for it; upstream's own instructions use the host's IPC.
+            "--ipc=host"
+          ]
+          ++ lib.optionals (gpuFlag != null) (lib.toList gpuFlag)
+          ++ lib.optionals (cfg.acceleration == "rocm") [
+            "--group-add=video"
+            "--security-opt=seccomp=unconfined"
+          ];
+      })
+    instances;
 
     # On-demand loading is systemd's socket-activation recipe rather than anything vLLM knows
     # how to do: vLLM has no idle timeout and no lazy-load mode, so the lifecycle is managed
@@ -586,8 +605,8 @@ in {
     #   vllm-<n>-proxy.service systemd-socket-proxyd, which pulls in the real server, forwards
     #                          the connection to it, and exits once --exit-idle-time passes with
     #                          nothing connected
-    #   vllm-<n>.service       the server itself, bound to a private port, StopWhenUnneeded so
-    #                          it goes away with the proxy that was the only thing needing it
+    #   vllm-<n>.service       the container itself, bound to a private port, StopWhenUnneeded
+    #                          so it goes away with the proxy that was the only thing needing it
     #
     # The cost is that the first request after an idle period blocks for as long as the model
     # takes to load; the proxy's ExecStartPre is what holds it there rather than failing it.
@@ -596,7 +615,18 @@ in {
         description = "Socket for on-demand vLLM server ${name}";
         wantedBy = ["sockets.target"];
         socketConfig = {
-          ListenStream = "127.0.0.1:${toString instance.port}";
+          # All addresses, not loopback: LiteLLM on another host reaches this port over Tailscale.
+          # The firewall opens it on tailscale0 only (see networking.firewall below), so the LAN
+          # still cannot connect. Binding the Tailscale IP itself would fail whenever the socket
+          # starts before tailscaled has brought the interface up.
+          ListenStream = "0.0.0.0:${toString instance.port}";
+          # No activation rate limit. When the server behind the proxy fails to start, every new
+          # connection re-triggers the proxy, and LiteLLM's retries from another host produce
+          # those in bursts. At the default of 20 activations per 2s the socket then drops into
+          # `trigger-limit-hit`, stops listening, and stays closed until restarted by hand - so
+          # one broken model left its port refusing connections long after the cause was fixed.
+          # The server's own RestartSec already throttles how often a failing model is retried.
+          TriggerLimitIntervalSec = 0;
           # Names differ, so the socket has to be told which unit it activates - the default
           # would be the identically-named vllm-<n>.service, bypassing the proxy entirely.
           Service = "vllm-${name}-proxy.service";
@@ -618,16 +648,22 @@ in {
           };
 
           serviceConfig = {
-            Type = "oneshot";
+            # Not oneshot. A oneshot's start job lasts until the download finishes, and
+            # multi-user.target orders itself after every unit it wants, so boot - and every
+            # `nixos-rebuild switch`, which waits on that target - would hang for as long as tens
+            # of gigabytes take to arrive. With exec the start job completes as soon as the script
+            # is running; RemainAfterExit keeps the unit active afterwards, so a rebuild that
+            # changes the catalogue still restarts it, and snapshot_download skips whatever is
+            # already cached and fetches only the new entries.
+            Type = "exec";
             RemainAfterExit = true;
-            User = "vllm";
-            Group = "vllm";
             StateDirectory = "vllm";
             WorkingDirectory = stateDir;
             ExecStart = fetchScript;
             LoadCredential = lib.optional (cfg.hfTokenFile != null) "hf-token:${cfg.hfTokenFile}";
-            # Weights run to tens of gigabytes over a home connection; systemd's default 90s
-            # start timeout would kill the first run long before it finished.
+            # Redundant for exec in steady state, but a switch from an older oneshot definition
+            # reloads the unit mid-download, and the fresh 90s default was then applied to the
+            # run already in progress and killed it.
             TimeoutStartSec = "infinity";
 
             NoNewPrivileges = true;
@@ -663,17 +699,28 @@ in {
             # systemd-socket-proxyd inherits the listening socket from the .socket unit and
             # forwards to the server's private port, exiting once nothing has been connected
             # for --exit-idle-time. Its exit is what lets StopWhenUnneeded unload the model.
-            ExecStart = "${pkgs.systemd}/lib/systemd/systemd-socket-proxyd --exit-idle-time=${toString cfg.idleTimeout}s 127.0.0.1:${toString instance.backendPort}";
+            #
+            # `After=vllm-<n>.service` only means `docker run` was spawned, not that vLLM is
+            # answering: it spends minutes pulling the image and loading weights before it binds.
+            # Without the poll the proxy would forward the very first request into a closed port
+            # and the client would see a connection reset instead of a slow response.
+            #
+            # The poll lives in ExecStart, not ExecStartPre, so the unit counts as started at
+            # once. As a start-pre step it made the start job last as long as the whole image
+            # pull and model load, and `nixos-rebuild switch` restarts a changed proxy and waits
+            # on exactly that job - hanging the switch for as long as a cold model takes.
+            # Clients still wait the same: their connections sit in the socket's backlog until
+            # proxyd accepts them. `exec` keeps the PID, so LISTEN_PID still matches and proxyd
+            # picks up the socket systemd passed in.
+            ExecStart = pkgs.writeShellScript "vllm-${name}-proxy" ''
+              until ${pkgs.curl}/bin/curl -sfo /dev/null http://127.0.0.1:${toString instance.backendPort}/health; do
+                sleep 1
+              done
+              exec ${pkgs.systemd}/lib/systemd/systemd-socket-proxyd --exit-idle-time=${toString cfg.idleTimeout}s 127.0.0.1:${toString instance.backendPort}
+            '';
 
-            # `After=vllm-<n>.service` only means the server process was spawned, not that it is
-            # answering: vLLM is Type=simple and spends minutes loading weights before it binds.
-            # Without this poll the proxy would forward the very first request into a closed
-            # port and the client would see a connection reset instead of a slow response.
-            ExecStartPre = "${pkgs.bash}/bin/bash -c 'until ${pkgs.curl}/bin/curl -sfo /dev/null http://127.0.0.1:${toString instance.backendPort}/health; do sleep 1; done'";
-            TimeoutStartSec = "infinity";
-
-            User = "vllm";
-            Group = "vllm";
+            # Stateless, so there is nothing a stable uid would need to own.
+            DynamicUser = true;
             NoNewPrivileges = true;
             PrivateTmp = true;
             PrivateDevices = true;
@@ -692,13 +739,18 @@ in {
           };
         })
       instances)
+      # Additions on top of the unit oci-containers generates for each container, which already
+      # brings Restart=on-failure, an unlimited start timeout and a 120s stop timeout - the
+      # latter matters in lazy mode, where shutdown is routine and a model mid-load is slow to
+      # respond to it.
       // lib.mapAttrs' (name: instance:
         lib.nameValuePair "vllm-${name}" {
           description = "vLLM server for ${name} (${instance.model.repo})";
-          # In lazy mode nothing wants this at boot - the proxy pulls it in on the first
-          # request and StopWhenUnneeded drops it again when the proxy exits.
-          wantedBy = lib.optionals (!lazy) ["multi-user.target"];
-          after = ["network.target"] ++ lib.optional (prefetchNames != []) "vllm-fetch-models.service";
+          # Only orders the start relative to the prefetch unit's launch; it does not wait for the
+          # download (see Type = "exec" there). A server woken while its model is still arriving
+          # downloads it itself, and huggingface_hub's per-file locks in the shared cache make
+          # the two wait on each other rather than fetch the same blob twice.
+          after = lib.optional (prefetchNames != []) "vllm-fetch-models.service";
           # `wants`, not `requires`: a failed prefetch (rate limit, expired token) should leave
           # the servers whose weights are already cached running rather than take them down too.
           wants = lib.optional (prefetchNames != []) "vllm-fetch-models.service";
@@ -708,97 +760,61 @@ in {
           conflicts = lib.optionals (cfg.exclusive && !lazy) (
             map (other: "vllm-${other}.service") (lib.filter (other: other != name) servedNames)
           );
-          unitConfig = lib.mkIf lazy {StopWhenUnneeded = true;};
+          unitConfig = mkIf lazy {StopWhenUnneeded = true;};
 
-          environment =
+          serviceConfig =
             {
-              HF_HOME = "${stateDir}/huggingface";
-              HF_HUB_CACHE = hfCache;
-              # vLLM phones home with anonymous usage stats unless told not to.
-              VLLM_NO_USAGE_STATS = "1";
-              DO_NOT_TRACK = "1";
-              # Compilation artefacts and the torch inductor cache land here; with no explicit
-              # writable path they aim at $HOME and fail under the hardening below. Keeping them
-              # on disk matters more in lazy mode than it would otherwise: this cache is most of
-              # what stops every reload from repeating the same compilation work.
-              VLLM_CACHE_ROOT = "${stateDir}/cache";
-              TRITON_CACHE_DIR = "${stateDir}/cache/triton";
-              XDG_CACHE_HOME = "${stateDir}/cache";
-              OUTLINES_CACHE_DIR = "${stateDir}/cache/outlines";
-              HOME = stateDir;
+              # Created before docker bind-mounts it, so a first boot doesn't get a
+              # docker-created directory with whatever defaults the daemon picks.
+              StateDirectory = "vllm";
+              RestartSec = 30;
             }
-            // lib.optionalAttrs (cfg.acceleration == "cpu") {
-              VLLM_CPU_KVCACHE_SPACE = toString cfg.cpuKvCacheSpaceGiB;
-            }
-            // lib.optionalAttrs isGpu {
-              # libcuda.so / the ROCm ICDs are part of the kernel driver, not of the CUDA or
-              # ROCm packages torch was built against, so they only exist at this runtime path.
-              # Without it torch builds fine and then reports no GPU at all at import time,
-              # which reads like a driver problem rather than a linker one.
-              LD_LIBRARY_PATH = "/run/opengl-driver/lib";
-            }
-            // lib.optionalAttrs (cfg.acceleration == "cuda") {
-              # Load kernels as they are first used rather than mapping every module in the
-              # binary at startup - a meaningful cut in both start latency and VRAM floor on a
-              # card this size, and it is the default from CUDA 12.2 on anyway.
-              CUDA_MODULE_LOADING = "LAZY";
-            }
-            // lib.optionalAttrs (cfg.rocmGfxOverride != null) {
-              HSA_OVERRIDE_GFX_VERSION = cfg.rocmGfxOverride;
+            // lib.optionalAttrs (cfg.hfTokenFile != null) {
+              LoadCredential = "hf-token:${cfg.hfTokenFile}";
+              RuntimeDirectory = "vllm-${name}";
+              RuntimeDirectoryMode = "0700";
+              ExecStartPre = [(writeTokenEnvScript name)];
             };
-
-          serviceConfig = {
-            Type = "simple";
-            User = "vllm";
-            Group = "vllm";
-            StateDirectory = "vllm";
-            WorkingDirectory = stateDir;
-            ExecStart = serveScript instance;
-            LoadCredential = lib.optional (cfg.hfTokenFile != null) "hf-token:${cfg.hfTokenFile}";
-
-            # Loading weights and, on a GPU, compiling kernels takes minutes on a cold cache,
-            # and a 7B model on the CPU backend is slower still - systemd's default would give
-            # up partway through and restart into the same wall forever.
-            TimeoutStartSec = "infinity";
-            # Shutdown is the common case in lazy mode rather than an incident, and a model
-            # mid-load ignores SIGTERM for a while; give it room before the kill.
-            TimeoutStopSec = 120;
-            Restart = "on-failure";
-            RestartSec = 30;
-
-            # Hardening. Deliberately not DynamicUser: the HF cache under /var/lib/vllm is the
-            # expensive part of this service's state and needs a stable owner to survive.
-            NoNewPrivileges = true;
-            PrivateTmp = true;
-            ProtectHome = true;
-            ProtectSystem = "strict";
-            ProtectHostname = true;
-            ProtectKernelLogs = true;
-            ProtectKernelModules = true;
-            ProtectKernelTunables = true;
-            ProtectControlGroups = true;
-            ProtectProc = "invisible";
-            RestrictNamespaces = true;
-            RestrictRealtime = true;
-            RestrictSUIDSGID = true;
-            LockPersonality = true;
-            SystemCallArchitectures = "native";
-            RestrictAddressFamilies = ["AF_INET" "AF_INET6" "AF_UNIX"];
-            UMask = "0077";
-
-            # GPU backends need the driver character devices; the CPU one needs none of them, so
-            # it gets the closed policy and no device nodes at all.
-            DevicePolicy =
-              if isGpu
-              then "auto"
-              else "closed";
-            PrivateDevices = !isGpu;
-          };
         })
-      instances;
+      instances
+      # nixos-rebuild does not apply changes to .socket units: switch-to-configuration's branch for
+      # them is literally `// FIXME: do something?` (nixpkgs#74899; the fix in #141192 was
+      # reverted). A socket is only restarted when a running service of the same base name drags
+      # it along - here that is the vllm-<n>.service container, which is idle most of the time.
+      # So a changed ListenStream stays unapplied: the unit file says the new address while the
+      # old listener is kept or lost, and LiteLLM on another host gets connection refused. Ports
+      # follow the alphabetical order of the catalogue, so merely adding a model moves every port
+      # after it and triggers this.
+      #
+      # This oneshot carries every socket's address in its restart triggers. It is an ordinary
+      # service, which switch-to-configuration does restart when its unit changes, and restarting
+      # it re-binds each socket whose proxy is not running. Sockets with an active proxy are left
+      # alone so an in-flight request is not cut off; those are restarted by the switch through
+      # their running container anyway. --no-block, because a blocking systemctl call from inside
+      # a job the switch is waiting on would deadlock it.
+      // lib.optionalAttrs lazy {
+        vllm-sockets-reload = {
+          description = "Re-bind vLLM activation sockets after their addresses change";
+          wantedBy = ["multi-user.target"];
+          after = map (name: "vllm-${name}.socket") servedNames;
+          # The sockets' whole rendered config, not just their addresses: any change to a socket
+          # unit (TriggerLimitIntervalSec included) is equally ignored by the switch.
+          restartTriggers = map (name: builtins.toJSON config.systemd.sockets."vllm-${name}".socketConfig) servedNames;
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+          };
+          script = lib.concatMapStringsSep "\n" (name: ''
+            if ! ${pkgs.systemd}/bin/systemctl is-active --quiet vllm-${name}-proxy.service; then
+              ${pkgs.systemd}/bin/systemctl restart --no-block vllm-${name}.socket
+            fi
+          '') servedNames;
+        };
+      };
 
-    # vLLM binds loopback and every instance is an origin of its own, so instead of a Traefik
-    # path route per model the whole catalogue is published through LiteLLM (litellm.nix).
-    # Anything that wants one instance directly can reach it from the host itself or over SSH.
+    # Each instance's public port is reachable from the host itself and from the tailnet, never
+    # from the LAN. Clients are meant to go through LiteLLM (litellm.nix), which fans a model name
+    # out across every host serving it; the per-instance ports exist for LiteLLM and for local
+    # consumers such as Hermes, not as a public API.
   };
 }

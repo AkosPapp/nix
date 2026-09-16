@@ -24,6 +24,7 @@
       system.locale.enable = true;
       nix.gc.enable = true;
       nix.substituters.cachix.enable = true;
+      nix.substituters.cuda.enable = true;
     };
 
     networking.hostName = configName;

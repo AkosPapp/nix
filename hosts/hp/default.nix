@@ -34,79 +34,58 @@
   MODULES.services.firefly-iii.enable = true;
   MODULES.services.grafana.enable = true;
   MODULES.services.loki.enable = true;
-  # hp is the CPU worker as well as the gateway. It cannot run the FP8 checkpoints legion5
-  # serves - vLLM's FP8 kernels require a CUDA device (Fp8Config.get_min_capability() == 75) -
-  # so every entry here is legion5's model rebuilt at a size and precision a CPU can actually
-  # load, filed under the same catalogue key. That sameness of key is the whole point: LiteLLM
-  # groups deployments by name, so each of these ends up as a second deployment of one logical
-  # model, which is what buys both the fan-out (concurrent requests split 8:1 toward the GPU)
-  # and the failover (legion5 is a laptop and is usually shut; hp answers, slowly, regardless).
-  MODULES.services.vllm.enable = true;
-  MODULES.services.vllm.acceleration = "cpu";
-  MODULES.services.vllm.cpuKvCacheSpaceGiB = 2;
-
-  # One model resident at a time. On a GPU host `exclusive` is about vLLM's fixed VRAM
-  # reservation; here it is plain arithmetic - ~8 GiB of small-text weights, ~6 GiB of
-  # receipt-vision and a 2 GiB KV reservation each is 18 of this machine's 21 GiB, before
-  # Immich ML, Prometheus, Loki, Grafana and Traefik get a look in. Serialising them costs a
-  # model reload whenever traffic alternates between the two; not serialising them costs an OOM
-  # kill of whichever process the kernel picks, which may well not be vLLM. Drop this if the
-  # catalogue here ever shrinks back to a single entry.
-  MODULES.services.vllm.exclusive = true;
-
-  MODULES.services.vllm.models = {
-    # unsloth's FP8 repo is a quantization of this one, so this is legion5's small-text at the
-    # base precision. ~8 GiB of bf16 weights plus the 2 GiB KV reservation. `free` claims only
-    # ~5 GiB available, but ~11 GiB of that is ZFS ARC, which is reclaimable down to c_min and
-    # will be evicted under this allocation rather than blocking it. maxModelLen is 4096 rather
-    # than the model's 256K for the same reason - vLLM reserves the KV cache for the full
-    # declared context up front.
+  # hp is the CPU worker as well as the gateway: it serves catalogue names legion5 also serves, so
+  # LiteLLM treats them as replicas of one model and keeps answering - slowly, on four Zen+ cores -
+  # while the laptop is shut. Weight 1 against legion5's 8 decides how the traffic splits when both
+  # are up.
+  #
+  # GGUF quants rather than full-precision weights: small-text is a ~2.5 GB Q4_K_M whose q8_0 cache
+  # is sized to the configured context, which is what makes 8192 tokens affordable beside Immich
+  # ML, Prometheus, Loki, Grafana and Traefik on this 21 GiB machine. One model resident at a time
+  # (maxLoadedModels default), two parallel slots each.
+  MODULES.services.ollama.enable = true;
+  MODULES.services.ollama.models = {
     small-text = {
-      repo = "Qwen/Qwen3-4B-Instruct-2507";
-      maxModelLen = 4096;
-      dtype = "bfloat16";
-    };
-
-    # Deliberately not legion5's Qwen3-VL. That one is FP8, which rules it out on CPU by itself,
-    # but it is also the newest VL architecture vLLM carries, and the newest multimodal model
-    # class is the worst thing to hand the CPU backend - that backend gets a fraction of the
-    # upstream testing the CUDA one does, and it is the recently-added architectures that fall
-    # off it. Qwen2.5-VL is the previous generation of the same lineage: a separate vLLM model
-    # class with a great deal more mileage behind it, ungated on Hugging Face (this host sets no
-    # hfTokenFile, so a gated repo would 401), and 3B rather than 4B, which is most of what
-    # makes it plausible on four Zen+ cores at all. It also stays unusually strong on dense
-    # printed text, which is the entire job here - the general-purpose VLMs in this size class
-    # (SmolVLM at 2B, Gemma 3 at 4B) are cheaper to run and visibly worse at reading a receipt.
-    #
-    # Expect tens of seconds per image, not the second or two legion5 takes. This entry earns
-    # its place by existing while the laptop is shut, not by being fast.
-    receipt-vision = {
-      repo = "Qwen/Qwen2.5-VL-3B-Instruct";
-      maxModelLen = 8192;
-      dtype = "bfloat16";
-      # The single biggest lever on the CPU backend. Qwen-VL's encoder is dynamic-resolution and
-      # its default ceiling is ~12.8M pixels, so a phone photo of a receipt becomes thousands of
-      # visual tokens - every one of them prefilled on four cores before the first output token
-      # appears, and every one of them charged against maxModelLen. 1280 * 28 * 28 caps that at
-      # ~1280 tokens, which is still ample to read printed text off a receipt.
-      extraArgs = ["--mm-processor-kwargs" ''{"max_pixels": 1003520}''];
+      source = "qwen3:4b-instruct-2507-q4_K_M";
+      contextLength = 16384;
     };
   };
 
   # hp is the always-on node, so the gateway lives here rather than on the laptop, and it is
   # hp's Tailscale name that goes in a client config.
   MODULES.services.litellm.enable = true;
-  # Inert while hp serves every name legion5 does: litellm.nix only builds fallbacks for models
-  # no local host has, and there are none now that receipt-vision is served here too. Kept
-  # because it stays the right answer the moment that changes - of the entries on this host it
-  # is the cheap one, and a degraded reply from it beats a connection error.
+  # Where requests land when the only host serving a name is unreachable. litellm.nix builds those
+  # fallbacks for every name no local host has, which is most of legion5's catalogue (coder,
+  # gpt-oss, heretic): with the laptop shut they answer from this host's small-text instead of
+  # erroring. Of the entries here it is the cheap one, and a degraded reply beats a failure.
   MODULES.services.litellm.fallbackModel = "small-text";
+  # The admin UI lives on the gateway's own tailscale-serve origin, at
+  # https://hp.tail546fb.ts.net:8095/litellm/ui, not on the shared Traefik origin - "/" there is
+  # the root redirect and 404 catch-all every subpath app relies on, so it can't be handed to one
+  # app. No Traefik route, but the /litellm prefix stays via rootPath (SERVER_ROOT_PATH); the API
+  # is unaffected and still answers at the origin root.
+  MODULES.services.litellm.traefikPath = null;
+  MODULES.services.litellm.rootPath = "/litellm";
   MODULES.services.prometheus.enable = true;
+
+  # MCP gateway/registry: custom MCP servers (devcontainers, other hosts) register against its
+  # API with a bearer token minted after first start (see mcp-context-forge.nix for where), and
+  # it aggregates whatever's currently registered behind one virtual-server MCP endpoint.
+  MODULES.services.mcp-context-forge.enable = true;
+  # Agent-building UI: LLM calls go through the gateway above, MCP tools through Context Forge's
+  # virtual server. apiKeySecret stays unset until the one-time manual step n8n.nix's
+  # `apiKeySecret` option documents (create a Public API key from n8n's own UI, since nothing
+  # can mint one before a human has logged in once) - until then it comes up with no
+  # pre-created credentials, which is still a fully usable instance.
+  MODULES.services.n8n.enable = true;
+  MODULES.services.n8n.ownerEmail = "it.akos.papp@gmail.com";
+  MODULES.services.n8n.sandbox.enable = true;
+
   MODULES.services.sftpgo.enable = true;
   MODULES.services.i2pd.enable = false;
   MODULES.services.immich.machineLearning.enable = true;
   # MODULES.services.transmission.enable = true;
-  # MODULES.services.searx.enable = true;
+  MODULES.services.searx.enable = true;
   MODULES.nix.substituters.airlab-attic.enable = true;
   MODULES.nix.substituters.airlab-attic.push.enable = true;
 

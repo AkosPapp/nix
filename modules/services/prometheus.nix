@@ -334,15 +334,30 @@ in {
       # The path stays /metrics even with SERVER_ROOT_PATH set: FastAPI's root_path changes
       # the URLs the app generates, not the ones it answers on, and this scrape goes straight
       # to the backend port rather than through Traefik.
+      #
+      # LiteLLM requires the master key on /metrics by default (require_auth_for_metrics_endpoint
+      # is True since the move to the upstream image), and the gateway's port is published to the
+      # whole tailnet by tailscale serve, so the scrape authenticates rather than that check being
+      # switched off. Same underlying sops value as litellm.nix's, declared again to be readable
+      # by the prometheus user, which reads credentials_file itself on every scrape.
+      sops.secrets."prometheus/litellm_master_key" = mkIf (config.MODULES.services.litellm.masterKeySecret != null) {
+        key = config.MODULES.services.litellm.masterKeySecret;
+        owner = "prometheus";
+        mode = "0400";
+      };
+
       services.prometheus.scrapeConfigs = [
-        {
-          job_name = "litellm";
-          static_configs = [
-            {
-              targets = ["127.0.0.1:${toString config.PORTS.litellm}"];
-            }
-          ];
-        }
+        ({
+            job_name = "litellm";
+            static_configs = [
+              {
+                targets = ["127.0.0.1:${toString config.PORTS.litellm}"];
+              }
+            ];
+          }
+          // lib.optionalAttrs (config.MODULES.services.litellm.masterKeySecret != null) {
+            authorization.credentials_file = config.sops.secrets."prometheus/litellm_master_key".path;
+          })
       ];
     })
 
@@ -380,6 +395,43 @@ in {
         # series have the same resolution as every scraped one.
         OTEL_METRICS_EXPORT_INTERVAL_MILLIS = "5000";
       };
+    })
+
+    (mkIf (cfg.enable && config.MODULES.services.mcp-context-forge.enable && config.MODULES.services.mcp-context-forge.metrics) {
+      # Own endpoint, own path (/metrics/prometheus rather than /metrics), and unlike every
+      # other native-metrics job above, it requires a bearer JWT just to scrape. That token is
+      # minted at runtime from the container's own JWT_SECRET_KEY (see
+      # mcp-context-forge.nix's mcp-context-forge-tokens unit) rather than sops - it isn't a
+      # secret the user picks, so it can't live in sops/secrets.yaml. World-readable, since
+      # nixpkgs' services.prometheus runs under systemd's DynamicUser (no fixed uid to chown
+      # to), which is the same trade-off homepage.nix's DynamicUser secrets already accept.
+      services.prometheus.scrapeConfigs = [
+        {
+          job_name = "mcp-context-forge";
+          metrics_path = "/metrics/prometheus";
+          static_configs = [
+            {
+              targets = ["127.0.0.1:${toString config.PORTS.mcpContextForge}"];
+            }
+          ];
+          authorization.credentials_file = "/var/lib/mcp-context-forge/prometheus-token";
+        }
+      ];
+    })
+
+    (mkIf (cfg.enable && config.MODULES.services.n8n.enable && config.MODULES.services.n8n.metrics) {
+      # n8n serves its own /metrics natively (N8N_METRICS=true in n8n.nix) with no auth of its
+      # own - same shape as the traefik/syncthing/immich jobs above.
+      services.prometheus.scrapeConfigs = [
+        {
+          job_name = "n8n";
+          static_configs = [
+            {
+              targets = ["127.0.0.1:${toString config.PORTS.n8n}"];
+            }
+          ];
+        }
+      ];
     })
 
     (mkIf (cfg.enable && config.boot.supportedFilesystems.zfs or false) {

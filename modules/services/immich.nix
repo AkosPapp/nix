@@ -2,6 +2,8 @@
   config,
   lib,
   pkgs-unstable,
+  inputs,
+  system,
   nixosConfigurations,
   configName,
   ...
@@ -9,6 +11,25 @@
   inherit (lib) mkEnableOption mkIf mkMerge;
 
   cfg = config.MODULES.services.immich;
+
+  # A second unstable nixpkgs with cudaSupport on, which is the only switch the machine-learning
+  # worker has: immich-machine-learning takes no cuda argument of its own, it inherits whatever
+  # execution providers python onnxruntime was built with, and onnxruntime follows the global
+  # flag. Kept as its own pkgs instance so the CUDA variants stay inside immich instead of
+  # leaking into everything else this flake pulls from unstable (tailscale, vaultwarden, niri).
+  # The config attrs are flake.nix's plain unstable import plus cudaSupport and cudaCapabilities
+  # is deliberately left at the nixpkgs default - that combination is what
+  # cache.nixos-cuda.org (MODULES.nix.substituters.cuda) builds, so the whole closure
+  # substitutes. Narrowing capabilities to this card's 8.9 would be a cache miss and a
+  # from-scratch onnxruntime/opencv build.
+  pkgs-unstable-cuda = import inputs.nixpkgs-unstable {
+    inherit system;
+    config = {
+      allowUnfree = true;
+      allowBroken = true;
+      cudaSupport = true;
+    };
+  };
 
   # every host defined in the flake, so the machine-learning worker URLs below can be wired up
   # automatically instead of by hand (same pattern as modules/services/syncthing.nix)
@@ -68,6 +89,23 @@ in {
         local worker, which is always appended last as the final fallback.
       '';
     };
+
+    machineLearning.acceleration = lib.mkOption {
+      type = lib.types.enum ["cpu" "cuda"];
+      default =
+        if config.MODULES.hardware.accelerator == "cuda"
+        then "cuda"
+        else "cpu";
+      defaultText = lib.literalMD ''"cuda" when `MODULES.hardware.accelerator` is "cuda", otherwise "cpu"'';
+      description = ''
+        Which backend the worker runs face detection and CLIP on. "cuda" swaps the whole immich
+        package for one built out of a cudaSupport nixpkgs and opens the card's device nodes to
+        the unit; "cpu" is the plain build. ROCm is not an option - immich's worker only ships
+        CPU and CUDA execution providers. Defaults to CUDA on a host with an NVIDIA card: a
+        ~4.6 GiB first-time download from cache.nixos-cuda.org for the worker, plus ~1.5 GiB
+        more on a host that also runs the immich server off the same package.
+      '';
+    };
   };
 
   config = mkMerge [
@@ -82,7 +120,10 @@ in {
     # passthru of the same derivation), and Immich requires the two to be on the same version,
     # so every host in the flake has to be deployed together when this moves.
     (mkIf (cfg.enable || cfg.machineLearning.enable) {
-      services.immich.package = pkgs-unstable.immich;
+      services.immich.package =
+        if cfg.machineLearning.acceleration == "cuda"
+        then pkgs-unstable-cuda.immich
+        else pkgs-unstable.immich;
     })
 
     (mkIf cfg.enable {
@@ -126,6 +167,18 @@ in {
         IMMICH_HOST = lib.mkForce "0.0.0.0";
         IMMICH_PORT = lib.mkForce (toString config.PORTS.immichMachineLearning);
       };
+
+      # The upstream module's default of accelerationDevices = [] turns on PrivateDevices, which
+      # hides /dev/nvidia* from the unit - onnxruntime then finds no CUDA device and silently
+      # falls back to the CPU provider. List the card's nodes instead of using `null` (all
+      # devices) so the rest of the hardening stays.
+      services.immich.accelerationDevices = mkIf (cfg.machineLearning.acceleration == "cuda") [
+        "/dev/nvidiactl"
+        "/dev/nvidia-uvm"
+        "/dev/nvidia-uvm-tools"
+        "/dev/nvidia0"
+        "/dev/nvidia-modeset"
+      ];
 
       networking.firewall.allowedTCPPorts = [config.PORTS.immichMachineLearning];
 

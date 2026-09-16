@@ -23,6 +23,9 @@
       url = "github:AkosPapp/nix_autobuild";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Not following our nixpkgs: upstream packages it with uv2nix against unstable and calls the
+    # flake best-effort, so its own lock is the combination it was actually built against.
+    hermes-agent.url = "github:NousResearch/hermes-agent";
   };
 
   outputs = {
@@ -80,6 +83,7 @@
             sops-nix.nixosModules.sops
             disko.nixosModules.disko
             nix_autobuild.nixosModules.nix_autobuild
+            inputs.hermes-agent.nixosModules.default
           ]
           ++ module_files;
       }))

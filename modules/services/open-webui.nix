@@ -6,6 +6,10 @@
   inherit (lib) mkIf mkOption types;
 
   cfg = config.MODULES.services.open-webui;
+
+  localGatewayKey =
+    config.MODULES.services.litellm.enable
+    && config.MODULES.services.litellm.masterKeySecret != null;
 in {
   options.MODULES.services.open-webui = {
     enable = mkOption {
@@ -50,10 +54,23 @@ in {
   };
 
   config = mkIf cfg.enable {
+    # A gateway on this host with a master key rejects the "unused" placeholder, so the real key
+    # is handed over from sops instead. systemd lets EnvironmentFile override Environment=, so
+    # this wins over `openaiKey` without touching the store. Still a PersistentConfig seed: an
+    # install that already started once keeps its stored key until it is changed under Admin
+    # Settings -> Connections.
+    sops.templates."open-webui.env" = mkIf localGatewayKey {
+      content = ''
+        OPENAI_API_KEY=${config.sops.placeholder.${config.MODULES.services.litellm.masterKeySecret}}
+      '';
+      restartUnits = ["open-webui.service"];
+    };
+
     services.open-webui = {
       enable = true;
       host = "127.0.0.1";
       port = config.PORTS.openWebui;
+      environmentFile = mkIf localGatewayKey config.sops.templates."open-webui.env".path;
 
       environment = {
         # The upstream module's own defaults, repeated verbatim: defining `environment` at all
