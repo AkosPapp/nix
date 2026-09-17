@@ -19,6 +19,8 @@ in {
     homepage = 8082;
     i2pdWebui = 8070;
     immich = 2283;
+    librechat = 8100;
+    librechatMongo = 8101;
     litellm = 8095;
     loki = 8031;
     mcpSwitchboardTunnel = 8096;

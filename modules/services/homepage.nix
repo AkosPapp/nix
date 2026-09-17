@@ -286,6 +286,15 @@ in {
         description = "MCP gateway/registry";
       };
     })
+    (mkIf (cfg.enable && config.MODULES.services.librechat.enable) {
+      # Own tailscale-serve origin, not a Traefik subpath (see librechat.nix) - same
+      # reverse-proxy-subpath reasoning as open-webui and n8n above.
+      MODULES.services.homepage.services.librechat = {
+        href = "https://${config.networking.fqdn}:${toString config.PORTS.librechat}";
+        icon = "librechat.png";
+        description = "MCP-tool chat UI";
+      };
+    })
     (mkIf (cfg.enable && config.MODULES.services.n8n.enable) {
       # No Traefik route (see n8n.nix), so an absolute href to its own tailscale-serve origin -
       # same pattern as open-webui and immich above, for the same reverse-proxy-subpath reason.

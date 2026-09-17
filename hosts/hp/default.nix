@@ -84,6 +84,11 @@
   # n8n-sandbox.nix's enable option before running this alongside anything else on this host.
   MODULES.services.n8n-sandbox.enable = true;
 
+  # Second chat UI, alongside Open WebUI: MCP tools through the same switchboard hub /mcp
+  # endpoint n8n uses above, native in LibreChat's own agent/tool support rather than n8n's
+  # workflow-node model - see librechat.nix.
+  MODULES.services.librechat.enable = true;
+
   MODULES.services.sftpgo.enable = true;
   MODULES.services.i2pd.enable = false;
   MODULES.services.immich.machineLearning.enable = true;

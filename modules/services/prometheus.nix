@@ -416,6 +416,22 @@ in {
       ];
     })
 
+    (mkIf (cfg.enable && config.MODULES.services.librechat.enable && config.MODULES.services.librechat.metrics) {
+      # Own endpoint (bearer JWT via METRICS_SECRET, same shape mcp-context-forge's
+      # /metrics/prometheus used to have) - see librechat.nix's sops.templates."librechat.env".
+      services.prometheus.scrapeConfigs = [
+        {
+          job_name = "librechat";
+          static_configs = [
+            {
+              targets = ["127.0.0.1:${toString config.PORTS.librechat}"];
+            }
+          ];
+          authorization.credentials_file = config.sops.secrets."librechat/metrics_secret".path;
+        }
+      ];
+    })
+
     (mkIf (cfg.enable && config.boot.supportedFilesystems.zfs or false) {
       services.prometheus.exporters.zfs = {
         enable = true;
