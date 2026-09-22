@@ -45,8 +45,6 @@ in {
     networking.firewall.allowedUDPPorts = [config.PORTS.transmissionPeer];
 
     MODULES.networking.traefik.enable = true;
-    MODULES.networking.traefik.path_routes = {
-      "/transmission" = "http://127.0.0.1:${toString config.PORTS.transmissionRpc}/transmission";
-    };
+    MODULES.networking.traefik.services.transmission = "127.0.0.1:${toString config.PORTS.transmissionRpc}";
   };
 }

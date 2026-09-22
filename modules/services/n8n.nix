@@ -23,10 +23,8 @@ in {
       Client Tool node at it (no credential needed: that endpoint is unauthenticated by design,
       reachable only from the tailnet - see mcp-switchboard.nix).
 
-      n8n's own subpath-behind-a-reverse-proxy support is unreliable as of n8n 2.x (several open
-      upstream issues: endpoints and redirects that ignore N8N_PATH), unlike LiteLLM, so this
-      gets its own tailscale-serve origin instead of a Traefik route - the same call made for
-      Open WebUI and Immich, and for the same reason.
+      Served by Traefik on its own subdomain (n8n.<host>): n8n's subpath support is unreliable
+      as of n8n 2.x, and it needs the origin root.
     '';
 
     image = mkOption {
@@ -189,7 +187,7 @@ in {
       serviceName = "n8n";
 
       volumes = ["/var/lib/n8n:/home/node/.n8n"];
-      # Loopback-only, reached by tailscale serve below - no Traefik route, see the module doc.
+      # Loopback-only, reached through Traefik (see the traefik.services entry below).
       # ports = ["127.0.0.1:${toString config.PORTS.n8n}:${toString config.PORTS.n8n}"];
 
       environment =
@@ -205,15 +203,14 @@ in {
           N8N_HOST = "127.0.0.1";
 
           N8N_PROTOCOL = "https";
-          # n8n only sees the plain-HTTP hop from tailscale serve's local proxy, never the HTTPS
-          # tailscale itself terminates - same situation as every other backend behind it here.
-          # Left at the default, the session cookie would carry Secure and never actually be set.
+          # n8n only sees the plain-HTTP hop from Traefik, never the HTTPS Traefik itself
+          # terminates - same situation as every other backend behind it here. Left at the default, the session cookie would carry Secure and never actually be set.
           N8N_SECURE_COOKIE = "false";
           # Both default to N8N_HOST/N8N_PROTOCOL/N8N_PORT combined, which would be right here
           # too since they're all set consistently - set explicitly anyway so a webhook or a
           # generated link is never silently wrong if one of those three changes without this.
-          WEBHOOK_URL = "https://${config.networking.fqdn}:${toString config.PORTS.n8n}/";
-          N8N_EDITOR_BASE_URL = "https://${config.networking.fqdn}:${toString config.PORTS.n8n}/";
+          WEBHOOK_URL = "${config.MODULES.networking.traefik.urlOf "n8n"}/";
+          N8N_EDITOR_BASE_URL = "${config.MODULES.networking.traefik.urlOf "n8n"}/";
           N8N_METRICS =
             if cfg.metrics
             then "true"
@@ -313,9 +310,7 @@ in {
       '';
     };
 
-    MODULES.networking.tailscale.serve.n8n = {
-      target = "http://127.0.0.1:${toString config.PORTS.n8n}";
-      httpsPort = config.PORTS.n8n;
-    };
+    MODULES.networking.traefik.enable = true;
+    MODULES.networking.traefik.services.n8n = "127.0.0.1:${toString config.PORTS.n8n}";
   };
 }

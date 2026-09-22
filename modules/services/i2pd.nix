@@ -26,7 +26,7 @@
         enable = true;
         address = "127.0.0.1";
         port = config.PORTS.i2pdWebui;
-        hostname = config.networking.fqdn;
+        hostname = config.MODULES.networking.traefik.hostOf "i2pd";
       };
 
       # Optional but recommended: SAM API for apps that use i2p
@@ -68,43 +68,6 @@
       };
     };
     MODULES.networking.traefik.enable = true;
-    MODULES.networking.traefik.path_routes = {
-      "/i2pd" = "http://127.0.0.1:${toString config.PORTS.i2pdWebui}";
-    };
-
-    # Redirect /?page=commands → /i2pd?page=commands when Referer is /i2pd/i2pd
-    services.traefik.dynamicConfigOptions = let
-      fqdn = config.networking.fqdn;
-      fqdnEscaped = builtins.replaceStrings ["."] ["\\."] fqdn;
-    in {
-      http = {
-        routers = {
-          i2pd-redirect = {
-            rule = "Host(`${fqdn}`) && Path(`/`) && HeaderRegexp(`Referer`, `^https://${fqdnEscaped}/i2pd.*`)";
-            entryPoints = ["web"];
-            middlewares = ["redirect-i2pd"];
-            service = "i2pd-noop";
-            priority = 1000;
-          };
-        };
-        services = {
-          i2pd-noop = {
-            loadBalancer = {
-              servers = [{url = "http://127.0.0.1:1";}];
-            };
-          };
-        };
-        middlewares = {
-          redirect-i2pd = {
-            redirectRegex = {
-              regex = "^https?://[^/]*/(.*)$";
-              replacement = "https://${fqdn}/i2pd/$1";
-              #replacement = "1.1.1.1";
-              permanent = false;
-            };
-          };
-        };
-      };
-    };
+    MODULES.networking.traefik.services.i2pd = "127.0.0.1:${toString config.PORTS.i2pdWebui}";
   };
 }

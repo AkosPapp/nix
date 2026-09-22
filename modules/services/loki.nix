@@ -105,7 +105,7 @@ in {
     })
 
     (mkIf (cfg.enable && config.MODULES.networking.traefik.enable) {
-      MODULES.networking.traefik.path_routes."/loki" = "http://127.0.0.1:${toString config.PORTS.loki}";
+      MODULES.networking.traefik.services.loki = "127.0.0.1:${toString config.PORTS.loki}";
     })
   ];
 }

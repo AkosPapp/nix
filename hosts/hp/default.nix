@@ -25,9 +25,7 @@
   #   "${config.MODULES.networking.tailscale.hostIP}:${toString config.PORTS.cups}"
   # ];
   # services.printing.allowFrom = ["all"];
-  # MODULES.networking.traefik.path_routes = {
-  #   "/cups" = "http://127.0.0.1:${toString config.PORTS.cups}";
-  # };
+  # MODULES.networking.traefik.services.cups = "127.0.0.1:${toString config.PORTS.cups}";
 
   MODULES.networking.traefik.enable = true;
   MODULES.services.homepage.enable = true;
@@ -52,20 +50,17 @@
   };
 
   # hp is the always-on node, so the gateway lives here rather than on the laptop, and it is
-  # hp's Tailscale name that goes in a client config.
+  # https://litellm.hp that goes in a client config.
   MODULES.services.litellm.enable = true;
   # Where requests land when the only host serving a name is unreachable. litellm.nix builds those
   # fallbacks for every name no local host has, which is most of legion5's catalogue (coder,
   # gpt-oss, heretic): with the laptop shut they answer from this host's small-text instead of
   # erroring. Of the entries here it is the cheap one, and a degraded reply beats a failure.
   MODULES.services.litellm.fallbackModel = "small-text";
-  # The admin UI lives on the gateway's own tailscale-serve origin, at
-  # https://hp.tail546fb.ts.net:8095/litellm/ui, not on the shared Traefik origin - "/" there is
-  # the root redirect and 404 catch-all every subpath app relies on, so it can't be handed to one
-  # app. No Traefik route, but the /litellm prefix stays via rootPath (SERVER_ROOT_PATH); the API
-  # is unaffected and still answers at the origin root.
-  MODULES.services.litellm.traefikPath = null;
-  MODULES.services.litellm.rootPath = "/litellm";
+  # Second gateway, managed from its own dashboard (https://omniroute.hp) rather than
+  # declared here: hosted providers and combos live in its database. The first-login password is
+  # in /var/lib/omniroute/secrets.env (INITIAL_PASSWORD) - see omniroute.nix.
+  MODULES.services.omniroute.enable = true;
   MODULES.services.prometheus.enable = true;
 
   # MCP gateway/registry: remote MCP servers (devcontainers, other hosts) tunnel their local

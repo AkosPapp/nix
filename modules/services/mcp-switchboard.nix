@@ -66,8 +66,7 @@ in {
       # Console, /api, /mcp (what n8n's MCP Client Tool node points at) and /metrics. Left
       # unauthenticated, per upstream's own recommendation - not being reachable is a stronger
       # guarantee than a shared secret - and reachable only from the tailnet, through the
-      # dedicated `tailscale serve` origin below. Not Traefik: same subpath-rewrite headaches
-      # n8n.nix already avoids by giving n8n its own origin instead of a shared-origin subpath.
+      # Traefik subdomain below.
       private.host = "127.0.0.1";
       private.port = config.PORTS.mcpSwitchboardPrivate;
 
@@ -79,24 +78,34 @@ in {
       loki.labels.host = config.networking.hostName;
 
       prometheus.register = cfg.metrics && config.MODULES.services.prometheus.enable;
+
+      settings = {
+        # The console's Endpoints panel prints the /mcp URLs (all machines, per host, per project,
+        # per server) for whatever is connected, and defaults them to http://127.0.0.1:<private
+        # port>, which is useless from a browser on another machine. Give it the origin the
+        # console is actually reached at.
+        LOCAL_BASE_URL = config.MODULES.networking.traefik.urlOf "mcp-switchboard";
+        # Used only to build the panel's copyable client-install command: the Funnel address a
+        # client with no Tailscale dials (see the funnel entry below).
+        PUBLIC_URL = "https://${config.networking.fqdn}:${toString config.PORTS.mcpSwitchboardFunnel}";
+      };
     };
 
     # The tunnel endpoint needs to be reachable from clients with no Tailscale client at all
     # (devcontainers, arbitrary NAT), not just tailnet members - so this is a Funnel, the same
     # call mcp-context-forge made for its own (non-functional) tunnel endpoint. Funnel is capped
-    # at ports 443, 8443 or 10000 - 443 is already Traefik's own tailscale-serve port on this
-    # host, hence the dedicated mcpSwitchboardFunnel port rather than reusing the tunnel port.
+    # at ports 443, 8443 or 10000 - 443 is Traefik's own HTTPS listener on this host, hence the
+    # dedicated mcpSwitchboardFunnel port rather than reusing the tunnel port. This is the one
+    # thing left on tailscale serve: it has to be reachable from outside the tailnet, and the
+    # custom CA is only trusted by our own machines.
     MODULES.networking.tailscale.serve.mcp-switchboard-tunnel = {
       type = "funnel";
       target = "http://127.0.0.1:${toString config.PORTS.mcpSwitchboardTunnel}";
       httpsPort = config.PORTS.mcpSwitchboardFunnel;
     };
 
-    # Tailnet-only, unlike the Funnel above: the console/API/metrics listener, on its own origin
-    # rather than a Traefik subpath (see n8n.nix for the same subpath-rewrite reasoning).
-    MODULES.networking.tailscale.serve.mcp-switchboard = {
-      target = "http://127.0.0.1:${toString config.PORTS.mcpSwitchboardPrivate}";
-      httpsPort = config.PORTS.mcpSwitchboardPrivate;
-    };
+    # Tailnet-only, unlike the Funnel above: the console/API/metrics listener.
+    MODULES.networking.traefik.enable = true;
+    MODULES.networking.traefik.services.mcp-switchboard = "127.0.0.1:${toString config.PORTS.mcpSwitchboardPrivate}";
   };
 }

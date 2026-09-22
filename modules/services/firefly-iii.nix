@@ -17,12 +17,6 @@ in {
   options.MODULES.services.firefly-iii = {
     enable = mkEnableOption "Firefly III personal finance manager";
 
-    basePath = mkOption {
-      type = types.str;
-      default = "/firefly";
-      description = "External base path where Firefly III is exposed (must start with '/')";
-    };
-
     siteOwner = mkOption {
       type = types.str;
       default = "admin@example.com";
@@ -59,10 +53,9 @@ in {
       settings = {
         APP_KEY_FILE = config.sops.secrets."firefly-iii/app-key".path;
         APP_ENV = "production";
-        # Must match the externally visible URL including the subpath, since Laravel builds every
-        # link and asset URL from it - this is what keeps Firefly III working behind Traefik's
-        # prefix stripping instead of emitting links back to the bare domain root.
-        APP_URL = "https://${config.networking.fqdn}${cfg.basePath}";
+        # Must match the externally visible URL, since Laravel builds every link and asset URL
+        # from it.
+        APP_URL = config.MODULES.networking.traefik.urlOf "firefly";
         SITE_OWNER = cfg.siteOwner;
         # Traefik terminates TLS upstream and talks plain HTTP to nginx here; without trusting the
         # forwarded headers Firefly III would decide the request was insecure and redirect-loop
@@ -102,13 +95,6 @@ in {
     ];
 
     MODULES.networking.traefik.enable = true;
-    MODULES.networking.traefik.path_routes.${cfg.basePath} = "http://127.0.0.1:${toString config.PORTS.fireflyIii}";
-
-    assertions = [
-      {
-        assertion = lib.hasPrefix "/" cfg.basePath;
-        message = "MODULES.services.firefly-iii.basePath must start with '/' (example: /firefly)";
-      }
-    ];
+    MODULES.networking.traefik.services.firefly = "127.0.0.1:${toString config.PORTS.fireflyIii}";
   };
 }

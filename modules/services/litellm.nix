@@ -36,8 +36,6 @@
     != []
     || lib.any (host: (hostVllm host).idleTimeout != null) vllmHosts;
 
-  useTraefik = cfg.traefikPath != null && config.MODULES.networking.traefik.enable;
-
   # The local host's own servers are on loopback; everyone else's are reached over Tailscale,
   # which is the only network these machines share.
   hostAddress = host:
@@ -317,37 +315,6 @@ in {
       '';
     };
 
-    traefikPath = mkOption {
-      type = types.nullOr types.str;
-      default = "/litellm";
-      description = ''
-        Path to mount the admin UI under on this host's shared Traefik origin, or null for no
-        Traefik route at all. Setting it also sets SERVER_ROOT_PATH, which is what makes the
-        UI's own asset and redirect URLs carry the prefix - without that the browser asks for
-        /ui/_next/... at the origin root and collects the catch-all instead.
-
-        This is the UI's address, not the API's. Because SERVER_ROOT_PATH rewrites those asset
-        links, the UI is reachable through Traefik and only through Traefik; the OpenAI API is
-        unaffected either way, since FastAPI's root_path changes generated URLs rather than
-        which paths the app answers on. Clients therefore keep using the dedicated
-        tailscale-serve origin below, where /v1/... is at the root where SDKs expect it.
-      '';
-    };
-
-    rootPath = mkOption {
-      type = types.nullOr types.str;
-      default = cfg.traefikPath;
-      defaultText = lib.literalExpression "config.MODULES.services.litellm.traefikPath";
-      example = "/litellm";
-      description = ''
-        SERVER_ROOT_PATH: the prefix LiteLLM mounts its admin UI under (`<rootPath>/ui`), or
-        null for /ui at the origin root. Follows `traefikPath` by default, since a UI behind a
-        Traefik subpath needs its links to carry that subpath. Set it on its own to keep the
-        prefix on the gateway's tailscale-serve origin with no Traefik route at all. The API
-        answers at the root either way - this only moves the UI and the links it generates.
-      '';
-    };
-
     masterKeySecret = mkOption {
       type = types.nullOr types.str;
       default =
@@ -457,21 +424,17 @@ in {
         "/run/postgresql:/run/postgresql"
       ];
 
-      environment =
-        {
-          SCARF_NO_ANALYTICS = "True";
-          DO_NOT_TRACK = "True";
-          ANONYMIZED_TELEMETRY = "False";
+      environment = {
+        SCARF_NO_ANALYTICS = "True";
+        DO_NOT_TRACK = "True";
+        ANONYMIZED_TELEMETRY = "False";
 
-          UI_USERNAME = cfg.uiUsername;
+        UI_USERNAME = cfg.uiUsername;
 
-          # Prisma's unix-socket form: the host part is ignored in favour of `host=`. LiteLLM
-          # appends its own pool parameters to this with the existing query string preserved.
-          DATABASE_URL = "postgresql://${dbName}@localhost/${dbName}?host=/run/postgresql";
-        }
-        // lib.optionalAttrs (cfg.rootPath != null) {
-          SERVER_ROOT_PATH = cfg.rootPath;
-        };
+        # Prisma's unix-socket form: the host part is ignored in favour of `host=`. LiteLLM
+        # appends its own pool parameters to this with the existing query string preserved.
+        DATABASE_URL = "postgresql://${dbName}@localhost/${dbName}?host=/run/postgresql";
+      };
 
       environmentFiles =
         lib.optional (cfg.masterKeySecret != null) config.sops.templates."litellm.env".path
@@ -525,17 +488,8 @@ in {
       restartUnits = ["litellm.service"];
     };
 
-    MODULES.networking.traefik.path_routes = lib.mkIf useTraefik {
-      ${cfg.traefikPath} = "http://127.0.0.1:${toString config.PORTS.litellm}";
-    };
-
-    # Clients here are OpenAI SDKs pointed at a base URL, and those append /v1/... to whatever
-    # they are given, so the proxy needs paths from the origin root - the same constraint that
-    # keeps Open WebUI and Immich off Traefik's shared subpath origin. tailscale serve
-    # terminates TLS on a port of its own and forwards straight to the backend.
-    MODULES.networking.tailscale.serve.litellm = {
-      target = "http://127.0.0.1:${toString config.PORTS.litellm}";
-      httpsPort = config.PORTS.litellm;
-    };
+    # API at the origin root (OpenAI SDKs append /v1/... to their base URL), admin UI at /ui.
+    MODULES.networking.traefik.enable = true;
+    MODULES.networking.traefik.services.litellm = "127.0.0.1:${toString config.PORTS.litellm}";
   };
 }

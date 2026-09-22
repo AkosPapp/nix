@@ -11,7 +11,7 @@
   exportDashboards = pkgs.writeShellScriptBin "grafana-export-dashboards" ''
     set -euo pipefail
 
-    GRAFANA_URL="http://127.0.0.1:${toString config.PORTS.grafana}"   # hit it locally, skip the /grafana subpath and proxy
+    GRAFANA_URL="http://127.0.0.1:${toString config.PORTS.grafana}"   # hit it locally, skip the proxy
     ADMIN_PASSWORD="$(cat ${config.sops.secrets."grafana/admin_password".path})"
     AUTH="admin:$ADMIN_PASSWORD"
     OUT_DIR="${cfg.dashboardsDir}"
@@ -81,9 +81,8 @@ in {
         server = {
           http_port = config.PORTS.grafana;
           http_addr = "127.0.0.1";
-          domain = config.networking.fqdn;
-          root_url = "https://${config.networking.fqdn}/grafana";
-          serve_from_sub_path = true;
+          domain = config.MODULES.networking.traefik.hostOf "grafana";
+          root_url = config.MODULES.networking.traefik.urlOf "grafana";
         };
         analytics.reporting_enabled = false;
         security = {
@@ -103,7 +102,7 @@ in {
             name = "Prometheus";
             type = "prometheus";
             access = "proxy";
-            url = "http://127.0.0.1:${toString config.PORTS.prometheus}/prometheus";
+            url = "http://127.0.0.1:${toString config.PORTS.prometheus}";
             isDefault = true;
           }
         ];
@@ -140,7 +139,7 @@ in {
     MODULES.services.syncthing.enable = true;
     MODULES.services.syncthing.shares = [cfg.dashboardsDir];
 
-    # Add to traefik routes
-    MODULES.networking.traefik.path_routes."/grafana" = "http://127.0.0.1:${toString config.PORTS.grafana}/grafana";
+    MODULES.networking.traefik.enable = true;
+    MODULES.networking.traefik.services.grafana = "127.0.0.1:${toString config.PORTS.grafana}";
   };
 }

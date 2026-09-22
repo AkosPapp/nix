@@ -7,6 +7,7 @@
   inherit (lib) mkEnableOption mkIf mkOption types mapAttrsToList;
 
   cfg = config.MODULES.services.homepage;
+  traefik = config.MODULES.networking.traefik;
 in {
   options.MODULES.services.homepage = {
     enable = mkEnableOption "Homepage dashboard";
@@ -44,7 +45,7 @@ in {
             showSearchSuggestions = true;
             hideVisitURL = false;
             provider = "custom";
-            url = "/searx/search?q=";
+            url = "${traefik.urlOf "searx"}/search?q=";
             target = "_blank";
             suggestionUrl = "https://search.brave.com/api/suggest?country=US&count=10&q=";
           };
@@ -83,20 +84,15 @@ in {
       };
 
       systemd.services.homepage-dashboard.environment = {
-        BASE_PATH = "/homepage";
-        HOMEPAGE_ALLOWED_HOSTS = lib.mkForce "${config.networking.fqdn},${config.networking.hostName}.airlab,${config.networking.hostName}";
+        HOMEPAGE_ALLOWED_HOSTS = lib.mkForce "${traefik.hostOf "homepage"},${config.networking.fqdn},${config.networking.hostName}.airlab,${config.networking.hostName}";
         HOSTNAME = "127.0.0.1";
       };
 
-      # Add to traefik routes
-      MODULES.networking.traefik.path_routes."/homepage" = "http://127.0.0.1:${toString config.PORTS.homepage}";
-      MODULES.networking.traefik.defaultPage = "/homepage";
-      # Homepage is the site's front door, so its icon is the one to hand out at the origin root.
-      # The path here is the backend's, not the proxied one: Traefik strips "/homepage" before
-      # forwarding, so what answers on 8082 is /homepage.ico.
-      MODULES.networking.traefik.favicon = "http://127.0.0.1:${toString config.PORTS.homepage}/homepage.ico";
+      MODULES.networking.traefik.enable = true;
+      MODULES.networking.traefik.defaultService = "homepage";
+      MODULES.networking.traefik.services.homepage = "127.0.0.1:${toString config.PORTS.homepage}";
 
-      MODULES.services.homepage.services.homepage.icon = "/homepage/homepage.ico";
+      MODULES.services.homepage.services.homepage.icon = "${traefik.urlOf "homepage"}/homepage.ico";
     })
     (mkIf (cfg.enable && config.MODULES.services.grafana.enable) {
       # homepage-dashboard runs with systemd's DynamicUser (a random per-boot uid), so it can't
@@ -113,12 +109,11 @@ in {
         config.sops.secrets."homepage/grafana_admin_password".path;
 
       MODULES.services.homepage.services.grafana = {
-        href = "/grafana";
-        icon = "/grafana/public/img/fav32.png";
+        icon = "${traefik.urlOf "grafana"}/public/img/fav32.png";
         widget = {
           type = "grafana";
           version = 2;
-          url = "http://127.0.0.1:${toString config.PORTS.grafana}/grafana/";
+          url = "http://127.0.0.1:${toString config.PORTS.grafana}/";
           username = "admin";
           # {{HOMEPAGE_FILE_X}} is homepage's own templating syntax: it substitutes the contents
           # of the file at $HOMEPAGE_FILE_X, so the actual password never has to be embedded in
@@ -129,11 +124,10 @@ in {
     })
     (mkIf (cfg.enable && config.MODULES.services.prometheus.enable) {
       MODULES.services.homepage.services.prometheus = {
-        href = "/prometheus";
-        icon = "/prometheus/favicon.svg";
+        icon = "${traefik.urlOf "prometheus"}/favicon.svg";
         widget = {
           type = "prometheus";
-          url = "http://127.0.0.1:${toString config.PORTS.prometheus}/prometheus/";
+          url = "http://127.0.0.1:${toString config.PORTS.prometheus}/";
         };
       };
     })
@@ -141,14 +135,13 @@ in {
       # Loki has no web UI of its own (just an HTTP push/query API) - logs are actually browsed
       # through Grafana's Explore view instead, using the Loki datasource wired up in loki.nix.
       MODULES.services.homepage.services.loki = {
-        href = "/grafana/explore";
+        href = "${traefik.urlOf "grafana"}/explore";
         icon = "loki.png";
       };
     })
     (mkIf (cfg.enable && config.MODULES.networking.traefik.enable) {
       MODULES.services.homepage.services.traefik = {
-        href = "/traefik";
-        icon = "/traefik/favicon.ico";
+        icon = "${traefik.urlOf "traefik"}/dashboard/favicon.ico";
         widget = {
           type = "traefik";
           url = "http://127.0.0.1:${toString config.PORTS.traefikDashboard}/";
@@ -156,8 +149,8 @@ in {
       };
     })
     (mkIf (cfg.enable && config.MODULES.services.sftpgo.enable) {
-      MODULES.services.homepage.services.sftpgo.icon = "/sftpgo/static/favicon.png";
-      MODULES.services.homepage.services.webdav.icon = "/sftpgo/static/favicon.png";
+      MODULES.services.homepage.services.sftpgo.icon = "${traefik.urlOf "sftpgo"}/static/favicon.png";
+      MODULES.services.homepage.services.webdav.icon = "${traefik.urlOf "sftpgo"}/static/favicon.png";
     })
     (mkIf (cfg.enable && config.MODULES.services.i2pd.enable) {
       MODULES.services.homepage.services.i2pd.icon = "https://github.com/PurpleI2P/i2pd-logo/raw/refs/heads/master/i2pd_logo_2_curved.svg";
@@ -177,18 +170,13 @@ in {
       MODULES.services.homepage.services."ipfs-gateway".icon = "https://raw.githubusercontent.com/ipfs/ipfs-webui/refs/heads/main/src/navigation/ipfs-logo.svg";
     })
     (mkIf (cfg.enable && config.MODULES.services.roundcube.enable) {
-      MODULES.services.homepage.services.roundcube.icon = "/roundcube/skins/elastic/images/favicon.ico";
+      MODULES.services.homepage.services.roundcube.icon = "${traefik.urlOf "roundcube"}/skins/elastic/images/favicon.ico";
     })
     (mkIf (cfg.enable && config.MODULES.services.nextcloud.enable) {
-      MODULES.services.homepage.services.nextcloud.icon = "/nextcloud/core/img/logo/logo.svg";
+      MODULES.services.homepage.services.nextcloud.icon = "${traefik.urlOf "nextcloud"}/core/img/logo/logo.svg";
     })
     (mkIf (cfg.enable && config.MODULES.services.immich.enable) {
-      # Immich isn't behind Traefik (see immich.nix - its clients need the API at the server
-      # root), so it gets an absolute href to its own Tailscale-served port instead of a subpath.
-      MODULES.services.homepage.services.immich = {
-        href = "https://${config.networking.fqdn}:${toString config.PORTS.immich}";
-        icon = "immich.png";
-      };
+      MODULES.services.homepage.services.immich.icon = "immich.png";
     })
     (mkIf (cfg.enable && config.MODULES.services.firefly-iii.enable) {
       MODULES.services.homepage.services.firefly.icon = "firefly-iii.png";
@@ -238,19 +226,9 @@ in {
       # socket-activated, so "available" and "resident in memory" are deliberately different
       # things here and only the former is observable from outside.
       MODULES.services.homepage.services.litellm = {
-        icon = "litellm.png";
-        # The UI lives on the shared Traefik origin (litellm.nix sets SERVER_ROOT_PATH to
-        # match), so this is a subpath like grafana's rather than an absolute href to a port of
-        # its own - even though the API does have such an origin, which is not what a link on a
-        # dashboard wants to open. Falls back to that origin if the Traefik route is turned off.
-        href =
-          if config.MODULES.services.litellm.traefikPath != null && config.MODULES.networking.traefik.enable
-          then config.MODULES.services.litellm.traefikPath
-          # The tailscale-serve origin has no landing page of its own at the root, so link
-          # straight to the UI, under whatever prefix the gateway mounts it at.
-          else "https://${config.networking.fqdn}:${toString config.PORTS.litellm}${
-            lib.optionalString (config.MODULES.services.litellm.rootPath != null) config.MODULES.services.litellm.rootPath
-          }/ui";
+        icon = "${traefik.urlOf "litellm"}/ui/favicon.ico";
+        # The origin has no landing page of its own at the root, so link straight to the UI.
+        href = "${traefik.urlOf "litellm"}/ui";
         description = "LLM gateway";
         widget = {
           type = "customapi";
@@ -266,67 +244,53 @@ in {
       };
     })
     (mkIf (cfg.enable && config.MODULES.services.open-webui.enable) {
-      # Open WebUI has an origin of its own rather than a path on this one (see open-webui.nix),
-      # so it isn't in path_routes and the generic block at the bottom never picks it up - hence
-      # the absolute href, same as immich above. No widget: homepage has no open-webui
-      # integration, and everything Open WebUI reports about itself past /health sits behind an
-      # API key that would have to be minted by hand in the UI first.
-      MODULES.services.homepage.services.open-webui = {
-        href = "https://${config.networking.fqdn}:${toString config.PORTS.openWebui}";
-        icon = "open-webui.png";
-      };
+      # No widget: homepage has no open-webui integration, and everything Open WebUI reports
+      # about itself past /health sits behind an API key that would have to be minted by hand in
+      # the UI first.
+      MODULES.services.homepage.services.open-webui.icon = "open-webui.png";
     })
     (mkIf (cfg.enable && config.MODULES.services.mcp-switchboard.enable) {
-      # The console lives on its own tailscale-serve origin, not a Traefik subpath (see
-      # mcp-switchboard.nix). No bundled dashboard-icons entry exists for this one, so an MDI
-      # glyph instead of a guessed png that would just come back broken.
       MODULES.services.homepage.services.mcp-switchboard = {
-        icon = "mdi-graph-outline";
-        href = "https://${config.networking.fqdn}:${toString config.PORTS.mcpSwitchboardPrivate}";
+        icon = "${traefik.urlOf "mcp-switchboard"}/static/favicon.svg";
         description = "MCP gateway/registry";
       };
     })
+    (mkIf (cfg.enable && config.MODULES.services.omniroute.enable) {
+      MODULES.services.homepage.services.omniroute = {
+        icon = "${traefik.urlOf "omniroute"}/favicon.svg";
+        description = "AI gateway";
+      };
+    })
     (mkIf (cfg.enable && config.MODULES.services.librechat.enable) {
-      # Own tailscale-serve origin, not a Traefik subpath (see librechat.nix) - same
-      # reverse-proxy-subpath reasoning as open-webui and n8n above.
       MODULES.services.homepage.services.librechat = {
-        href = "https://${config.networking.fqdn}:${toString config.PORTS.librechat}";
         icon = "librechat.png";
         description = "MCP-tool chat UI";
       };
     })
     (mkIf (cfg.enable && config.MODULES.services.n8n.enable) {
-      # No Traefik route (see n8n.nix), so an absolute href to its own tailscale-serve origin -
-      # same pattern as open-webui and immich above, for the same reverse-proxy-subpath reason.
       MODULES.services.homepage.services.n8n = {
-        href = "https://${config.networking.fqdn}:${toString config.PORTS.n8n}";
         icon = "n8n.png";
         description = "Agent workflow builder";
       };
     })
-    (mkIf (cfg.enable && config.MODULES.services.syncthing.enable) {
-      MODULES.services.homepage.services.syncthing = {
-        href = "/syncthing";
-        icon = "syncthing.png";
+    (mkIf (cfg.enable && traefik.services ? ca) {
+      MODULES.services.homepage.services.ca = {
+        icon = "${traefik.urlOf "ca"}/favicon.svg";
+        description = "Root CA";
       };
     })
+    (mkIf (cfg.enable && config.MODULES.services.syncthing.enable) {
+      MODULES.services.homepage.services.syncthing.icon = "syncthing.png";
+    })
     {
-      MODULES.services.homepage.services = lib.mkMerge (
-        map (
-          value: {
-            "${lib.removePrefix "\/" value}" = {
-              href = lib.mkDefault value;
-              icon = lib.mkDefault "${value}/favicon.ico";
-              # href = value;
-              # icon = "${value}/favicon.ico";
-            };
-          }
-        )
-        (
-          builtins.attrNames
-          config.MODULES.networking.traefik.path_routes
-        )
-      );
+      # Every Traefik service gets a tile that links to it; the blocks above override the icon
+      # (and href, where the landing page isn't the root) for the ones that need it.
+      MODULES.services.homepage.services =
+        lib.mapAttrs (name: _: {
+          href = lib.mkDefault (traefik.urlOf name);
+          icon = lib.mkDefault "${traefik.urlOf name}/favicon.ico";
+        })
+        traefik.services;
     }
   ];
 }

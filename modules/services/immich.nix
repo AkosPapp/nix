@@ -133,6 +133,8 @@ in {
         port = config.PORTS.immich;
       };
 
+      services.immich.settings.server.externalDomain = config.MODULES.networking.traefik.urlOf "immich";
+
       # Point the server at every AI host discovered above, not just its own local worker.
       services.immich.settings.machineLearning.urls = aiHostUrls;
 
@@ -151,13 +153,8 @@ in {
         ocr.concurrency = 4;
       };
 
-      # Immich's mobile/desktop clients talk to the API at the server root, so it can't be
-      # reverse-proxied under a Traefik subpath like the other services - give it its own
-      # Tailscale-served HTTPS port instead, forwarding straight to the local backend.
-      MODULES.networking.tailscale.serve.immich = {
-        target = "http://127.0.0.1:${toString config.PORTS.immich}";
-        httpsPort = config.PORTS.immich;
-      };
+      MODULES.networking.traefik.enable = true;
+      MODULES.networking.traefik.services.immich = "127.0.0.1:${toString config.PORTS.immich}";
     })
 
     (mkIf cfg.machineLearning.enable {

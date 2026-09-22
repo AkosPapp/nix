@@ -10,15 +10,10 @@ in {
   options.MODULES.services.roundcube = {
     enable = mkEnableOption "Roundcube webmail";
 
-    basePath = mkOption {
-      type = types.str;
-      default = "/roundcube";
-      description = "External base path where Roundcube is exposed (must start with '/')";
-    };
-
     hostName = mkOption {
       type = types.str;
-      default = config.networking.fqdn or "roundcube.example.com";
+      default = config.MODULES.networking.traefik.hostOf "roundcube";
+      defaultText = lib.literalExpression ''config.MODULES.networking.traefik.hostOf "roundcube"'';
       description = "Hostname used by Roundcube nginx virtual host";
     };
 
@@ -32,8 +27,7 @@ in {
   config = mkIf cfg.enable {
     services.roundcube = {
       enable = true;
-      # hostName = cfg.hostName;
-      hostName = "${cfg.hostName}${cfg.basePath}";
+      hostName = cfg.hostName;
 
       database = {
         host = "localhost";
@@ -44,10 +38,7 @@ in {
 
       configureNginx = true;
 
-      # $config['request_url'] = "https://${config.networking.fqdn}${cfg.basePath}";
       extraConfig = ''
-        $config['request_path'] = '${cfg.basePath}/';
-
         $config['imap_host'] = array('ssl://imap.gmail.com');
         $config['default_port'] = 993;
         $config['smtp_host'] = 'tls://smtp.gmail.com';
@@ -83,7 +74,7 @@ in {
     };
 
     services.nginx.enable = true;
-    services.nginx.virtualHosts."${cfg.hostName}${cfg.basePath}" = {
+    services.nginx.virtualHosts.${cfg.hostName} = {
       listen = [
         {
           addr = "127.0.0.1";
@@ -100,21 +91,6 @@ in {
     };
 
     MODULES.networking.traefik.enable = true;
-    MODULES.networking.traefik.path_routes.${cfg.basePath} = "http://127.0.0.1:${toString config.PORTS.roundcube}";
-
-    # services.traefik.dynamicConfigOptions.http.routers.roundcube-root-query-redirect = {
-    #   rule = "Path(`/`) && (HeaderRegexp(`Referer`, `^https://${config.networking.fqdn}${cfg.basePath}(/.*)?$`) || QueryRegexp(`_task`, `.+`) || HeaderRegexp(`X-Roundcube-Request`, `.+`))";
-    #   middlewares = ["roundcube-replacepath" "roundcube-redirect"];
-    #   service = "roundcube-service";
-    #   entryPoints = ["web"];
-    #   priority = 262;
-    # };
-
-    assertions = [
-      {
-        assertion = lib.hasPrefix "/" cfg.basePath;
-        message = "MODULES.services.roundcube.basePath must start with '/' (example: /webmail)";
-      }
-    ];
+    MODULES.networking.traefik.services.roundcube = "127.0.0.1:${toString config.PORTS.roundcube}";
   };
 }

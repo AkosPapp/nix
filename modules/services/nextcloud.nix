@@ -16,12 +16,6 @@ in {
       description = "Nginx virtual host used by Nextcloud";
     };
 
-    basePath = mkOption {
-      type = types.str;
-      default = "/nextcloud";
-      description = "External base path where Nextcloud is exposed";
-    };
-
     adminUser = mkOption {
       type = types.str;
       default = "admin";
@@ -50,11 +44,10 @@ in {
 
       settings = {
         overwriteprotocol = "https";
-        overwritehost = config.networking.fqdn;
-        overwritewebroot = lib.removeSuffix "/" cfg.basePath;
+        overwritehost = config.MODULES.networking.traefik.hostOf "nextcloud";
         trusted_domains = [
           cfg.hostName
-          config.networking.fqdn
+          (config.MODULES.networking.traefik.hostOf "nextcloud")
           "localhost"
           "127.0.0.1"
         ];
@@ -75,13 +68,6 @@ in {
     };
 
     MODULES.networking.traefik.enable = true;
-    MODULES.networking.traefik.path_routes.${cfg.basePath} = "http://127.0.0.1:${toString config.PORTS.nextcloud}";
-
-    assertions = [
-      {
-        assertion = lib.hasPrefix "/" cfg.basePath;
-        message = "MODULES.services.nextcloud.basePath must start with '/' (example: /nextcloud)";
-      }
-    ];
+    MODULES.networking.traefik.services.nextcloud = "127.0.0.1:${toString config.PORTS.nextcloud}";
   };
 }

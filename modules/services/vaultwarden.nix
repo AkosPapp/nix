@@ -16,16 +16,15 @@
   config =
     lib.mkIf config.MODULES.services.vaultwarden.enable
     {
-      MODULES.networking.traefik.path_routes = {
-        "/vaultwarden" = "http://127.0.0.1:${toString config.PORTS.vaultwarden}";
-      };
+      MODULES.networking.traefik.enable = true;
+      MODULES.networking.traefik.services.vaultwarden = "127.0.0.1:${toString config.PORTS.vaultwarden}";
       services.vaultwarden = {
         enable = true;
         webVaultPackage = pkgs-unstable.vaultwarden.webvault;
         package = pkgs-unstable.vaultwarden;
 
         config = {
-          DOMAIN = "https://${config.networking.fqdn}";
+          DOMAIN = config.MODULES.networking.traefik.urlOf "vaultwarden";
           ROCKET_ADDRESS = "127.0.0.1";
           ROCKET_PORT = config.PORTS.vaultwarden;
           ROCKET_WORKERS = 4;

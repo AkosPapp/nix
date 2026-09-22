@@ -93,22 +93,13 @@ in {
 
         # Absolute links the app hands out (share URLs, notification mails) are built from this.
         # The module's default is http://localhost:<port>, which is only correct for a browser
-        # running on this machine - everyone else arrives over the Tailscale name below.
-        WEBUI_URL = "https://${config.networking.fqdn}:${toString config.PORTS.openWebui}";
+        # running on this machine - everyone else arrives over the Traefik name below.
+        WEBUI_URL = config.MODULES.networking.traefik.urlOf "open-webui";
       };
     };
 
-    # Open WebUI serves its SPA, API and socket.io from the origin root and exposes no
-    # root_path/base-path setting, so unlike almost everything else here it can't be mounted
-    # under a Traefik subpath: the browser asks for /_app/... and /static/... at the shared
-    # origin's root and gets the catch-all, and its client-side routing rewrites the address bar
-    # to root-absolute paths on top of that. So it gets an origin of its own - tailscale serve
-    # terminates TLS on the app's own port and proxies straight to it, with no reverse proxy in
-    # between. Immich is here for the same reason.
-    MODULES.networking.tailscale.serve.open-webui = {
-      target = "http://127.0.0.1:${toString config.PORTS.openWebui}";
-      httpsPort = config.PORTS.openWebui;
-    };
+    MODULES.networking.traefik.enable = true;
+    MODULES.networking.traefik.services.open-webui = "127.0.0.1:${toString config.PORTS.openWebui}";
 
     # There's nothing to provision account-wise: the first account to sign up becomes the admin,
     # and later signups sit in "pending" until that admin approves them.

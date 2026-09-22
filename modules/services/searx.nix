@@ -20,9 +20,7 @@
       port = config.PORTS.searx;
     in {
       MODULES.networking.traefik.enable = true;
-      MODULES.networking.traefik.path_routes = {
-        "/searx" = "http://127.0.0.1:${toString port}";
-      };
+      MODULES.networking.traefik.services.searx = "127.0.0.1:${toString port}";
 
       # # Add custom route for searx static assets containing 'sxng'
       # services.traefik.dynamicConfigOptions.http.routers.searx-static-router = {
@@ -63,7 +61,7 @@
             port = port;
             bind_address = "127.0.0.1";
             secret_key = "change_this_to_a_random_secret_key";
-            base_url = "https://${config.networking.fqdn}/searx";
+            base_url = config.MODULES.networking.traefik.urlOf "searx";
           };
 
           # Enable JSON format for API calls like n8n
@@ -79,7 +77,7 @@
             instance_name = "My Searx Instance";
           };
         };
-        domain = "https://${config.networking.fqdn}/searx";
+        domain = config.MODULES.networking.traefik.urlOf "searx";
 
         # Enable local Redis instance for caching
         redisCreateLocally = true;

@@ -42,8 +42,7 @@ in {
         globalConfig.scrape_interval = "5s";
 
         extraFlags = [
-          "--web.external-url=https://${config.networking.fqdn}/prometheus"
-          "--web.route-prefix=/prometheus"
+          "--web.external-url=${config.MODULES.networking.traefik.urlOf "prometheus"}"
         ];
 
         exporters = {
@@ -111,7 +110,7 @@ in {
     })
 
     (mkIf (cfg.enable && config.MODULES.networking.traefik.enable) {
-      MODULES.networking.traefik.path_routes."/prometheus" = "http://127.0.0.1:${toString config.PORTS.prometheus}/prometheus";
+      MODULES.networking.traefik.services.prometheus = "127.0.0.1:${toString config.PORTS.prometheus}";
 
       services.traefik.staticConfigOptions.metrics.prometheus = {
         addEntryPointsLabels = true;
@@ -387,10 +386,9 @@ in {
         # Open WebUI defaults to the OTLP/gRPC exporter, which Prometheus's receiver doesn't
         # speak - it accepts OTLP over HTTP only.
         OTEL_METRICS_OTLP_SPAN_EXPORTER = "http";
-        # Passed to the exporter verbatim (no /v1/metrics is appended for us), and the whole
-        # path sits behind the --web.route-prefix=/prometheus set above. Samples arrive tagged
-        # job="open-webui" from OTEL_SERVICE_NAME's default.
-        OTEL_METRICS_EXPORTER_OTLP_ENDPOINT = "http://127.0.0.1:${toString config.PORTS.prometheus}/prometheus/api/v1/otlp/v1/metrics";
+        # Passed to the exporter verbatim (no /v1/metrics is appended for us). Samples arrive
+        # tagged job="open-webui" from OTEL_SERVICE_NAME's default.
+        OTEL_METRICS_EXPORTER_OTLP_ENDPOINT = "http://127.0.0.1:${toString config.PORTS.prometheus}/api/v1/otlp/v1/metrics";
         # Match globalConfig.scrape_interval above rather than the 10s OTel default, so pushed
         # series have the same resolution as every scraped one.
         OTEL_METRICS_EXPORT_INTERVAL_MILLIS = "5000";

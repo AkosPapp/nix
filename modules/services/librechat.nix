@@ -90,7 +90,7 @@ in {
       description = ''
         ALLOW_REGISTRATION. LibreChat has no env-based owner pre-provisioning like n8n.nix's
         `ownerEmail` - the only way to get a first account is to sign up through the UI. Safe to
-        leave open since the instance is reachable only from the tailnet (see the tailscale.serve
+        leave open since the instance is reachable only from the tailnet (see the traefik.services
         entry below), the same trust boundary open-webui.nix's own first-run signup relies on.
       '';
     };
@@ -177,10 +177,10 @@ in {
         HOST = "127.0.0.1";
         PORT = toString config.PORTS.librechat;
         MONGO_URI = "mongodb://127.0.0.1:${toString config.PORTS.librechatMongo}/LibreChat";
-        # Only ever fetched from the tailnet (see tailscale.serve below), so this is the origin a
-        # browser actually connects to - same reasoning as n8n.nix's WEBHOOK_URL/N8N_EDITOR_BASE_URL.
-        DOMAIN_CLIENT = "https://${config.networking.fqdn}:${toString config.PORTS.librechat}";
-        DOMAIN_SERVER = "https://${config.networking.fqdn}:${toString config.PORTS.librechat}";
+        # Only ever fetched from the tailnet (see the traefik.services entry below), so this is the
+        # origin a browser actually connects to - same reasoning as n8n.nix's WEBHOOK_URL/N8N_EDITOR_BASE_URL.
+        DOMAIN_CLIENT = config.MODULES.networking.traefik.urlOf "librechat";
+        DOMAIN_SERVER = config.MODULES.networking.traefik.urlOf "librechat";
         NO_INDEX = "true";
         # No Meilisearch container here - message search stays off rather than half-wired.
         SEARCH = "false";
@@ -208,11 +208,7 @@ in {
       requires = ["librechat-mongodb.service"];
     };
 
-    # SPA that serves itself from the origin root with no base-path setting, same as Open WebUI
-    # and n8n - so it gets an origin of its own rather than a Traefik subpath.
-    MODULES.networking.tailscale.serve.librechat = {
-      target = "http://127.0.0.1:${toString config.PORTS.librechat}";
-      httpsPort = config.PORTS.librechat;
-    };
+    MODULES.networking.traefik.enable = true;
+    MODULES.networking.traefik.services.librechat = "127.0.0.1:${toString config.PORTS.librechat}";
   };
 }

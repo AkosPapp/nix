@@ -203,7 +203,7 @@ in {
         This machine's Syncthing device ID, used by other machines in the flake to add it as a
         peer. Unknown before the first deploy: leave empty, deploy (enabled automatically once
         `shares` is non-empty), then read the ID from the GUI (Actions -> Show ID on
-        https://<fqdn>/syncthing) and set it here. Redeploy (this machine and any peers) once
+        https://syncthing.<host>) and set it here. Redeploy (this machine and any peers) once
         it's filled in.
       '';
     };
@@ -316,14 +316,8 @@ in {
             ];
           };
 
-          gui = {
-            # reached through Traefik, which forwards the public fqdn as the Host header
-            insecureSkipHostcheck = true;
-            # Traefik strips the "/syncthing" prefix before forwarding, but the GUI itself still
-            # needs to know it's served from that subpath so it scopes its session cookie
-            # correctly (added in Syncthing 2.1.0 for exactly this reverse-proxy setup).
-            sessionCookiePath = "/syncthing/";
-          };
+          # reached through Traefik, which forwards the public hostname as the Host header
+          gui.insecureSkipHostcheck = true;
 
           devices = peerDevices // extraDevices;
           folders = folders;
@@ -337,38 +331,6 @@ in {
     networking.firewall.allowedUDPPorts = [config.PORTS.syncthingSync];
 
     MODULES.networking.traefik.enable = true;
-    MODULES.networking.traefik.path_routes."/syncthing" = "http://127.0.0.1:${toString config.PORTS.syncthingWebui}";
-
-    # Syncthing's index.html references its own assets inconsistently: most (vendor/*, assets/*,
-    # meta.js) are plain relative paths, but a subset (app.js, syncthing/core/*.js,
-    # syncthing/development/*) have a literal "syncthing/" baked into the reference text itself
-    # (confirmed by curling the backend directly: /vendor/angular/angular.js -> 200 but
-    # /syncthing/vendor/angular/angular.js -> 404, while /syncthing/app.js -> 200 but /app.js ->
-    # 404). A single generic prefix-strip handles both cases correctly *only if* the browser
-    # always resolves those relative references against "/syncthing/" (trailing slash): stripping
-    # one "/syncthing" then correctly leaves either the plain root-relative path, or the
-    # remaining "/syncthing/..." for the ones that bake it in. Without the trailing slash, the
-    # browser resolves relative refs against "/" instead and every path comes out wrong. This
-    # router forces that canonical trailing-slash form before anything else runs.
-    services.traefik.dynamicConfigOptions.http = {
-      routers."syncthing-canonicalize-router" = {
-        rule = "Path(`/syncthing`)";
-        service = "noop@internal";
-        middlewares = ["syncthing-canonicalize-redirect"];
-        entryPoints = ["web"];
-        priority = 120;
-      };
-      middlewares."syncthing-canonicalize-redirect" = {
-        redirectRegex = {
-          # redirectRegex matches against the *full* URL (scheme://host/path), not just the
-          # path - confirmed live: "^/syncthing$" never matched "https://host/syncthing", so the
-          # request fell through past the middleware to the noop@internal placeholder service,
-          # which returns 418 for anything that reaches it unredirected.
-          regex = "^(https?://[^/]+)/syncthing$";
-          replacement = "\${1}/syncthing/";
-          permanent = false;
-        };
-      };
-    };
+    MODULES.networking.traefik.services.syncthing = "127.0.0.1:${toString config.PORTS.syncthingWebui}";
   };
 }

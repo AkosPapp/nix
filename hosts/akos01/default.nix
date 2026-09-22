@@ -72,9 +72,7 @@
         copy_to = ["ssh-ng://builder@r4unb02.airlab" "ssh-ng://root@hp"];
       };
     };
-    MODULES.networking.traefik.path_routes = {
-      "/nix" = "http://127.0.0.1:${toString config.PORTS.nixAutobuild}";
-    };
+    MODULES.networking.traefik.services.nix = "127.0.0.1:${toString config.PORTS.nixAutobuild}";
 
     networking = {
       useDHCP = true;

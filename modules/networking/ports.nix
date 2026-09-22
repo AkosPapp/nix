@@ -30,8 +30,11 @@ in {
     nextcloud = 8088;
     nixAutobuild = 8085;
     nginxStatus = 8087;
+    omniroute = 8102;
     openWebui = 8094;
     prometheus = 8009;
+    stepCa = 9000;
+    caPage = 8103;
     roundcube = 8086;
     searx = 8081;
     sftpgoHttp = 8090;
@@ -66,12 +69,14 @@ in {
     fastddsDiscovery = 11811;
     i2pdRouter = 12345;
     # Tailscale Funnel only, not a raw firewall port: Funnel accepts exactly 443, 8443 or 10000,
-    # and 443 is already Traefik's own tailscale-serve port (see traefik.nix). Registered here
+    # and 443 is Traefik's own HTTPS listener (see traefik.nix). Registered here
     # anyway so the duplicate-port assertion below still catches a future collision.
     mcpSwitchboardFunnel = 8443;
     ipfsSwarm = 4001;
     mosquitto = 1883;
+    dns = 53;
     traefikHttp = 80;
+    traefikHttps = 443;
     transmissionPeer = 51413;
     cups = 631;
   };

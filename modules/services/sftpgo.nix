@@ -40,7 +40,6 @@
 
             # Admin UI (optional but useful)
             httpd = {
-              web_root = "/sftpgo";
               bindings = [
                 {
                   port = config.PORTS.sftpgoHttp;
@@ -56,9 +55,9 @@
         };
 
         MODULES.networking.traefik.enable = true;
-        MODULES.networking.traefik.path_routes = {
-          "/sftpgo" = "http://127.0.0.1:${toString config.PORTS.sftpgoHttp}/sftpgo";
-          "/webdav" = "http://127.0.0.1:${toString config.PORTS.sftpgoWebdav}";
+        MODULES.networking.traefik.services = {
+          sftpgo = "127.0.0.1:${toString config.PORTS.sftpgoHttp}";
+          webdav = "127.0.0.1:${toString config.PORTS.sftpgoWebdav}";
         };
       }
     )

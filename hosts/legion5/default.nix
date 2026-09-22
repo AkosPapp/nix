@@ -48,9 +48,6 @@ in {
   services.immich.machine-learning.environment.MACHINE_LEARNING_WORKERS = lib.mkForce "2";
   MODULES.security.sops.enable = true;
 
-  MODULES.services.hermes-agent.enable = false;
-  MODULES.services.hermes-agent.extraModels.heretic.contextLength = 65536;
-
   # The GPU worker: an RTX 4060 laptop card, 8 GiB, which also drives the desktop session. Ollama
   # sizes memory to the loaded model plus its configured context and spills whatever does not fit
   # onto the CPU, so a model larger than the card answers slowly rather than refusing to start.
@@ -81,6 +78,10 @@ in {
   MODULES.services.ollama.models = {
     coder = {
       source = "qwen2.5-coder:7b";
+      contextLength = 65536;
+    };
+    "qwen3.5" = {
+      source = "hf.co/unsloth/Qwen3.5-9B-GGUF:Q4_1";
       contextLength = 65536;
     };
     gpt-oss = {
