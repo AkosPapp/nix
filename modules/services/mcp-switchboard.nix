@@ -41,6 +41,10 @@ in {
         assertion = config.MODULES.security.sops.enable;
         message = "MODULES.services.mcp-switchboard needs MODULES.security.sops.enable: the tunnel token comes from sops, with no unauthenticated fallback.";
       }
+      {
+        assertion = config.MODULES.services.litellm.enable;
+        message = "MODULES.services.mcp-switchboard needs MODULES.services.litellm.enable: the agent orchestrator (Chat/Graph tabs) is pointed at the local LiteLLM gateway rather than a dedicated provider key.";
+      }
     ];
 
     # DynamicUser=true (set by the hub's own module) means there's no fixed uid to chown the
@@ -59,6 +63,13 @@ in {
       group = "mcp-switchboard-secrets";
     };
     sops.secrets."mcp-switchboard/push_vapid_private_key" = {
+      mode = "0440";
+      group = "mcp-switchboard-secrets";
+    };
+    # Same value as sops.secrets.litellm_master_key (see litellm.nix), duplicated under its own
+    # entry rather than shared: that keeps this DynamicUser's extraGroups scoped to
+    # mcp-switchboard-secrets instead of also needing access to LiteLLM's own secret group.
+    sops.secrets."mcp-switchboard/llm_api_key" = {
       mode = "0440";
       group = "mcp-switchboard-secrets";
     };
@@ -89,6 +100,19 @@ in {
       loki.labels.host = config.networking.hostName;
 
       prometheus.register = cfg.metrics && config.MODULES.services.prometheus.enable;
+
+      # The agent orchestrator (Chat/Graph tabs in the console): the client hides them unless
+      # GET /api/models succeeds, which the hub only serves once this is on. Pointed at the
+      # local LiteLLM gateway rather than a provider directly, so the model catalogue is whatever
+      # LiteLLM already aggregates (ollama/vllm backends across hosts) with no separate key to
+      # provision - see litellm.nix.
+      agents.enable = true;
+      llm = {
+        provider = "openai-compatible";
+        baseUrl = "http://127.0.0.1:${toString config.PORTS.litellm}/v1";
+        apiKeyFile = config.sops.secrets."mcp-switchboard/llm_api_key".path;
+        openaiCompatible.kind = "generic";
+      };
 
       settings = {
         # The console's Endpoints panel prints the /mcp URLs (all machines, per host, per project,

@@ -120,6 +120,7 @@ in {
   MODULES.nix.substituters.airlab-attic.enable = true;
   MODULES.system.printing.enable = true;
   MODULES.hardware.nvidia.enable = true;
+  MODULES.hardware.perifirals.mice.openmouse.enable = true;
   USERS.akos.enable = true;
   MODULES.networking.tailscale.hostIP = "100.126.232.60";
   MODULES.services.syncthing.deviceID = "U6G2UZ4-RX5WVKR-5MAIXOA-4GX6ZL6-PGTAPWD-KXLK3V4-N4EPLT3-GWR7MQ7";

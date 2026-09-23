@@ -66,6 +66,7 @@
       games.steam.enable = true;
       hardware.perifirals.keyboards.kanata.enable = true;
       hardware.perifirals.mice.razer.enable = true;
+      hardware.perifirals.mice.openmouse.enable = true;
       networking.usbip.enable = true;
       networking.tuvpn.enable = true;
       system.bluetooth.enable = true;
@@ -155,6 +156,7 @@
       pkgs-unstable.foxglove-cli
       pkgs-unstable.foxglove-studio
       pkgs-unstable.vscode
+      pkgs-unstable.jetbrains.idea
       pkgs-unstable.zed-editor
       pkgs-unstable.github-copilot-cli
       pkgs-unstable.claude-code

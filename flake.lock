@@ -358,11 +358,11 @@
         "uv2nix": "uv2nix"
       },
       "locked": {
-        "lastModified": 1790153921,
-        "narHash": "sha256-vhxmJ4tKFdLwLuxEUrqAf8exjxGgyBpFje9GIV9Q4bk=",
+        "lastModified": 1790204215,
+        "narHash": "sha256-/XIzB29H7KGBFSwxf46VVNBN3NTkRfonh36TizCUHE0=",
         "owner": "AkosPapp",
         "repo": "mcp-switchboard",
-        "rev": "29f8a9f743e360cdd1475d68c12420870ddcd4ac",
+        "rev": "4e54fa39b171504e9373ff2a704ce5d23322392c",
         "type": "github"
       },
       "original": {
@@ -691,11 +691,11 @@
     },
     "nixpkgs_8": {
       "locked": {
-        "lastModified": 1789998861,
-        "narHash": "sha256-GiMDMZpYQ2eK3OFtqj/yXpRZwqfu6JfG5WWrUHWyF8M=",
-        "rev": "1e8bc658fc985ef27ccd66d107d767b32bb7ef98",
+        "lastModified": 1790113641,
+        "narHash": "sha256-DfkF+sEdKXCrvkg7olt82Q9cfP3p7Ro2R851fcTcSxI=",
+        "rev": "1bc55b9def8165e82073919945c3239903fe4dc2",
         "type": "tarball",
-        "url": "https://releases.nixos.org/nixos/26.05/nixos-26.05.10402.1e8bc658fc98/nixexprs.tar.zst"
+        "url": "https://releases.nixos.org/nixos/26.05/nixos-26.05.10478.1bc55b9def81/nixexprs.tar.zst"
       },
       "original": {
         "id": "nixpkgs",
