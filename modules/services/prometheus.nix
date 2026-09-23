@@ -417,6 +417,16 @@ in {
     (mkIf (cfg.enable && config.MODULES.services.librechat.enable && config.MODULES.services.librechat.metrics) {
       # Own endpoint (bearer JWT via METRICS_SECRET, same shape mcp-context-forge's
       # /metrics/prometheus used to have) - see librechat.nix's sops.templates."librechat.env".
+      #
+      # librechat.nix's own "librechat/metrics_secret" is owned root:root 0400 for its env
+      # template - unreadable by the prometheus user that scrapes this. Declare it again under
+      # its own key, owned by prometheus, same pattern as "prometheus/litellm_master_key" above.
+      sops.secrets."prometheus/librechat_metrics_secret" = {
+        key = "librechat/metrics_secret";
+        owner = "prometheus";
+        mode = "0400";
+      };
+
       services.prometheus.scrapeConfigs = [
         {
           job_name = "librechat";
@@ -425,7 +435,7 @@ in {
               targets = ["127.0.0.1:${toString config.PORTS.librechat}"];
             }
           ];
-          authorization.credentials_file = config.sops.secrets."librechat/metrics_secret".path;
+          authorization.credentials_file = config.sops.secrets."prometheus/librechat_metrics_secret".path;
         }
       ];
     })

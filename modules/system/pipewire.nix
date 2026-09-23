@@ -24,6 +24,20 @@
       wireplumber.enable = true;
       socketActivation = true; # Recommended for modern setups
       systemWide = false; # Should be false (per-user is safer)
+
+      wireplumber.extraConfig."51-disable-mic-agc" = {
+        "monitor.alsa.rules" = [
+          {
+            matches = [{"node.name" = "~alsa_input.*";}];
+            actions.update-props = {
+              # Keep mic gain fixed in software instead of syncing to the
+              # hardware capture register, which some codecs auto-adjust
+              # (drop in volume on loud input, requiring manual reset).
+              "api.alsa.soft-mixer" = true;
+            };
+          }
+        ];
+      };
     };
 
     environment.systemPackages = with pkgs; [

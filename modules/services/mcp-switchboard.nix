@@ -51,6 +51,17 @@ in {
       mode = "0440";
       group = "mcp-switchboard-secrets";
     };
+    # VAPID keypair for web push (phone notification when a top-level chat's run finishes or
+    # needs approval). The public key isn't sensitive, but it's kept alongside the private key
+    # so both come from the same sops entry rather than one being duplicated into the Nix store.
+    sops.secrets."mcp-switchboard/push_vapid_public_key" = {
+      mode = "0440";
+      group = "mcp-switchboard-secrets";
+    };
+    sops.secrets."mcp-switchboard/push_vapid_private_key" = {
+      mode = "0440";
+      group = "mcp-switchboard-secrets";
+    };
 
     services.mcp-switchboard = {
       enable = true;
@@ -88,6 +99,9 @@ in {
         # Used only to build the panel's copyable client-install command: the Funnel address a
         # client with no Tailscale dials (see the funnel entry below).
         PUBLIC_URL = "https://${config.networking.fqdn}:${toString config.PORTS.mcpSwitchboardFunnel}";
+
+        PUSH_VAPID_PUBLIC_KEY = config.sops.secrets."mcp-switchboard/push_vapid_public_key".path;
+        PUSH_VAPID_PRIVATE_KEY = config.sops.secrets."mcp-switchboard/push_vapid_private_key".path;
       };
     };
 
