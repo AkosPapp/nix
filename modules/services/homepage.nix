@@ -251,7 +251,7 @@ in {
     })
     (mkIf (cfg.enable && config.MODULES.services.mcp-switchboard.enable) {
       MODULES.services.homepage.services.mcp-switchboard = {
-        icon = "${traefik.urlOf "mcp-switchboard"}/static/favicon.svg";
+        icon = "${traefik.urlOf "mcp-switchboard"}/favicon.svg";
         description = "MCP gateway/registry";
       };
     })
