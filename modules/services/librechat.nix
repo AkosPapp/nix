@@ -27,10 +27,10 @@
         apiKey = "\${LITELLM_API_KEY}";
         baseURL = "http://127.0.0.1:${toString config.PORTS.litellm}/v1";
         models = {
-          # small-text is hp's own Ollama model (see hosts/hp/default.nix), guaranteed to exist
-          # regardless of which other hosts are up - just a seed for the picker before `fetch`
-          # completes; the full catalogue comes back live from LiteLLM's /v1/models.
-          default = ["small-text"];
+          # local/small-text is hp's own Ollama model (see hosts/hp/default.nix), guaranteed to
+          # exist regardless of which other hosts are up - just a seed for the picker before
+          # `fetch` completes; the full catalogue comes back live from LiteLLM's /v1/models.
+          default = ["local/small-text"];
           fetch = true;
         };
         titleConvo = true;

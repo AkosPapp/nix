@@ -194,6 +194,7 @@
       signal-desktop
       element-desktop
       logseq
+      obsidian
       onlyoffice-desktopeditors
       libreoffice
       pear-desktop

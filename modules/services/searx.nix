@@ -1,6 +1,7 @@
 {
   config,
   pkgs,
+  pkgs-unstable,
   options,
   lib,
   ...
@@ -55,13 +56,18 @@
 
       services.searx = {
         enable = true;
+        # Engine scrapers break often; the stable channel's searxng lags unstable by months.
+        package = pkgs-unstable.searxng;
+        environmentFile = config.sops.templates."searx.env".path;
 
         settings = {
           server = {
             port = port;
             bind_address = "127.0.0.1";
-            secret_key = "change_this_to_a_random_secret_key";
+            secret_key = "$SEARX_SECRET_KEY"; # substituted from environmentFile at start
             base_url = config.MODULES.networking.traefik.urlOf "searx";
+            # Only reachable via Traefik on LAN/tailnet; the limiter would just see the proxy IP.
+            limiter = false;
           };
 
           # Enable JSON format for API calls like n8n
@@ -70,7 +76,37 @@
               "html"
               "json"
             ];
+            suspended_times = {
+              SearxEngineAccessDenied = 3600;
+              SearxEngineCaptcha = 3600;
+              SearxEngineTooManyRequests = 600;
+            };
           };
+
+          outgoing = {
+            request_timeout = 4.0;
+            max_request_timeout = 10.0;
+          };
+
+          # Merged by name into the default engine list, so no single blocked engine kills results.
+          engines = [
+            {
+              name = "bing";
+              disabled = false;
+            }
+            {
+              name = "mojeek";
+              disabled = false;
+            }
+            {
+              name = "qwant";
+              disabled = false;
+            }
+            {
+              name = "yahoo";
+              disabled = false;
+            }
+          ];
 
           # Basic settings
           general = {
@@ -81,6 +117,14 @@
 
         # Enable local Redis instance for caching
         redisCreateLocally = true;
+      };
+
+      sops.secrets."searx/secret_key" = {};
+      sops.templates."searx.env" = {
+        content = ''
+          SEARX_SECRET_KEY=${config.sops.placeholder."searx/secret_key"}
+        '';
+        restartUnits = ["searx-init.service" "searx.service"];
       };
     }
   );

@@ -54,13 +54,33 @@
   MODULES.services.litellm.enable = true;
   # Where requests land when the only host serving a name is unreachable. litellm.nix builds those
   # fallbacks for every name no local host has, which is most of legion5's catalogue (coder,
-  # gpt-oss, heretic): with the laptop shut they answer from this host's small-text instead of
-  # erroring. Of the entries here it is the cheap one, and a degraded reply beats a failure.
-  MODULES.services.litellm.fallbackModel = "small-text";
+  # gpt-oss, heretic): with the laptop shut they answer from this host's local/small-text instead
+  # of erroring. Of the entries here it is the cheap one, and a degraded reply beats a failure.
+  MODULES.services.litellm.fallbackModel = "local/small-text";
+  # Wildcard OpenRouter passthrough - see litellm.nix. Key comes from the openrouter_api_key sops
+  # secret.
+  MODULES.services.litellm.openrouterEnable = true;
   # Second gateway, managed from its own dashboard (https://omniroute.hp) rather than
   # declared here: hosted providers and combos live in its database. The first-login password is
   # in /var/lib/omniroute/secrets.env (INITIAL_PASSWORD) - see omniroute.nix.
   MODULES.services.omniroute.enable = true;
+  # Wildcard passthrough the other way: OmniRoute's own dashboard-managed providers/combos,
+  # reachable through LiteLLM as "omniroute/<name>" - see litellm.nix. omniroute_api_key has to
+  # be created by hand from OmniRoute's dashboard first (its module has no sops key to auto-fill
+  # - see the option's doc comment), then added to sops under that name.
+  MODULES.services.litellm.omnirouteEnable = true;
+  MODULES.services.litellm.omnirouteApiKeySecret = "omniroute_api_key";
+  # Third gateway, the Aqueduct instance self-hosted at https://futurelab.robo4you.at: wildcard
+  # passthrough the same way again, so its models are reachable through LiteLLM as
+  # "futurelab/<name>" - see litellm.nix. Nothing about it is on the tailnet, it is reached over
+  # the public internet like OpenRouter is, and the models listed are discovered from Aqueduct's
+  # own /v1/models, i.e. whatever its dashboard
+  # (https://futurelab.robo4you.at/aqueduct/management/) has configured.
+  #
+  # futurelab_api_key has to be created by hand first, from the Tokens page of that dashboard,
+  # since it sits behind the gateway's own login and nothing here can mint one - the same
+  # manual-step situation omniroute's key is in.
+  MODULES.services.litellm.futurelabEnable = true;
   MODULES.services.prometheus.enable = true;
 
   # MCP gateway/registry: remote MCP servers (devcontainers, other hosts) tunnel their local
