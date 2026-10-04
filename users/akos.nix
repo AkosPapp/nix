@@ -162,7 +162,6 @@
       pkgs-unstable.claude-code
       pkgs-unstable.claude-agent-acp
       pkgs-unstable.claude-monitor
-      pkgs-unstable.gemini-cli
       pkgs-unstable.cursor-cli
       pkgs-unstable.gitkraken
       pkgs-unstable.picocom
