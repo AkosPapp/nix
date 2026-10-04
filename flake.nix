@@ -24,6 +24,12 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     mcp-switchboard.url = "github:AkosPapp/mcp-switchboard";
+    # Upstream tracks nixos-unstable and builds its Python env with uv2nix against it, so it
+    # follows this flake's unstable pin rather than the 26.05 one the hosts run on.
+    hermes-agent = {
+      url = "github:NousResearch/hermes-agent";
+      inputs.nixpkgs.follows = "nixpkgs-unstable";
+    };
   };
 
   outputs = {
@@ -81,6 +87,7 @@
             sops-nix.nixosModules.sops
             disko.nixosModules.disko
             nix_autobuild.nixosModules.nix_autobuild
+            inputs.hermes-agent.nixosModules.default
           ]
           ++ module_files;
       }))

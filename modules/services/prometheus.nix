@@ -440,6 +440,39 @@ in {
       ];
     })
 
+    (mkIf (cfg.enable && config.MODULES.services.matrix.enable) {
+      # Synapse serves its own metrics on a dedicated loopback listener (see matrix.nix), no
+      # exporter binary - same shape as the traefik/syncthing/immich jobs above. The mautrix
+      # bridges have no metrics endpoint since their bridgev2 rewrite; they show up through the
+      # node exporter's systemd collector (unit state) and in Loki via the journal.
+      services.prometheus.scrapeConfigs = [
+        {
+          job_name = "synapse";
+          metrics_path = "/_synapse/metrics";
+          static_configs = [
+            {
+              targets = ["127.0.0.1:${toString config.PORTS.prometheusSynapse}"];
+            }
+          ];
+        }
+      ];
+    })
+
+    (mkIf (cfg.enable && config.MODULES.services.mdbook.enable && config.MODULES.security.idp.enabled) {
+      # The IdP gate in front of /mdbook (mdbook.nix) serves its own metrics on a separate
+      # loopback address (metrics-address there) - request counts and auth outcomes.
+      services.prometheus.scrapeConfigs = [
+        {
+          job_name = "oauth2-proxy";
+          static_configs = [
+            {
+              targets = ["127.0.0.1:${toString config.PORTS.prometheusOauth2Proxy}"];
+            }
+          ];
+        }
+      ];
+    })
+
     (mkIf (cfg.enable && config.boot.supportedFilesystems.zfs or false) {
       services.prometheus.exporters.zfs = {
         enable = true;

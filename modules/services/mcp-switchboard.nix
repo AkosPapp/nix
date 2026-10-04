@@ -122,7 +122,7 @@ in {
         LOCAL_BASE_URL = config.MODULES.networking.traefik.urlOf "mcp-switchboard";
         # Used only to build the panel's copyable client-install command: the Funnel address a
         # client with no Tailscale dials (see the funnel entry below).
-        PUBLIC_URL = "https://${config.networking.fqdn}:${toString config.PORTS.mcpSwitchboardFunnel}";
+        PUBLIC_URL = config.MODULES.networking.traefik.public.baseUrl;
 
         PUSH_VAPID_PUBLIC_KEY = config.sops.secrets."mcp-switchboard/push_vapid_public_key".path;
         PUSH_VAPID_PRIVATE_KEY = config.sops.secrets."mcp-switchboard/push_vapid_private_key".path;
@@ -130,19 +130,16 @@ in {
     };
 
     # The tunnel endpoint needs to be reachable from clients with no Tailscale client at all
-    # (devcontainers, arbitrary NAT), not just tailnet members - so this is a Funnel, the same
-    # call mcp-context-forge made for its own (non-functional) tunnel endpoint. Funnel is capped
-    # at ports 443, 8443 or 10000 - 443 is Traefik's own HTTPS listener on this host, hence the
-    # dedicated mcpSwitchboardFunnel port rather than reusing the tunnel port. This is the one
-    # thing left on tailscale serve: it has to be reachable from outside the tailnet, and the
-    # custom CA is only trusted by our own machines.
-    MODULES.networking.tailscale.serve.mcp-switchboard-tunnel = {
-      type = "funnel";
-      target = "http://127.0.0.1:${toString config.PORTS.mcpSwitchboardTunnel}";
-      httpsPort = config.PORTS.mcpSwitchboardFunnel;
+    # (devcontainers, arbitrary NAT), not just tailnet members - so it sits on Traefik's
+    # Funnel-backed `public` entry point (traefik.nix), where the custom CA doesn't matter: TLS
+    # there is tailscaled's, with a publicly trusted certificate. It takes whatever path no other
+    # public route claims (/mdbook, ...), so its URL is the bare public base URL.
+    MODULES.networking.traefik.public = {
+      enable = true;
+      routes.mcp-switchboard-tunnel.target = "127.0.0.1:${toString config.PORTS.mcpSwitchboardTunnel}";
     };
 
-    # Tailnet-only, unlike the Funnel above: the console/API/metrics listener.
+    # Tailnet-only, unlike the tunnel above: the console/API/metrics listener.
     MODULES.networking.traefik.enable = true;
     MODULES.networking.traefik.services.mcp-switchboard = "127.0.0.1:${toString config.PORTS.mcpSwitchboardPrivate}";
   };

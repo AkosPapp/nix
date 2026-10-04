@@ -35,6 +35,19 @@ in {
     prometheus = 8009;
     stepCa = 9000;
     caPage = 8103;
+    elementWeb = 8104;
+    mdbook = 8106;
+    # Traefik's Funnel-facing entry point (plain HTTP; tailscaled terminates TLS).
+    traefikPublic = 8107;
+    oauth2Proxy = 8108;
+    webhook = 8109;
+    hermesDashboard = 8110;
+    outline = 8111;
+    synapse = 8008;
+    # mautrix bridges' appservice listeners - only Synapse on the same host connects to these.
+    mautrixWhatsapp = 29318;
+    mautrixSignal = 29328;
+    mautrixSlack = 29335;
     roundcube = 8086;
     searx = 8081;
     sftpgoHttp = 8090;
@@ -52,6 +65,8 @@ in {
     prometheusNodeExporter = 9100;
     prometheusPhpFpmExporter = 9253;
     prometheusPostgresExporter = 9187;
+    prometheusSynapse = 9206;
+    prometheusOauth2Proxy = 9207;
     prometheusTailscaleExporter = 9200;
     prometheusZfsExporter = 9134;
 
@@ -69,9 +84,14 @@ in {
     fastddsDiscovery = 11811;
     i2pdRouter = 12345;
     # Tailscale Funnel only, not a raw firewall port: Funnel accepts exactly 443, 8443 or 10000,
-    # and 443 is Traefik's own HTTPS listener (see traefik.nix). Registered here
-    # anyway so the duplicate-port assertion below still catches a future collision.
-    mcpSwitchboardFunnel = 8443;
+    # and 443 is Traefik's own HTTPS listener (see traefik.nix). This is the public face of
+    # Traefik's `public` entry point (traefik.nix's `public` options). Registered here anyway so
+    # the duplicate-port assertion below still catches a future collision.
+    traefikPublicFunnel = 8443;
+    # Outline's own Funnel listener (modules/services/outline.nix): it needs a dedicated origin
+    # (no path-prefix support, unlike mdbook's route on traefikPublicFunnel above), so it gets
+    # the third of Funnel's three allowed ports instead of a path on the shared one.
+    outlinePublicFunnel = 10000;
     ipfsSwarm = 4001;
     mosquitto = 1883;
     dns = 53;

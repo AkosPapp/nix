@@ -104,6 +104,37 @@
   # workflow-node model - see librechat.nix.
   MODULES.services.librechat.enable = true;
 
+  # Personal agent stack - see RUNBOOK-hermes.md next to this file for the manual steps (sops
+  # secrets, bridge logins, OAuth). A private Matrix server with federation off, reachable only
+  # over the tailnet (https://matrix.hp, Element at https://element.hp); the mautrix bridges put
+  # WhatsApp, Signal and Slack chats into it; Hermes talks to akos there and can read the bridged
+  # rooms it is invited to.
+  MODULES.services.matrix.enable = true;
+  MODULES.services.mautrix = {
+    whatsapp.enable = true;
+    signal.enable = true;
+    slack.enable = true;
+  };
+  MODULES.services.hermes-agent.enable = true;
+  # Fill these in once the Entra app exists (runbook step 6) - himalaya stays out until then.
+  # MODULES.services.hermes-agent.outlook = {
+  #   address = "you@outlook.com";
+  #   clientId = "00000000-0000-0000-0000-000000000000";
+  #   tenant = "consumers";
+  # };
+
+  # Outline was tried and dropped - not needed. Its data (Postgres's "outline" database,
+  # /var/lib/outline) was removed by hand on the host; see git history for how it was set up if
+  # it comes back. mdbook (public docs) is unrelated and stays on.
+  MODULES.services.outline.enable = false;
+
+  # Public (Tailscale Funnel -> Traefik's `public` entry point) at https://hp.tail546fb.ts.net:8443/mdbook,
+  # behind a git.robo4you.at login - see RUNBOOK-public.md. The docs follow the baumit-docs
+  # package through a Forgejo webhook (same runbook).
+  MODULES.services.mdbook.enable = true;
+  # Client ID and secret come from sops (idp/client_id, idp/client_secret).
+  MODULES.security.idp.enable = true;
+
   MODULES.services.sftpgo.enable = true;
   MODULES.services.i2pd.enable = false;
   MODULES.services.immich.machineLearning.enable = true;

@@ -273,6 +273,49 @@ in {
         description = "Agent workflow builder";
       };
     })
+    (mkIf (cfg.enable && config.MODULES.services.matrix.enable) {
+      # Synapse's root page is only a "it works" stub, so the matrix tile is there to show the
+      # homeserver is up; Element is the one to click.
+      MODULES.services.homepage.services.element = {
+        icon = "element.png";
+        description = "Matrix chat (${config.MODULES.services.matrix.serverName})";
+      };
+      MODULES.services.homepage.services.matrix = {
+        icon = "synapse.png";
+        description = "Matrix homeserver";
+        siteMonitor = "${config.MODULES.services.matrix.clientUrl}/health";
+      };
+    })
+    # mdbook lives under a path of the Funnel URL (traefik.nix's `public`), not as a
+    # <service>.<host> entry, so it doesn't get a tile from the catch-all block at the bottom.
+    (mkIf (cfg.enable && config.MODULES.services.mdbook.enable) {
+      MODULES.services.homepage.services.mdbook = {
+        href = traefik.public.urlOf "/mdbook/";
+        icon = "mdi-book-open-page-variant";
+        description = "Docs (public, robo4you login)";
+      };
+    })
+    (mkIf (cfg.enable && config.MODULES.services.outline.enable) {
+      # Outline is a <service>.<host> entry (traefik.services), so the catch-all block at the
+      # bottom already gives it a tile with the tailnet URL as href - override both once it's
+      # also on its own Funnel port (outline.nix: no path-prefix support, so it isn't a path on
+      # traefik.public like mdbook below).
+      MODULES.services.homepage.services.outline = {
+        href = "${config.MODULES.services.outline.url}/";
+        icon = "outline.png";
+        description =
+          if config.MODULES.services.outline.public.enable
+          then "Wiki/notes (public, robo4you login)"
+          else "Wiki/notes (tailnet-only)";
+      };
+    })
+    (mkIf (cfg.enable && config.MODULES.services.hermes-agent.enable) {
+      # The dashboard's own favicon sits behind its login, so a generic icon.
+      MODULES.services.homepage.services.hermes = {
+        icon = "mdi-robot-outline";
+        description = "Hermes agent dashboard";
+      };
+    })
     (mkIf (cfg.enable && traefik.services ? ca) {
       MODULES.services.homepage.services.ca = {
         icon = "${traefik.urlOf "ca"}/favicon.svg";

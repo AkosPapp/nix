@@ -45,7 +45,7 @@
 
     environment.systemPackages = with pkgs; [
       kitty
-      my-nixvim.packages.${pkgs.system}.default
+      my-nixvim.packages.${pkgs.stdenv.hostPlatform.system}.default
       gnumake
       rsync
       (pkgs.writeShellScriptBin "nix-switch-to-generation" ''
