@@ -73,6 +73,21 @@
       system.gpg.enable = true;
       system.pipewire.enable = true;
       security.sops.enable = true;
+      services.opencode = {
+        enable = true;
+        # No local-model provider: opencode here only ever talks to the LiteLLM gateway on hp
+        # (https://litellm.hp) - see hosts/hp/default.nix for what's behind it.
+        defaultModel = "litellm/futurelab/qwen3.8-flash-next";
+        smallModel = "litellm/futurelab/qwen3.8-flash-next";
+        providers.litellm = {
+          displayName = "LiteLLM (hp)";
+          baseURL = "https://litellm.hp/v1";
+          apiKeySecret = "opencode/litellm_api_key";
+          models = {
+            "futurelab/qwen3.8-flash-next" = {};
+          };
+        };
+      };
       virtualisation.docker.enable = true;
       virtualisation.virtualbox.enable = true;
       wm.niri.enable = true;
@@ -231,6 +246,6 @@
     boot.binfmt.emulatedSystems = ["aarch64-linux"];
 
     services.netbird.enable = true;
-    services.netbird.clients.default.autoStart = false;
+    services.netbird.clients.default.autoStart = true;
   };
 }

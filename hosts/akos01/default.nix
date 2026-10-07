@@ -78,6 +78,12 @@
       useDHCP = true;
     };
 
+    # akos01's dnsmasq (modules/networking/dns.nix) is otherwise NXDOMAIN-only outside its
+    # traefik zone; this adds robo4you.at as a conditionally-forwarded zone to the internal
+    # resolver, so it can act as Tailscale split-DNS for *.robo4you.at (including the
+    # cluster.robo4you.at stub delegation) for hosts that aren't on netbird.
+    services.dnsmasq.settings.server = ["/robo4you.at/10.50.20.2"];
+
     environment.systemPackages = with pkgs; [
       wget
       curl

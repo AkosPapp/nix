@@ -157,43 +157,6 @@ in {
       '';
     };
 
-    opencode = {
-      enable = mkEnableOption ''
-        opencode (the terminal coding agent) configured against this host's Ollama. The provider
-        and its model list are generated from `models`, so opencode always offers exactly what
-        this server serves, with each model's real context window as opencode's limit
-      '';
-
-      models = mkOption {
-        type = types.listOf types.str;
-        default = lib.attrNames cfg.models;
-        defaultText = lib.literalExpression "lib.attrNames config.MODULES.services.ollama.models";
-        description = ''
-          Catalogue entries to offer in opencode. opencode is an agent and drives everything
-          through tool calls, so leave out models Ollama serves without tool support - a
-          vision-only model like qwen2.5vl just returns an error on every turn.
-        '';
-      };
-
-      defaultModel = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        example = "coder";
-        description = "Catalogue entry opencode starts with (its `model` setting).";
-      };
-
-      smallModel = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        example = "small-text";
-        description = ''
-          Catalogue entry for opencode's lightweight side jobs such as session titles
-          (`small_model`). Worth pointing at the cheapest model: with maxLoadedModels = 1 each of
-          those jobs would otherwise swap the main model out and back.
-        '';
-      };
-    };
-
     weight = mkOption {
       type = types.int;
       default = 1;
@@ -229,64 +192,6 @@ in {
     };
 
     networking.firewall.interfaces.tailscale0.allowedTCPPorts = [port];
-
-    assertions = lib.optionals cfg.opencode.enable (
-      [
-        {
-          assertion = lib.all (m: cfg.models ? ${m}) cfg.opencode.models;
-          message = "MODULES.services.ollama.opencode.models names models not in MODULES.services.ollama.models: ${lib.concatStringsSep ", " (lib.filter (m: !(cfg.models ? ${m})) cfg.opencode.models)}";
-        }
-      ]
-      ++ map (m: {
-        assertion = m == null || builtins.elem m cfg.opencode.models;
-        message = "MODULES.services.ollama.opencode: \"${toString m}\" is used as a default but is not in opencode.models.";
-      }) [cfg.opencode.defaultModel cfg.opencode.smallModel]
-    );
-
-    environment.systemPackages = lib.optional cfg.opencode.enable pkgs.opencode;
-
-    # Not under /etc/opencode/: that directory is opencode's *managed* config, which outranks
-    # every other source including a project's own opencode.json. OPENCODE_CONFIG sits below the
-    # project config and merges with ~/.config/opencode/opencode.json, so this is a system-wide
-    # default that a user or a repository can still override. Applies to shells started after
-    # the rebuild.
-    environment.etc."opencode-ollama.json" = mkIf cfg.opencode.enable {
-      text = builtins.toJSON (
-        {
-          "$schema" = "https://opencode.ai/config.json";
-          # The binary comes from the Nix store; opencode replacing itself would only diverge.
-          autoupdate = false;
-          provider.ollama = {
-            npm = "@ai-sdk/openai-compatible";
-            name = "Ollama (${config.networking.hostName})";
-            # Loopback: the same server LiteLLM reaches over Tailscale, without the gateway's
-            # key or its routing to other hosts in between.
-            options.baseURL = "http://127.0.0.1:${toString port}/v1";
-            models = lib.genAttrs cfg.opencode.models (name: let
-              ctx = cfg.models.${name}.contextLength;
-            in {
-              inherit name;
-              # The context baked into the Ollama model, so opencode compacts before Ollama
-              # silently truncates. Output capped at a quarter of it, so a long answer cannot
-              # crowd out the prompt.
-              limit = {
-                context = ctx;
-                output = lib.min 8192 (ctx / 4);
-              };
-            });
-          };
-        }
-        // lib.optionalAttrs (cfg.opencode.defaultModel != null) {
-          model = "ollama/${cfg.opencode.defaultModel}";
-        }
-        // lib.optionalAttrs (cfg.opencode.smallModel != null) {
-          small_model = "ollama/${cfg.opencode.smallModel}";
-        }
-      );
-    };
-    environment.variables = mkIf cfg.opencode.enable {
-      OPENCODE_CONFIG = "/etc/opencode-ollama.json";
-    };
 
     # Pull each base and create the catalogue names from their Modelfiles. The upstream module's
     # loadModels only pulls, so it cannot give a model its own context or name. Type = exec:

@@ -105,17 +105,8 @@ in {
     };
   };
 
-  # opencode against this Ollama. receipt-vision is left out: Ollama serves qwen2.5vl without
-  # tool support, and opencode does everything through tool calls. coder and small-text are
-  # listed with tools in the Ollama library; heretic is a Hugging Face GGUF whose tool support
-  # depends on the chat template Ollama derives, so it may refuse tool calls. coder by default,
-  # small-text for opencode's side jobs (titles) so they don't swap the 32K coder out.
-  MODULES.services.ollama.opencode = {
-    enable = true;
-    models = ["coder" "gpt-oss" "heretic" "small-text"];
-    defaultModel = "coder";
-    smallModel = "small-text";
-  };
+  # opencode itself (just the litellm.hp provider, no local models) is configured once in
+  # users/akos.nix, not per-host.
 
   MODULES.nix.substituters.airlab-attic.enable = true;
   MODULES.system.printing.enable = true;

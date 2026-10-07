@@ -131,7 +131,11 @@
   # Public (Tailscale Funnel -> Traefik's `public` entry point) at https://hp.tail546fb.ts.net:8443/mdbook,
   # behind a git.robo4you.at login - see RUNBOOK-public.md. The docs follow the baumit-docs
   # package through a Forgejo webhook (same runbook).
-  MODULES.services.mdbook.enable = true;
+  MODULES.services.mdbook = {
+    enable = true;
+    # Only the Owners team of the baumit org on git.robo4you.at.
+    allowedGroups = ["baumit:owners"];
+  };
   # Client ID and secret come from sops (idp/client_id, idp/client_secret).
   MODULES.security.idp.enable = true;
 
