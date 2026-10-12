@@ -201,6 +201,11 @@
   # 10000), and https://hp.tail546fb.ts.net:8443/install/<token>/{opencode,pi}.sh bootstraps
   # remote harness machines. Secrets: sops paseo/*.
   MODULES.services.paseo.enable = true;
+  # Hermes' own Paseo daemon (uid hermes, loopback 8116, dials out to the relay above): drives
+  # Hermes conversations from the Paseo app/dashboard via the ACP provider "Hermes". Its egress
+  # gets exactly one extra hermes-egress RETURN rule (tailnet IP:10000) - see paseo-hermes.nix.
+  # Secret: sops paseo/hermes_daemon_password.
+  MODULES.services.paseo-hermes.enable = true;
 
   # Personal agent stack - see RUNBOOK-hermes.md next to this file for the manual steps (sops
   # secrets, bridge logins, OAuth). A private Matrix server with federation off, reachable only

@@ -397,6 +397,15 @@
       already-added devices keep working (the link was just delivery).</span>
     </p>
 
+    ${lib.optionalString config.MODULES.services.paseo-hermes.enable ''
+      <h2>Hermes machine pairing link (phone/laptop &rarr; "paste pairing link")</h2>
+      <p class="note">Second Paseo daemon on this host, running as the Hermes user: loopback-only, ACP provider
+      "Hermes", dials out to the relay like any harness machine. Already seeded into the shared host sync as
+      <code>hermes-hp</code>, so it appears in every dashboard after a reload - the single-use link below is only
+      for a device that never loaded a synced dashboard. Re-mint (as root):
+      <code>rm /var/lib/paseo-web/hermes-pairing-url &amp;&amp; systemctl restart paseo-hermes-pair</code>.</p>
+      $PASEO_HERMES_PAIRING_HTML
+    ''}
     <h2>Add a harness machine</h2>
     <p class="note">Run on any Linux/macOS box (no Tailscale needed - it reaches the hub through the public relay):
     installs Node + <code>@getpaseo/cli</code> + the harness CLI, points it at the aqueduct model,
@@ -880,7 +889,7 @@
     # templates, pairing URL, registry). The hour bucket makes the 7-day entry expiry
     # prune within an hour even when nothing else changes.
     stamp=/var/lib/paseo-web/.render-hash
-    dyn="$( { cat /var/lib/paseo-web/pairing-url 2>/dev/null; cat /var/lib/paseo-web/registry/*.json 2>/dev/null; } | sort | md5sum | cut -d' ' -f1 || true)"
+    dyn="$( { cat /var/lib/paseo-web/pairing-url 2>/dev/null; cat /var/lib/paseo-web/hermes-pairing-url 2>/dev/null; cat /var/lib/paseo-web/registry/*.json 2>/dev/null; } | sort | md5sum | cut -d' ' -f1 || true)"
     hash="$(printf '%s' "$(cat /run/secrets/rendered/paseo-web-render.env 2>/dev/null)|''${0}|${opencodeScriptTmpl}|${piScriptTmpl}|${cockpit}|$(date -u +%Y%m%d%H)|$dyn" | md5sum | cut -d' ' -f1)"
     if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$hash" ] && [ -L "${webDir}/install" ] && [ -L "${webDir}/cockpit" ]; then
       exit 0
@@ -889,6 +898,13 @@
     pairing=""
     [ -s /var/lib/paseo-web/pairing-url ] && pairing="$(cat /var/lib/paseo-web/pairing-url)"
     export PASEO_PAIRING_URL="$pairing"
+
+    # Hermes machine (paseo-hermes.nix) pairing link, minted by paseo-hermes-pair.service.
+    hermes_pairing_html='<p class="empty">Not paired yet - as root: systemctl restart paseo-hermes-pair</p>'
+    if [ -s /var/lib/paseo-web/hermes-pairing-url ]; then
+      hermes_pairing_html="<pre>$(cat /var/lib/paseo-web/hermes-pairing-url)</pre>"
+    fi
+    export PASEO_HERMES_PAIRING_HTML="$hermes_pairing_html"
 
     # Machines that installers registered but no dashboard has claimed yet. Entries older than
     # 7 days are pruned here (writing to the registry dir re-triggers this unit once via the
@@ -927,7 +943,7 @@
       chmod 0644 "$rel/install/$PASEO_ENROLLMENT_TOKEN/$name.sh"
     done
     # shellcheck disable=SC2016
-    envsubst '$PASEO_ENROLLMENT_TOKEN $PASEO_ENROLLMENT_API_KEY $PASEO_PAIRING_URL $PASEO_MACHINES_HTML $PASEO_DAEMON_PASSWORD' <${cockpit} >"$rel/cockpit/index.html"
+    envsubst '$PASEO_ENROLLMENT_TOKEN $PASEO_ENROLLMENT_API_KEY $PASEO_PAIRING_URL $PASEO_MACHINES_HTML $PASEO_DAEMON_PASSWORD $PASEO_HERMES_PAIRING_HTML' <${cockpit} >"$rel/cockpit/index.html"
     # Pairing URL is hub-owner material: the cockpit tree itself stays group-readable for
     # nginx only; the token appears there by design (tailnet-only page).
     chmod 0640 "$rel/cockpit/index.html"

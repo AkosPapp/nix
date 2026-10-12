@@ -127,6 +127,17 @@ in {
         an @mention in a bridged room can never start an agent turn.
       '';
     };
+
+    paseoHermesSandbox = mkOption {
+      type = types.attrs;
+      default = sandbox;
+      internal = true;
+      description = ''
+        The sandbox attrset the Hermes units run in, exported so paseo-hermes.nix reuses it
+        verbatim (a Paseo provider's child processes must land in exactly these restrictions
+        and under the hermes-egress uid chain).
+      '';
+    };
   };
 
   config = mkIf cfg.enable {
@@ -330,6 +341,13 @@ in {
       iptables -w -A hermes-egress -p udp --dport 53 -j RETURN
       iptables -w -A hermes-egress -p tcp --dport 53 -j RETURN
       ${lib.concatMapStringsSep "\n" (p: "iptables -w -A hermes-egress -d 127.0.0.1 -p tcp --dport ${toString p} -j RETURN") allowedLocalPorts}
+      ${lib.optionalString config.MODULES.services.paseo-hermes.enable ''
+        # paseo-hermes.nix: the Hermes-owned Paseo daemon (uid hermes) dials this host's own
+        # relay through the Funnel - the funnel FQDN resolves to this machine's tailnet IP
+        # here, so the destination is pinned to hostIP:tcp/${toString config.PORTS.paseoRelayFunnel} instead
+        # of widening 100.64.0.0/10. The one and only deliberate hole in the private-range block.
+        iptables -w -A hermes-egress -d ${config.MODULES.networking.tailscale.hostIP} -p tcp --dport ${toString config.PORTS.paseoRelayFunnel} -j RETURN
+      ''}
       ${lib.concatMapStringsSep "\n" (r: "iptables -w -A hermes-egress -d ${r} -j REJECT") privateRanges}
     '';
     networking.firewall.extraStopCommands = ''

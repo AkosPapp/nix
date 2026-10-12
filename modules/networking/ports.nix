@@ -49,6 +49,9 @@ in {
     paseoRelay = 8113;
     paseoWeb = 8114;
     paseoRegistry = 8115;
+    # Hermes' own Paseo daemon (modules/services/paseo-hermes.nix) - loopback only, never shared
+    # with the hub's 6767.
+    paseoHermesDaemon = 8116;
     synapse = 8008;
     # mautrix bridges' appservice listeners - only Synapse on the same host connects to these.
     mautrixWhatsapp = 29318;
