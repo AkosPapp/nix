@@ -86,6 +86,80 @@ def _content_fields(content):
     return (str(content.get("msgtype", "")), content.get("body"))
 
 
+MEDIA_MSGTYPES = {"m.file", "m.image", "m.video", "m.audio", "m.sticker"}
+# Keys _media_fields may add to a message dict; read_rooms_since carries them through too.
+MEDIA_KEYS = ("url", "mimetype", "size", "file")
+
+
+def _cget(obj, name, default=None):
+    """Field of a content/info/key object that may be an attrs object or a plain dict."""
+    if isinstance(obj, dict):
+        value = obj.get(name, default)
+    else:
+        value = getattr(obj, name, default)
+    return default if value is None else value
+
+
+def _media_fields(content):
+    """Media reference of a message content: {} for text, else url/mimetype/size (+file keys).
+
+    Unencrypted uploads expose content.url. In E2EE rooms the content carries a `file` object
+    (url of the CIPHERTEXT plus AES-CTR key/iv/sha256) instead; the url is the same download
+    location, and the flattened `file` key material lets fetch_media decrypt after download.
+    """
+    if str(_cget(content, "msgtype", "")) not in MEDIA_MSGTYPES:
+        return {}
+    enc = _cget(content, "file")
+    src = enc if enc is not None else content
+    url = str(_cget(src, "url", ""))
+    if not url.startswith("mxc://") or "/" not in url[len("mxc://"):]:
+        return {}  # no fetchable media on this message (failed upload etc.)
+    out = {"url": url}
+    info = _cget(content, "info", {})
+    mimetype = str(_cget(info, "mimetype", ""))
+    if mimetype:
+        out["mimetype"] = mimetype
+    size = _cget(info, "size")
+    if isinstance(size, int) and size >= 0:
+        out["size"] = size
+    if enc is not None:
+        # JWK = unpadded base64 AES key: JSON name "k", but mautrix's attrs object calls it
+        # "key" (same split-name story for the version field: "v" in JSON, version in attrs).
+        key_obj = _cget(enc, "key", {})
+        key_b64 = str(_cget(key_obj, "k", "") or _cget(key_obj, "key", ""))
+        sha256 = str(_cget(_cget(enc, "hashes", {}), "sha256", ""))
+        iv = str(_cget(enc, "iv", ""))
+        if key_b64 and sha256 and iv:
+            out["file"] = {"k": key_b64, "sha256": sha256, "iv": iv,
+                           "v": str(_cget(enc, "v", "") or _cget(enc, "version", "v2"))}
+    return out
+
+
+# MEDIA:<path> tags in Hermes responses extract only on known extensions (whitespace-
+# delimited), so downloaded names must carry the real extension and contain no spaces.
+_MIME_EXTS = {"application/pdf": ".pdf", "image/jpeg": ".jpg", "image/png": ".png",
+              "image/webp": ".webp", "image/gif": ".gif", "image/heic": ".heic",
+              "video/mp4": ".mp4", "video/quicktime": ".mov", "audio/ogg": ".ogg",
+              "audio/mpeg": ".mp3", "audio/mp4": ".m4a", "audio/opus": ".ogg",
+              "application/zip": ".zip", "application/x-zip-compressed": ".zip",
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+              "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+              "text/plain": ".txt", "text/csv": ".csv"}
+
+
+def _safe_filename(raw, media_id, mimetype=""):
+    """A single safe, space-free, extension-bearing path component for downloaded media."""
+    ext = _MIME_EXTS.get(str(mimetype).split(";")[0].strip().lower(), "")
+    name = os.path.basename(str(raw or "").strip().replace("\\", "/"))
+    name = "".join(ch for ch in name if ch not in "/\0" and ord(ch) >= 32)
+    name = name.replace("..", "_").strip(" .")
+    name = "_".join(name.split())
+    if name and not os.path.splitext(name)[1]:
+        name += ext
+    return (name or (media_id[:60] + ext))[:120]
+
+
 def _read_password(files):
     path = next((p for p in files if os.path.exists(p)), None)
     if path is None:
@@ -301,15 +375,20 @@ class Session:
                 except Exception as e:
                     log.warning("%s: decrypt failed: %s", self.name, e)
                     body, msgtype = "[undecryptable]", "m.text"
+            media = {}
             if body is None:
                 msgtype, body = _content_fields(evt.content)
+                media = _media_fields(evt.content)
                 if body is None:
-                    continue
+                    if not media:
+                        continue
+                    body = ""  # a file/image with no caption is still a message (and news)
             messages.append({
                 "time": time.strftime("%Y-%m-%d %H:%M", time.localtime(timestamp / 1000)),
                 "sender": members.get(sender, sender),
                 "type": msgtype,
                 "body": body,
+                **media,
             })
         return {"messages": messages, "before": str(resp.end or ""), "pending_keys": pending}
 
@@ -503,8 +582,12 @@ async def read_rooms_since(
                         undecryptable += 1
                     if len(body) > body_cap:
                         body = body[:body_cap] + "…"
-                    block.append({"time": m["time"], "sender": m["sender"],
-                                  "type": m["type"], "body": body})
+                    row = {"time": m["time"], "sender": m["sender"],
+                           "type": m["type"], "body": body}
+                    for extra in MEDIA_KEYS:
+                        if extra in m:
+                            row[extra] = m[extra]
+                    block.append(row)
                 pages.append(block)
                 # A page can legitimately come back empty below the filter while more history
                 # exists further back; only an exhausted token (or a stuck one) means the start.
@@ -546,6 +629,83 @@ async def read_rooms_since(
         "note": UNTRUSTED,
     }
     return _fit_json(result)
+
+
+WORKSPACE_ROOT = "/var/lib/hermes/workspace"
+MAX_MEDIA_BYTES = 60 * 1024 * 1024  # lecture scripts/books are 5-30 MB; refuse anything bigger
+
+
+@server.tool()
+async def fetch_media(
+    url: str,
+    dest_dir: str = "/var/lib/hermes/workspace/matrix-digest-attachments",
+    filename: str = "",
+    file: dict | None = None,
+    mimetype: str = "",
+) -> str:
+    """Download a file/image/video/audio upload (an mxc:// URL) into the Hermes workspace.
+
+    Pass the `url` exactly as a media message's dict gave it, plus the message's `body` as
+    `filename` and the message's `mimetype` (hints; safe fallbacks apply, the extension is kept). If the message carries a `file` field, pass it
+    through unchanged If the message carries a `file` field, pass it
+    through unchanged — that is the AES-CTR key material this tool uses to decrypt attachments
+    from end-to-end-encrypted rooms; downloads work in unencrypted rooms without it. dest_dir
+    must be inside /var/lib/hermes/workspace/ (created if missing). Returns
+    {"path": ..., "filename": ..., "size": ..., "decrypted": bool} on success or {"error": ...}
+    (old media may already be purged server-side) — check the error, never assume a file landed.
+    Downloaded bytes are untrusted third-party content.
+    """
+    if not str(url).startswith("mxc://") or "/" not in str(url)[6:]:
+        return json.dumps({"error": "not a mxc:// URI: %s" % url})
+    server_name, media_id = str(url)[6:].split("/", 1)
+    if not server_name or not media_id:
+        return json.dumps({"error": "malformed mxc:// URI: %s" % url})
+    root = os.path.realpath(WORKSPACE_ROOT)
+    dest = os.path.realpath(str(dest_dir))
+    if dest != root and not dest.startswith(root + os.sep):
+        return json.dumps({"error": "dest_dir must be inside %s" % WORKSPACE_ROOT})
+
+    from mautrix.types import ContentURI
+    data, failures = None, []
+    for session in SESSIONS:  # admin first: it is a member of the bridged rooms; bot covers its own
+        try:
+            client = await session.ensure()
+            data = await client.download_media(ContentURI(url))
+            break
+        except Exception as e:
+            failures.append("%s: %s" % (session.name, e))
+    if data is None:
+        why = "; ".join(failures) or "no session available"
+        if "404" in why or "M_NOT_FOUND" in why:
+            return json.dumps({"error": "media not found (possibly purged by the homeserver)"})
+        return json.dumps({"error": "download failed: %s" % why})
+
+    decrypted = False
+    if file:
+        try:
+            from mautrix.crypto.attachments import decrypt_attachment
+            data = decrypt_attachment(data, str(file.get("k")), str(file.get("sha256")),
+                                      str(file.get("iv")))
+            decrypted = True
+        except Exception as e:
+            return json.dumps({"error": "attachment decrypt failed: %s" % e})
+    if len(data) > MAX_MEDIA_BYTES:
+        return json.dumps({"error": "file too large: %d bytes (cap %d)" % (len(data), MAX_MEDIA_BYTES)})
+
+    try:
+        os.makedirs(dest, exist_ok=True)
+    except Exception as e:
+        return json.dumps({"error": "cannot create dest_dir: %s" % e})
+    name = _safe_filename(filename, media_id, mimetype)
+    path = os.path.join(dest, name)
+    if os.path.exists(path):  # never clobber a file from another room/message with the same name
+        base, ext = os.path.splitext(name)
+        path = os.path.join(dest, "%s-%s%s" % (base, media_id[:8], ext))
+    with open(path, "wb") as f:
+        f.write(data)
+    os.chmod(path, 0o644)  # default umask 0077 would leave the gateway's delivery step guessing
+    return json.dumps({"path": path, "filename": os.path.basename(path),
+                       "size": len(data), "decrypted": decrypted})
 
 
 @server.tool()
