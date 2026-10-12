@@ -30,25 +30,77 @@
   # daemon could delete the agent's own state) or an execute-only POSIX ACL, which this ZFS dataset
   # does not support. It is world-readable for the same reason dashboardsDir is: the agent runs in a
   # user namespace, where foreign uids show up as nobody and only the `other` bits carry.
-  systemd.tmpfiles.rules = ["d /var/lib/notes 2755 syncthing hermes - -"];
-  # The agent's sandbox sees /var/lib/hermes and nothing else, so bind the share into it -
-  # read-only, since a write here would only come back as an unreadable 0600 file (the units run
-  # with UMask=0077 and syncthing reads them as `other`). The `-` prefix keeps the units up if the
-  # folder is ever missing instead of failing the mount. hermes-agent, hermes-backend and
-  # matrix-reader are the three units that get /var/lib/hermes bound in today.
+  systemd.tmpfiles.rules = [
+    "d /var/lib/notes 2755 syncthing hermes - -"
+    # The agent's own note folder (inside the share, so its notes sync like any other file).
+    # The 2775 is the whole scope of its write access: every other directory in the share stays
+    # 2755, so outside hermes/ the agent can create or replace nothing.
+    "d /var/lib/notes/hermes 2775 syncthing hermes - -"
+  ];
+  # Per-session escalation for the whole share, run by hand as root - the agent has no root in
+  # its sandbox and must not gain any: broad write access then exists only between an explicit
+  # `grant` and the next `revoke`, and a reboot reasserts the tmpfiles modes anyway. No rebuild
+  # involved, so it works while a chat session is live.
+  environment.systemPackages = [
+    (pkgs.writeShellScriptBin "hermes-notes-edit" ''
+      set -eu
+
+      if [ "$#" -lt 1 ]; then
+        echo "usage: hermes-notes-edit grant|revoke|status" >&2
+        exit 2
+      fi
+
+      # Everything in the share except syncthing's own state.
+      walk() {
+        find /var/lib/notes -not -path '*/.stfolder*' -not -name '.stignore' "$@"
+      }
+
+      case "$1" in
+        grant)
+          # g+w on directories lets the agent replace files; on files, edit them in place.
+          # New folders synced in afterwards need another grant pass (status shows the damage).
+          walk -type d -exec chmod g+w '{}' +
+          walk -type f -exec chmod g+w '{}' +
+          echo "granted: hermes can edit every file in the notes share"
+          ;;
+        revoke)
+          walk -type d -exec chmod 2755 '{}' +
+          walk -type f -exec chmod 644 '{}' +
+          chmod 2775 /var/lib/notes/hermes
+          echo "revoked: back to the agent's own hermes/ folder only"
+          ;;
+        status)
+          if walk -mindepth 1 -type d -not -path '/var/lib/notes/hermes*' -perm -g+w | grep -q .; then
+            echo "GRANTED: group-writable beyond hermes/:"
+            walk -mindepth 1 -type d -perm -g+w
+          else
+            echo "locked: agent writes limited to /var/lib/notes/hermes"
+          fi
+          ;;
+        *)
+          echo "usage: hermes-notes-edit grant|revoke|status" >&2
+          exit 2
+          ;;
+      esac
+    '')
+  ];
+  # The agent's sandbox sees /var/lib/hermes and nothing else, so bind the share into it. The two
+  # Hermes units get it read-write at the mount, but write access is carried by the file modes
+  # instead: 2755 everywhere except /var/lib/notes/hermes (2775), so the kernel denies the agent
+  # create/replace/delete anywhere else while `hermes-notes-edit grant` (above) can still widen it
+  # for one session without a restart. matrix-reader keeps the hard read-only bind - it only ever
+  # reads notes. The `-` prefix keeps the units up if the folder is ever missing.
+  #
+  # One agent-side rule this trades away nothing on but cannot be enforced by modes: the units run
+  # UMask=0077, so a file the agent writes is 0600 and syncthing, reading as `other`, would never
+  # see it. The agent's notes workflow chmods its own files 644 as it writes them.
   systemd.services = let
-    notes-view = {
-      serviceConfig.BindReadOnlyPaths = ["-/var/lib/notes:/var/lib/hermes/notes"];
-    };
-  in
-    builtins.listToAttrs (map (name: {
-        inherit name;
-        value = notes-view;
-      }) [
-        "hermes-agent"
-        "hermes-backend"
-        "matrix-reader"
-      ]);
+    notes-bind = "-/var/lib/notes:/var/lib/hermes/notes";
+  in {
+    hermes-agent.serviceConfig.BindPaths = [notes-bind];
+    hermes-backend.serviceConfig.BindPaths = [notes-bind];
+    matrix-reader.serviceConfig.BindReadOnlyPaths = [notes-bind];
+  };
   services.tailscale = {
     extraSetFlags = ["--advertise-exit-node=true"];
     # extraSetFlags = ["--accept-dns=true" "--accept-routes=true"];
