@@ -116,7 +116,10 @@
     export PATH="$NPM_PREFIX/bin:$PATH"
 
     log "Installing @getpaseo/cli and the ${harness} CLI (skips when versions match)..."
-    npm install -g @getpaseo/cli@0.11.2 >/dev/null || die "npm install @getpaseo/cli failed"
+    # npm >= 11 silently skips install scripts unless allowlisted; @getpaseo/cli needs its
+    # node-pty/esbuild builds and the harness CLIs need their postinstall binary downloads.
+    as_flag() { npm help install 2>/dev/null | grep -q -- '--allow-scripts' && printf -- '--allow-scripts=%s' "$1"; }
+    npm install -g $(as_flag "esbuild,node-pty,msgpackr-extract") @getpaseo/cli@0.11.2 >/dev/null || die "npm install @getpaseo/cli failed"
     ${harnessInstall}
 
     # --- 3. Point the ${harness} CLI at the aqueduct endpoint ---------------------------------
@@ -164,7 +167,9 @@
     PASEO_RELAY_PUBLIC_ENDPOINT=$PASEO_RELAY_ENDPOINT
     PASEO_RELAY_USE_TLS=true
     PASEO_RELAY_PUBLIC_USE_TLS=true
-    PATH=$NPM_PREFIX/bin:\$HOME/.local/node/bin:\$PATH
+    # NOTE: systemd EnvironmentFile does NOT do shell expansion - the PATH below is baked in
+    # with real paths at install time, otherwise node lookups die with status 127.
+    PATH=$NPM_PREFIX/bin:$HOME/.local/node/bin:$PATH:/run/current-system/sw/bin:/usr/local/bin:/usr/bin:/bin
     EOF
     chmod 600 "$PASEO_HOME/env"
 
@@ -246,9 +251,33 @@
       || die "daemon did not come up (see $PASEO_HOME/daemon.log)"
 
     # --- 5. Pairing link ------------------------------------------------------------------------
-    PAIR_JSON="$(PASEO_HOME="$PASEO_HOME" PASEO_PASSWORD="$DAEMON_PASSWORD" \
-      "$NPM_PREFIX/bin/paseo" --host "tcp://127.0.0.1:6767?password=$DAEMON_PASSWORD" daemon pair --json 2>/dev/null)"
-    PAIR_URL="$(printf '%s' "$PAIR_JSON" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{console.log(JSON.parse(d).url||"")}catch{console.log("")}})')"
+    # /api/health answers before the WS layer finishes warming (early attempts 503) - retry.
+    PAIR_URL=""
+    for _ in $(seq 1 15); do
+      PAIR_JSON="$(PASEO_HOME="$PASEO_HOME" PASEO_PASSWORD="$DAEMON_PASSWORD" \
+        "$NPM_PREFIX/bin/paseo" --host "tcp://127.0.0.1:6767?password=$DAEMON_PASSWORD" daemon pair --json 2>/dev/null)"
+      PAIR_URL="$(printf '%s' "$PAIR_JSON" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{console.log(JSON.parse(d).url||"")}catch{console.log("")}})')"
+      [ -n "$PAIR_URL" ] && break
+      sleep 2
+    done
+
+    # Hand the link to hp's cockpit (token-gated); it shows up there as a one-click
+    # "add to hub" entry. Best-effort: offline machines just skip this.
+    if [ -n "$PAIR_URL" ]; then
+      MNAME="$(hostname 2>/dev/null || uname -n)"
+      MNAME="$(printf '%s' "$MNAME" | tr -c 'A-Za-z0-9._-' '-')"
+      # Full host profile -> the sync directory -> every dashboard (no click needed).
+      PROFILE="$(PAIR_URL="$PAIR_URL" DAEMON_PASSWORD="$DAEMON_PASSWORD" MNAME="$MNAME" node -e 'const o=JSON.parse(Buffer.from((process.env.PAIR_URL.split("#offer=")[1]||"").replace(/-/g,"+").replace(/_/g,"/"),"base64").toString());process.stdout.write(JSON.stringify({serverId:o.serverId,label:process.env.MNAME,password:process.env.DAEMON_PASSWORD,connections:[{type:"relay",relayEndpoint:o.relay.endpoint,useTls:o.relay.useTls!==false,daemonPublicKeyB64:o.daemonPublicKeyB64}],createdAt:new Date().toISOString()}))' 2>/dev/null || true)"
+      EXTRA="$( [ -n "$PROFILE" ] && printf ',"profile":%s' "$PROFILE" )"
+      REG_BODY="$(printf '{"token":"%s","name":"%s","url":"%s"%s}' "$INSTALL_TOKEN" "$MNAME" "$PAIR_URL" "$EXTRA")"
+      if curl -fsS -m 15 -X POST -H 'content-type: application/json' --data "$REG_BODY" \
+        "https://hp.tail546fb.ts.net:8443/paseo-api/register" >/dev/null 2>&1; then
+        log "Registered on the cockpit. It also joins every dashboard automatically now"
+        log "(shared host sync on paseo.hp - just reload the page there)."
+      else
+        log "(could not register on the cockpit - pair manually with the link below)"
+      fi
+    fi
 
     echo
     log "Done. ${harness} machine is up and talking to the relay via $PASEO_RELAY_ENDPOINT."
@@ -261,7 +290,7 @@
 
   opencodeInstall = ''
     npm ls -g opencode-ai --depth=0 2>/dev/null | grep -q opencode-ai \
-      || npm install -g opencode-ai >/dev/null || die "npm install opencode-ai failed"
+      || npm install -g $(as_flag "opencode-ai") opencode-ai >/dev/null || die "npm install opencode-ai failed"
   '';
 
   # opencode.json: custom OpenAI-compatible provider (opencode.ai/docs/providers), model
@@ -339,33 +368,126 @@
       body{font-family:system-ui,sans-serif;max-width:44rem;margin:2rem auto;padding:0 1rem;background:#101418;color:#dde}
       h1{font-size:1.4rem} h2{font-size:1.05rem;margin-top:2rem}
       a{color:#7cc4ff}
-      pre{background:#1c222a;padding:.7rem;border-radius:6px;overflow-x:auto;font-size:.85rem}
+      pre{background:#1c222a;padding:.7rem;padding-top:1.9rem;border-radius:6px;overflow-x:auto;font-size:.85rem;position:relative}
       .note{font-size:.85rem;color:#9ab}
       code{background:#1c222a;padding:.1rem .3rem;border-radius:3px}
+      button.copy{position:absolute;top:.3rem;right:.3rem;background:#2a3340;color:#bcd;border:1px solid #3a4655;border-radius:4px;font-size:.72rem;padding:.15rem .5rem;cursor:pointer}
+      button.copy:hover{background:#33404f}
+      button.copy.done{color:#8f8;border-color:#465}
+      .machines .entry{border:1px solid #2a3340;border-radius:6px;padding:.6rem .8rem;margin:.6rem 0;background:#161c22}
+      .machines a.add{display:inline-block;background:#274b6d;color:#dfe;padding:.3rem .7rem;border-radius:5px;text-decoration:none;font-size:.85rem}
+      button.del{background:none;border:1px solid #543;color:#c99;border-radius:5px;font-size:.75rem;padding:.25rem .55rem;margin-left:.6rem;cursor:pointer}
+      .empty{color:#9ab;font-size:.85rem}
     </style>
     <h1>Paseo cockpit <span class="note">(tailnet only)</span></h1>
 
     <h2>Dashboard</h2>
-    <p><a href="https://paseo.hp/">https://paseo.hp/</a> - or <a href="/paseo">/paseo</a> on this funnel origin.
-    Daemon password: keep it from ops (sops <code>paseo/daemon_password</code>).</p>
+    <p><a href="https://paseo.hp/">https://paseo.hp/</a> - or <a href="/paseo">/paseo</a> on this funnel origin.</p>
+    <p class="note">Hosts are shared between your dashboards now (storage sync, see below): add a host once on any
+    device and it appears on every device after a page reload. The sync only covers browsers that have loaded this
+    dashboard at least once while on the tailnet.</p>
+    <p>Daemon password (enter when the dashboard asks):</p>
+    <pre>$PASEO_DAEMON_PASSWORD</pre>
 
     <h2>Hub pairing link (phone/laptop &rarr; "paste pairing link")</h2>
     <pre>$PASEO_PAIRING_URL</pre>
-    <p class="note">Consumed once by an app? Re-issue on hp: <code>rm /var/lib/paseo-web/pairing-url &amp;&amp; systemctl restart paseo-pair.service</code> (re-renders the cockpit).</p>
+    <p>
+      <button id="remint" type="button" class="del">Mint new hub pairing link</button>
+      <span class="note" id="remintmsg">Each link is single-use. On a new device, mint a fresh one and paste it -
+      already-added devices keep working (the link was just delivery).</span>
+    </p>
 
     <h2>Add a harness machine</h2>
     <p class="note">Run on any Linux/macOS box (no Tailscale needed - it reaches the hub through the public relay):
     installs Node + <code>@getpaseo/cli</code> + the harness CLI, points it at the aqueduct model,
-    registers the machine with the relay, and prints its own pairing link.</p>
+    registers the machine with the relay, and posts its pairing link back here. Re-runnable.</p>
     <h3>opencode</h3>
     <pre>curl -fsSL https://hp.tail546fb.ts.net:8443/install/$PASEO_ENROLLMENT_TOKEN/opencode.sh | bash</pre>
     <h3>pi</h3>
     <pre>curl -fsSL https://hp.tail546fb.ts.net:8443/install/$PASEO_ENROLLMENT_TOKEN/pi.sh | bash</pre>
 
+    <h2>Waiting machines</h2>
+    <p class="note">Links posted by installers, not yet added to a dashboard. <strong>Add to hub</strong> opens the
+    hub dashboard with the pairing link pre-consumed (one click, no pasting; works in whichever browser
+    you keep the dashboard in - but only the first one: each link is single-use, so re-run the installer command
+    above on the machine for a fresh link per extra device). Entries expire after 7 days.</p>
+    <div class="machines">$PASEO_MACHINES_HTML</div>
+
     <h2>What this does / rotating secrets</h2>
     <p class="note">Architecture and rotation: <code>hosts/hp/RUNBOOK/RUNBOOK-paseo.md</code> in this repo.
     Enrollment token = the URL secret above (rotate: <code>sops set sops/secrets.yaml '["paseo"]["enrollment_token"]' ...</code> + rebuild - old URLs 404).
     Model key: <code>sops set ... '["paseo"]["enrollment_api_key"]' ...</code> + rebuild - re-rendered scripts pick it up (machines already installed keep the old key in their CLI config).</p>
+
+    <script>
+    document.querySelectorAll("pre").forEach(function (pre) {
+      var text = pre.innerText.trim();
+      var btn = document.createElement("button");
+      btn.className = "copy";
+      btn.type = "button";
+      btn.textContent = "copy";
+      btn.onclick = function () {
+        function done() {
+          btn.textContent = "copied!";
+          btn.classList.add("done");
+          setTimeout(function () { btn.textContent = "copy"; btn.classList.remove("done"); }, 1500);
+        }
+        function fallback() {
+          var ta = document.createElement("textarea");
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          try { document.execCommand("copy"); done(); } catch (e) {}
+          document.body.removeChild(ta);
+        }
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(text).then(done, fallback);
+        } else {
+          fallback();
+        }
+      };
+      pre.appendChild(btn);
+    });
+    </script>
+    <script>
+    var TOK = "$PASEO_ENROLLMENT_TOKEN";
+    document.querySelectorAll("button.del").forEach(function (b) {
+      b.onclick = function () {
+        fetch("/paseo-api/entry/" + b.getAttribute("data-id"), {
+          method: "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ token: TOK }),
+        }).then(function () { location.reload(); });
+      };
+    });
+    </script>
+    <script>
+    var remint = document.getElementById("remint");
+    if (remint) {
+      remint.onclick = function () {
+        var msg = document.getElementById("remintmsg");
+        remint.disabled = true;
+        msg.textContent = "minting...";
+        fetch("/paseo-api/remint-hub", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ token: TOK }),
+        }).then(function (r) {
+          return r.json().then(function (j) { return { r: r, j: j }; });
+        }).then(function (res) {
+          if (!res.r.ok) {
+            msg.textContent = "failed: " + JSON.stringify(res.j);
+            remint.disabled = false;
+            return;
+          }
+          msg.textContent = "minted - the cockpit re-renders within ~30s, then copy/paste the new link on the device";
+          setTimeout(function () { location.reload(); }, 35000);
+        }).catch(function (e) {
+          msg.textContent = "failed: " + e;
+          remint.disabled = false;
+        });
+      };
+    }
+    </script>
   '';
 
   nginxUrl = "http://127.0.0.1:${toString config.PORTS.paseoWeb}";
@@ -385,16 +507,409 @@
     exec ${paseoCli}/bin/paseo daemon run
   '';
 
+  # Tiny token-gated endpoint the installer scripts POST their pairing link to (and the
+  # cockpit's delete buttons DELETE from). Loopback only; nginx + the /paseo-api Traefik
+  # route expose it. Written files live in the registry dir; a systemd path unit re-renders
+  # the cockpit when it changes.
+  registryPy = pkgs.writeText "paseo-registry.py" ''
+    import json, os, re, subprocess, time
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    REG_DIR = os.environ["PASEO_REGISTRY_DIR"]
+    TOKEN_FILE = os.environ["PASEO_TOKEN_FILE"]
+    PORT = int(os.environ["PASEO_REGISTRY_PORT"])
+    CLI = os.environ["PASEO_CLI"]
+    DAEMON_URL = os.environ["PASEO_DAEMON_URL"]
+    PAIRING_FILE = os.environ["PASEO_PAIRING_FILE"]
+    # Cross-device localStorage directory written by the dashboard sync shim and the
+    # installers (dotfile: not picked up by the cockpit's *.json machine glob).
+    DIRECTORY = os.path.join(REG_DIR, ".directory")
+    REGISTRY_KEY = "@paseo:daemon-registry"
+    MAX_BODY = 8 * 1024 * 1024
+
+
+    def token():
+        with open(TOKEN_FILE) as f:
+            return f.read().strip()
+
+
+    def load_dir():
+        try:
+            with open(DIRECTORY) as f:
+                d = json.load(f)
+            return d if isinstance(d, dict) else {}
+        except Exception:
+            return {}
+
+
+    def save_dir(d):
+        tmp = DIRECTORY + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(d, f)
+        os.replace(tmp, DIRECTORY)
+
+
+    def valid_profile(p):
+        return (
+            isinstance(p, dict)
+            and isinstance(p.get("serverId"), str)
+            and p["serverId"]
+            and isinstance(p.get("connections"), list)
+            and len(p["connections"]) > 0
+        )
+
+
+    def upsert_profile(d, prof):
+        """Add/replace one host entry in the synced registry array (union by serverId, so
+        installer-injected entries are never lost when a device pushes its own array)."""
+        cur = []
+        try:
+            cur = json.loads(d.get(REGISTRY_KEY, {}).get("v", "[]"))
+        except Exception:
+            cur = []
+        if not isinstance(cur, list):
+            cur = []
+        by = {}
+        for h in cur + [prof]:
+            if isinstance(h, dict) and isinstance(h.get("serverId"), str) and h["serverId"]:
+                by[h["serverId"]] = h
+        arr = list(by.values())
+        ent = d.get(REGISTRY_KEY)
+        ts = ent.get("ts", 0) if isinstance(ent, dict) else 0
+        d[REGISTRY_KEY] = {"v": json.dumps(arr), "ts": ts}
+
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def _send(self, code, payload):
+            body = json.dumps(payload).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _json_body(self, limit=65536):
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                return None
+            if n <= 0 or n > limit:
+                return None
+            try:
+                return json.loads(self.rfile.read(n))
+            except Exception:
+                return None
+
+        def _authorized(self, body):
+            return isinstance(body, dict) and body.get("token") == token()
+
+        def _sync_hosts(self):
+            # Body: {"kv": {"<localStorage key>": "<value>"|null, ...}, "removed": ["<serverId>"]?}
+            # - pushed changed keys from a device's dashboard (null = key deleted).
+            # Per-key last-writer-wins, EXCEPT the host registry array, which is union-merged by
+            # serverId (device entries win over older server copies) minus any tombstoned
+            # serverIds, so an installer entry can't be lost to a stale device push but a host
+            # the user deleted stays deleted.
+            body = self._json_body(MAX_BODY)
+            if not isinstance(body, dict) or not isinstance(body.get("kv"), dict):
+                return self._send(400, {"error": "bad body"})
+            removed = {r for r in body.get("removed", []) if isinstance(r, str)}
+            now = time.time()
+            stamps, out = {}, {}
+            d = load_dir()
+            for k, v in list(body["kv"].items())[:200]:
+                if not isinstance(k, str) or not k or len(k) > 200 or k == "@paseo:sync-meta":
+                    continue
+                if v is None:
+                    d.pop(k, None)
+                    stamps[k] = now
+                    continue
+                if not isinstance(v, str) or len(v) > 1024 * 1024:
+                    continue
+                if k == REGISTRY_KEY:
+                    try:
+                        new = json.loads(v)
+                    except Exception:
+                        continue
+                    if not isinstance(new, list):
+                        continue
+                    try:
+                        cur = json.loads(d.get(REGISTRY_KEY, {}).get("v", "[]"))
+                    except Exception:
+                        cur = []
+                    if not isinstance(cur, list):
+                        cur = []
+                    by = {}
+                    for h in cur + new:
+                        if isinstance(h, dict) and isinstance(h.get("serverId"), str) and h["serverId"]:
+                            prev = by.get(h["serverId"])
+                            # The app's own stored profile omits the password (it keeps that
+                            # elsewhere); a device push must not discard a password the
+                            # installer/pair unit provided, or new devices get prompted.
+                            if prev and "password" in prev and not h.get("password"):
+                                h = {**h, "password": prev["password"]}
+                            by[h["serverId"]] = h
+                    for sid in removed:
+                        by.pop(sid, None)
+                    v = json.dumps(list(by.values()))
+                d[k] = {"v": v, "ts": now}
+                stamps[k] = now
+            save_dir(d)
+            return self._send(200, {"ok": True, "ts": stamps})
+
+        def _seed_hub(self):
+            # paseo-pair.service posts the hub's own profile once (loopback-only endpoint).
+            body = self._json_body()
+            prof = body.get("profile") if isinstance(body, dict) else None
+            if not valid_profile(prof):
+                return self._send(400, {"error": "bad profile"})
+            d = load_dir()
+            upsert_profile(d, prof)
+            save_dir(d)
+            return self._send(200, {"ok": True})
+
+        def _remint_hub(self):
+            # Fresh single-use offer for the local hub daemon; the cockpit re-renders it via
+            # its 30s timer (pairing-url is group-writable for this user). The password rides
+            # in the CLI argv for a moment - acceptable on this single-admin box, and the
+            # endpoint itself is enrollment-token gated.
+            pw = os.environ.get("PASEO_DAEMON_PASSWORD", "")
+            try:
+                out = subprocess.run(
+                    [CLI, "--host", f"{DAEMON_URL}?password={pw}", "daemon", "pair", "--json"],
+                    capture_output=True, text=True, timeout=30,
+                )
+            except Exception as e:
+                return self._send(500, {"error": f"cli spawn failed: {type(e).__name__}"})
+            if out.returncode != 0:
+                return self._send(502, {"error": (out.stderr or out.stdout)[:400]})
+            try:
+                url = json.loads(out.stdout)["url"]
+            except Exception:
+                return self._send(502, {"error": "no url in cli output"})
+            if not url.startswith("https://app.paseo.sh/#offer="):
+                return self._send(502, {"error": "unexpected url"})
+            try:
+                with open(PAIRING_FILE, "w") as f:
+                    f.write(url)
+            except OSError as e:
+                return self._send(500, {"error": str(e)})
+            return self._send(200, {"ok": True})
+
+        def do_GET(self):
+            # The sync shim's pull. Exposed only through the tailnet-only dashboard origin
+            # (the public /paseo-api/ nginx locations regex-allowlist register/remint/entry).
+            if self.path == "/hosts":
+                return self._send(200, {"hosts": load_dir()})
+            if self.path == "/health":
+                return self._send(200, {"ok": True})
+            return self._send(404, {"error": "not found"})
+
+        def do_POST(self):
+            if self.path == "/hosts":
+                return self._sync_hosts()
+            if self.path == "/seed-hub":
+                return self._seed_hub()
+            body = self._json_body()
+            if not self._authorized(body):
+                return self._send(403, {"error": "forbidden"})
+            if self.path == "/remint-hub":
+                return self._remint_hub()
+            if self.path != "/register":
+                return self._send(404, {"error": "not found"})
+            url = str(body.get("url", ""))
+            if not url.startswith("https://app.paseo.sh/#offer=") or len(url) > 4096:
+                return self._send(400, {"error": "bad url"})
+            name = re.sub(r"[^A-Za-z0-9._-]", "-", str(body.get("name") or "host"))[:40] or "host"
+            os.makedirs(REG_DIR, exist_ok=True)
+            fn = os.path.join(REG_DIR, f"{int(time.time())}-{name}.json")
+            with open(fn, "w") as f:
+                json.dump({"name": name, "url": url, "ts": int(time.time())}, f)
+            # Optional full host profile (installers send it): the sync shim makes the
+            # machine appear in every dashboard without any click.
+            prof = body.get("profile")
+            if prof is not None:
+                if not valid_profile(prof):
+                    return self._send(400, {"error": "bad profile"})
+                d = load_dir()
+                upsert_profile(d, prof)
+                save_dir(d)
+            return self._send(200, {"ok": True})
+
+        def do_DELETE(self):
+            body = self._json_body()
+            if not self._authorized(body):
+                return self._send(403, {"error": "forbidden"})
+            m = re.fullmatch(r"/entry/([A-Za-z0-9._-]{1,80})", self.path)
+            if not m:
+                return self._send(404, {"error": "not found"})
+            fn = os.path.realpath(os.path.join(REG_DIR, m.group(1)))
+            if not fn.startswith(os.path.realpath(REG_DIR) + os.sep):
+                return self._send(400, {"error": "bad path"})
+            try:
+                os.remove(fn)
+            except FileNotFoundError:
+                return self._send(404, {"error": "not found"})
+            return self._send(200, {"ok": True})
+
+        def log_message(self, *args):
+            pass
+
+
+    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+  '';
+
+  # Cross-device localStorage sync shim, injected into the dashboard's index.html by nginx.
+  # Pulls the shared directory (blocking, so the Expo bundle sees merged storage on first
+  # paint), then pushes changed/deleted keys back (debounced). Fully best-effort: any failure
+  # just leaves the dashboard device-local, which is the pre-shim behavior.
+  syncJs = pkgs.writeText "paseo-sync.js" ''
+    (function () {
+      var LS = window.localStorage;
+      var END = "/paseo-sync/hosts";
+      var META_KEY = "@paseo:sync-meta";
+      var REGK = "@paseo:daemon-registry";
+      var MAXV = 1048576;
+      function meta() { try { return JSON.parse(LS.getItem(META_KEY) || "{}"); } catch (e) { return {}; } }
+      function setMeta(m) { try { LS.setItem(META_KEY, JSON.stringify(m)); } catch (e) {} }
+      function sum(s) {
+        var h = 0, n = s.length, i, step = Math.max(1, n >> 10);
+        for (i = 0; i < n; i += step) { h = (h * 31 + s.charCodeAt(i)) >>> 0; }
+        return h + ":" + n;
+      }
+
+      // --- pull: blocking XHR so it finishes before the app bundle boots ---
+      try {
+        var x = new XMLHttpRequest();
+        x.open("GET", END, false);
+        x.send();
+        if (x.status === 200) {
+          var remote = JSON.parse(x.responseText).hosts || {}, m = meta(), k;
+          for (k in remote) {
+            if (k === META_KEY || !remote[k]) continue;
+            var rv = String(remote[k].v || ""), rt = remote[k].ts || 0;
+            if (k === REGK) m._reg = rv;
+            var loc = LS.getItem(k);
+            if (loc === rv) { m[k] = { s: sum(rv), ts: rt }; continue; }
+            // Take the remote value only for new keys or keys untouched locally since the
+            // last sync; a locally-modified key stays and gets pushed (server-side merge
+            // reconciles, and the host array additionally unions by serverId).
+            if (loc === null || (m[k] && m[k].s === sum(loc))) {
+              try { LS.setItem(k, rv); m[k] = { s: sum(rv), ts: rt }; } catch (e) {}
+            }
+          }
+          setMeta(m);
+        }
+      } catch (e) {}
+
+      // --- push: changed/new keys (+ deletions), debounced, async ---
+      var timer = null;
+      function schedule() { if (!timer) timer = setTimeout(flush, 1500); }
+      function flush() {
+        timer = null;
+        try {
+          var m = meta(), kv = {}, i, k, v;
+          for (i = 0; i < LS.length; i++) {
+            k = LS.key(i);
+            if (k === META_KEY) continue;
+            v = LS.getItem(k) || "";
+            if (v.length > MAXV) continue;
+            if (!m[k] || m[k].s !== sum(v)) kv[k] = v;
+          }
+          // Note: whole-key deletions are deliberately NEVER pushed (a cleared/blanked browser
+          // must not wipe the shared directory). Only value changes, new keys, and registry
+          // host-removal tombstones (below) sync.
+          // Tombstone hosts the user removed locally, so the server's union merge lets them go.
+          var removed = [];
+          if (typeof kv[REGK] === "string" && m._reg) {
+            try {
+              var prev = JSON.parse(m._reg), curArr = JSON.parse(kv[REGK]), ids = {};
+              for (var ci = 0; ci < curArr.length; ci++) if (curArr[ci] && curArr[ci].serverId) ids[curArr[ci].serverId] = 1;
+              for (var pi = 0; pi < prev.length; pi++) if (prev[pi] && prev[pi].serverId && !ids[prev[pi].serverId]) removed.push(prev[pi].serverId);
+            } catch (e) {}
+          }
+          if (!Object.keys(kv).length) return;
+          fetch(END, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ kv: kv, removed: removed }),
+          }).then(function (r) { return r.json(); }).then(function (r) {
+            if (!r || !r.ts) return;
+            var mm = meta();
+            for (var key in kv) {
+              if (kv[key] === null) { delete mm[key]; }
+              else { mm[key] = { s: sum(kv[key]), ts: r.ts[key] || 0 }; }
+            }
+            if (typeof kv[REGK] === "string") mm._reg = kv[REGK];
+            setMeta(mm);
+          }).catch(function () {});
+        } catch (e) {}
+      }
+
+      try {
+        var origSet = Storage.prototype.setItem;
+        Storage.prototype.setItem = function (k, v) {
+          var r = origSet.call(this, k, v);
+          if (this === LS && k !== META_KEY) schedule();
+          return r;
+        };
+      } catch (e) {}
+
+      // Heartbeat: also catches deletes and `localStorage.foo = ...` assignments
+      // (those bypass the prototype patch in some engines).
+      setInterval(schedule, 30000);
+      document.addEventListener("visibilitychange", function () {
+        if (document.visibilityState === "hidden") {
+          if (timer) { clearTimeout(timer); timer = null; }
+          flush();
+        }
+      });
+    })();
+  '';
+
   render = pkgs.writeShellScriptBin "paseo-web-render" ''
     set -euo pipefail
     # Secrets arrive via EnvironmentFile (sops template): PASEO_ENROLLMENT_TOKEN,
     # PASEO_ENROLLMENT_API_KEY. The hub pairing URL is written by paseo-pair.service.
     umask 027
-    export PATH=${lib.makeBinPath (with pkgs; [gettext coreutils findutils])}
+    export PATH=${lib.makeBinPath (with pkgs; [gettext coreutils findutils jq])}
+
+    # Timer-driven: skip when nothing the cockpit embeds changed (secrets, installer
+    # templates, pairing URL, registry). The hour bucket makes the 7-day entry expiry
+    # prune within an hour even when nothing else changes.
+    stamp=/var/lib/paseo-web/.render-hash
+    dyn="$( { cat /var/lib/paseo-web/pairing-url 2>/dev/null; cat /var/lib/paseo-web/registry/*.json 2>/dev/null; } | sort | md5sum | cut -d' ' -f1 || true)"
+    hash="$(printf '%s' "$(cat /run/secrets/rendered/paseo-web-render.env 2>/dev/null)|''${0}|${opencodeScriptTmpl}|${piScriptTmpl}|${cockpit}|$(date -u +%Y%m%d%H)|$dyn" | md5sum | cut -d' ' -f1)"
+    if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$hash" ] && [ -L "${webDir}/install" ] && [ -L "${webDir}/cockpit" ]; then
+      exit 0
+    fi
 
     pairing=""
     [ -s /var/lib/paseo-web/pairing-url ] && pairing="$(cat /var/lib/paseo-web/pairing-url)"
     export PASEO_PAIRING_URL="$pairing"
+
+    # Machines that installers registered but no dashboard has claimed yet. Entries older than
+    # 7 days are pruned here (writing to the registry dir re-triggers this unit once via the
+    # systemd path unit - the prune is then a no-op, so it does not loop).
+    machines=""
+    now="$(date +%s)"
+    for f in $(ls -r /var/lib/paseo-web/registry/*.json 2>/dev/null); do
+      ts="$(jq -r '.ts // 0' "$f")"
+      if [ $((now - ts)) -gt 604800 ]; then rm -f "$f"; continue; fi
+      name="$(jq -r '.name // "host"' "$f")"
+      url="$(jq -r '.url // ""' "$f")"
+      id="$(basename "$f")"
+      hub="https://paseo.hp''${url#https://app.paseo.sh}"
+      when="$(date -u -d "@$ts" '+%Y-%m-%d %H:%M UTC' 2>/dev/null || echo "$ts")"
+      machines="''${machines}<div class=\"entry\"><strong>$name</strong> <span class=\"note\">$when</span>"
+      machines="''${machines}<p><a class=\"add\" href=\"$hub\">add to hub dashboard</a>"
+      machines="''${machines}<button class=\"del\" data-id=\"$id\">delete</button></p>"
+      machines="''${machines}<pre>$url</pre></div>"
+    done
+    [ -n "$machines" ] || machines='<p class="empty">None waiting - run an installer and its pairing link shows up here.</p>'
+    export PASEO_MACHINES_HTML="$machines"
 
     rel="${webDir}/releases/$(date -u +%Y%m%dT%H%M%SZ)"
     mkdir -p "$rel/install/$PASEO_ENROLLMENT_TOKEN" "$rel/cockpit"
@@ -412,7 +927,7 @@
       chmod 0644 "$rel/install/$PASEO_ENROLLMENT_TOKEN/$name.sh"
     done
     # shellcheck disable=SC2016
-    envsubst '$PASEO_ENROLLMENT_TOKEN $PASEO_ENROLLMENT_API_KEY $PASEO_PAIRING_URL' <${cockpit} >"$rel/cockpit/index.html"
+    envsubst '$PASEO_ENROLLMENT_TOKEN $PASEO_ENROLLMENT_API_KEY $PASEO_PAIRING_URL $PASEO_MACHINES_HTML $PASEO_DAEMON_PASSWORD' <${cockpit} >"$rel/cockpit/index.html"
     # Pairing URL is hub-owner material: the cockpit tree itself stays group-readable for
     # nginx only; the token appears there by design (tailnet-only page).
     chmod 0640 "$rel/cockpit/index.html"
@@ -424,6 +939,8 @@
 
     # Keep the last three trees; prune only release dirs.
     find "${webDir}/releases" -mindepth 1 -maxdepth 1 -type d | sort | head -n -3 | xargs -r rm -rf
+
+    printf '%s' "$hash" > "$stamp"
   '';
 in {
   options.MODULES.services.paseo = {
@@ -486,6 +1003,14 @@ in {
       group = "paseo";
       description = "Paseo relay (Elixir)";
     };
+    users.users.paseo-registry = {
+      isSystemUser = true;
+      group = "paseo-registry";
+      # /var/lib/paseo-web itself is 0750 root:paseo-web - needed to reach the registry dir.
+      extraGroups = ["paseo-web"];
+      description = "Paseo pairing-link registry (installer POST endpoint)";
+    };
+    users.groups.paseo-registry = {};
     # nginx must read the rendered install tree + cockpit.
     users.users.nginx.extraGroups = ["paseo-web"];
 
@@ -493,6 +1018,7 @@ in {
       "d /var/lib/paseo 0700 paseo paseo - -"
       "d /var/lib/paseo-web 0750 root paseo-web - -"
       "d /var/lib/paseo-web/releases 0750 root paseo-web - -"
+      "d /var/lib/paseo-web/registry 0750 paseo-registry paseo-registry - -"
     ];
 
     # --- Secrets --------------------------------------------------------------------------------
@@ -517,8 +1043,12 @@ in {
         mode = "0440";
         restartUnits = ["paseo-relay.service"];
       };
-      # Read by root:root-render only; nginx never sees them raw.
-      "paseo/enrollment_token" = {};
+      # Read by root:root-render + the registry service (token check); nginx never sees it raw.
+      "paseo/enrollment_token" = {
+        owner = "root";
+        group = "paseo-registry";
+        mode = "0440";
+      };
       "paseo/enrollment_api_key" = {};
     };
 
@@ -527,8 +1057,20 @@ in {
       content = ''
         PASEO_ENROLLMENT_TOKEN=${config.sops.placeholder."paseo/enrollment_token"}
         PASEO_ENROLLMENT_API_KEY=${config.sops.placeholder."paseo/enrollment_api_key"}
+        PASEO_DAEMON_PASSWORD=${config.sops.placeholder."paseo/daemon_password"}
       '';
       restartUnits = ["paseo-web-render.service"];
+    };
+
+    # The registry mints hub pairing links on demand, so it needs the daemon password.
+    sops.templates."paseo-registry.env" = {
+      owner = "root";
+      group = "paseo-registry";
+      mode = "0440";
+      content = ''
+        PASEO_DAEMON_PASSWORD=${config.sops.placeholder."paseo/daemon_password"}
+      '';
+      restartUnits = ["paseo-registry.service"];
     };
 
     # --- Relay ------------------------------------------------------------------------------------
@@ -631,6 +1173,7 @@ in {
       };
       # Runs as root only because the password lives in the daemon's env file; the offer
       # itself is produced by the daemon over loopback and needs no home access.
+      path = [pkgs.curl];
       script = ''
         set -euo pipefail
         [ -s ${webDir}/pairing-url ] && exit 0
@@ -642,8 +1185,21 @@ in {
         url="$(${paseoCli}/bin/paseo --host "tcp://127.0.0.1:${toString config.PORTS.paseoDaemon}?password=$PASEO_PASSWORD" daemon pair --json \
           | ${pkgs.jq}/bin/jq -r '.url // empty')"
         [ -n "$url" ] || { echo "paseo pair returned no URL" >&2; exit 1; }
-        umask 027
-        printf '%s' "$url" > ${webDir}/pairing-url
+            umask 027
+            printf '%s' "$url" > ${webDir}/pairing-url
+            # Group-writable so the registry service can re-mint the link on demand (button).
+            chgrp paseo-web ${webDir}/pairing-url
+            chmod 0660 ${webDir}/pairing-url
+            # Seed the hub itself into the cross-device sync directory (loopback-only endpoint;
+            # registry may still be starting, hence the retry). Best-effort.
+            PROFILE="$(PASEO_PASSWORD="$PASEO_PASSWORD" ${pkgs.nodejs}/bin/node -e 'const fs=require("fs");const u=fs.readFileSync("${webDir}/pairing-url","utf8").trim();const o=JSON.parse(Buffer.from(u.slice(u.indexOf("#offer=")+7).replace(/-/g,"+").replace(/_/g,"/"),"base64").toString());process.stdout.write(JSON.stringify({profile:{serverId:o.serverId,label:"hp",password:process.env.PASEO_PASSWORD,connections:[{type:"relay",relayEndpoint:o.relay.endpoint,useTls:o.relay.useTls!==false,daemonPublicKeyB64:o.daemonPublicKeyB64}],createdAt:new Date().toISOString()}}))' 2>/dev/null || true)"
+            if [ -n "$PROFILE" ]; then
+              for _ in $(seq 1 5); do
+                curl -fsS -m 10 -X POST -H 'content-type: application/json' --data "$PROFILE" \
+                  http://127.0.0.1:${toString config.PORTS.paseoRegistry}/seed-hub >/dev/null 2>&1 && break
+                sleep 2
+              done
+            fi
       '';
     };
 
@@ -653,9 +1209,10 @@ in {
       wantedBy = ["multi-user.target"];
       after = ["paseo-pair.service" "paseo-daemon.service"];
       requires = ["paseo-pair.service"];
+      # No RemainAfterExit: the 30s re-render timer needs the unit to go inactive after each
+      # pass (OnUnitInactiveSec).
       serviceConfig = {
         Type = "oneshot";
-        RemainAfterExit = true;
       };
       script = ''
         set -a
@@ -668,9 +1225,97 @@ in {
       '';
     };
 
+    # Re-render the cockpit when anything it embeds changes (installer POSTs / cockpit deletes /
+    # 7-day prune). A path unit can't watch a directory's contents here, so a light timer
+    # re-runs the render script, which no-ops when a content hash is unchanged.
+    systemd.timers.paseo-web-render = {
+      wantedBy = ["timers.target"];
+      timerConfig = {
+        OnBootSec = "15s";
+        # Note: the service must NOT use RemainAfterExit for this to re-arm (an always-active
+        # unit never goes inactive, and OnUnitActiveSec stopped re-firing in practice).
+        OnUnitInactiveSec = "30s";
+        Unit = "paseo-web-render.service";
+      };
+    };
+
+    systemd.services.paseo-registry = {
+      description = "Paseo pairing-link registry (installer POST endpoint, token-gated)";
+      wantedBy = ["multi-user.target"];
+      after = ["network-online.target"];
+      wants = ["network-online.target"];
+      environment = {
+        PASEO_REGISTRY_DIR = "/var/lib/paseo-web/registry";
+        PASEO_TOKEN_FILE = config.sops.secrets."paseo/enrollment_token".path;
+        PASEO_REGISTRY_PORT = toString config.PORTS.paseoRegistry;
+        PASEO_CLI = "${paseoCli}/bin/paseo";
+        PASEO_DAEMON_URL = "tcp://127.0.0.1:${toString config.PORTS.paseoDaemon}";
+        PASEO_PAIRING_FILE = "/var/lib/paseo-web/pairing-url";
+        # The CLI writes scratch state under HOME; PrivateTmp makes it per-unit.
+        HOME = "/tmp";
+      };
+      serviceConfig = {
+        ExecStart = "${pkgs.python3}/bin/python3 ${registryPy}";
+        EnvironmentFile = config.sops.templates."paseo-registry.env".path;
+        User = "paseo-registry";
+        Group = "paseo-registry";
+        Restart = "always";
+        RestartSec = 5;
+        NoNewPrivileges = true;
+        PrivateTmp = true;
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        ReadWritePaths = ["/var/lib/paseo-web/registry" "/var/lib/paseo-web/pairing-url"];
+        SystemCallArchitectures = "native";
+        RestrictAddressFamilies = ["AF_INET"];
+        CapabilityBoundingSet = "";
+        LockPersonality = true;
+      };
+    };
+
     services.nginx = {
       enable = true;
+      # Dashboard origin (tailnet-only subdomain -> Traefik -> here). nginx sits in front of
+      # the daemon solely to inject the localStorage sync shim and expose its endpoints; the
+      # app itself (API + websockets) is proxied through untouched.
+      virtualHosts."paseo.hp" = {
+        listen = [
+          {
+            addr = "127.0.0.1";
+            port = config.PORTS.paseoWeb;
+          }
+        ];
+        locations."= /paseo-sync.js" = {
+          alias = "${syncJs}";
+          extraConfig = ''
+            default_type application/javascript;
+            add_header Cache-Control "no-store";
+          '';
+        };
+        # Sync directory (GET pull / POST push). Deliberately NOT reachable through the public
+        # /paseo-api/ allowlist below: localStorage holds host passwords.
+        locations."/paseo-sync/" = {
+          proxyPass = "http://127.0.0.1:${toString config.PORTS.paseoRegistry}/";
+          extraConfig = ''
+            client_max_body_size 8m;
+            add_header Cache-Control "no-store";
+          '';
+        };
+        locations."/" = {
+          proxyPass = "http://127.0.0.1:${toString config.PORTS.paseoDaemon}";
+          proxyWebsockets = true;
+          extraConfig = ''
+            proxy_read_timeout 3600s;
+            proxy_send_timeout 3600s;
+            # sub_filter needs the upstream to send the page uncompressed.
+            proxy_set_header Accept-Encoding "";
+            sub_filter '</head>' '<script src="/paseo-sync.js"></script></head>';
+            sub_filter_once on;
+          '';
+        };
+      };
       virtualHosts."paseo.internal" = {
+        default = true;
         listen = [
           {
             addr = "127.0.0.1";
@@ -680,8 +1325,8 @@ in {
         extraConfig = ''
           absolute_redirect off;
         '';
-        # /paseo on the funnel origin: the SPA has no base-path support (assets are absolute),
-        # so point at the proper subdomain origin instead of proxying with stripPrefix.
+        # Subdomain origin (paseo-c.hp): land straight on the cockpit.
+        locations."= /".return = "302 /paseo-c/";
         locations."= /paseo".return = "302 ${traefik.urlOf "paseo"}/";
         locations."= /paseo-c".return = "301 /paseo-c/";
         locations."/paseo-c/" = {
@@ -701,6 +1346,22 @@ in {
             try_files $uri =404;
           '';
         };
+        # Token-gated machine pairing-link registry (installer POSTs, cockpit DELETEs).
+        # Regex allowlist on purpose: the registry also serves the password-bearing sync
+        # directory at /hosts, which must stay reachable only via the tailnet-only dashboard
+        # origin. rewrite strips the /paseo-api prefix before proxying.
+        locations."~ ^/paseo-api/(register|remint-hub)$" = {
+          proxyPass = "http://127.0.0.1:${toString config.PORTS.paseoRegistry}";
+          extraConfig = ''
+            rewrite ^/paseo-api/(.*)$ /$1 break;
+          '';
+        };
+        locations."~ ^/paseo-api/entry/[A-Za-z0-9._-]+$" = {
+          proxyPass = "http://127.0.0.1:${toString config.PORTS.paseoRegistry}";
+          extraConfig = ''
+            rewrite ^/paseo-api/(.*)$ /$1 break;
+          '';
+        };
         locations."/" = {
           return = "404";
         };
@@ -709,9 +1370,14 @@ in {
 
     # --- Routing ---------------------------------------------------------------------------------
     # Dashboard: its own tailnet subdomain, cert from step-ca, DNS from dns.nix; nothing on this
-    # listener is ever reachable off the tailnet.
+    # listener is ever reachable off the tailnet. Served through nginx (see vhost paseo.hp) so
+    # the localStorage sync shim gets injected; the app itself is proxied to the daemon.
     MODULES.networking.traefik.enable = true;
-    MODULES.networking.traefik.services.paseo = "127.0.0.1:${toString config.PORTS.paseoDaemon}";
+    MODULES.networking.traefik.services.paseo = nginxUrl;
+    # Cockpit on its own subdomain too (paseo-c.hp); the /paseo-c/ funnel path stays for
+    # convenience. Subdomains are tailnet-only by nature: DNS only resolves on the tailnet and
+    # the step-ca cert isn't trusted externally.
+    MODULES.networking.traefik.services.paseo-c = "127.0.0.1:${toString config.PORTS.paseoWeb}";
 
     MODULES.networking.traefik.public = {
       enable = true;
@@ -734,6 +1400,12 @@ in {
           pathPrefix = "/install";
           target = nginxUrl;
         };
+        # Public too (remote installers POST their link); every request must carry the
+        # enrollment token in the JSON body - the endpoint is inert without it.
+        paseo-api = {
+          pathPrefix = "/paseo-api";
+          target = nginxUrl;
+        };
       };
     };
 
@@ -754,6 +1426,13 @@ in {
       href = "${traefik.urlOf "paseo"}/";
       icon = "${traefik.urlOf "paseo"}/favicon.svg";
       description = "Paseo agent control plane (hub)";
+    };
+
+    # traefik.services.paseo-c above already generates a homepage tile for it; this enriches
+    # that same entry (same attr name merges) with a description and the hub's favicon.
+    MODULES.services.homepage.services."paseo-c" = {
+      description = "Paseo cockpit (pairing link, installers)";
+      icon = "${traefik.urlOf "paseo"}/favicon.svg";
     };
   };
 }

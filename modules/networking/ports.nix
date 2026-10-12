@@ -48,6 +48,7 @@ in {
     paseoDaemon = 6767;
     paseoRelay = 8113;
     paseoWeb = 8114;
+    paseoRegistry = 8115;
     synapse = 8008;
     # mautrix bridges' appservice listeners - only Synapse on the same host connects to these.
     mautrixWhatsapp = 29318;
