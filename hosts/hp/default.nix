@@ -17,7 +17,12 @@
     {
       path = "/home/akos/notes";
       override_path = "/var/lib/notes";
-      copyOwnershipFromParent = true;
+      # copyOwnershipFromParent deliberately NOT set: it makes syncthing lchown pulled files to
+      # the parent dir's owner:group, which an unprivileged syncthing cannot do into a group it is
+      # not a member of (syncthing must never join `hermes`) -> every finalize fails with
+      # "copy owner from parent: lchown: invalid argument" and the folder retries forever. The
+      # 2755 setgid bit below already gives new files group=hermes through kernel inheritance,
+      # which is all the agent's read access needs.
       extra_devices = ["phone"];
       # git stays on legion5; hp only wants the markdown. Ignore patterns are per-device, so this
       # doesn't change what legion5 and the phone exchange with each other.
