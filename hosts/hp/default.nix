@@ -8,6 +8,47 @@
 
   MODULES.networking.tailscale.hostIP = "100.92.36.52";
   MODULES.services.syncthing.deviceID = "ST66PS2-5LYQY5J-LNI3FR4-3VLG7W3-F4ZHRS2-72NZMBG-QVWV2QD-6SB2DQF";
+  # The notes graph, down here so the Hermes agent can read it. `path` stays legion5's path on
+  # purpose: that string is the Syncthing folder ID *and* the peer-matching key (see
+  # MODULES.services.syncthing.shares), which is what wires hp into the folder legion5 and the phone
+  # already share. `override_path` is where hp keeps it. The phone is a direct peer too, so notes
+  # arrive even while legion5 is switched off.
+  MODULES.services.syncthing.shares = [
+    {
+      path = "/home/akos/notes";
+      override_path = "/var/lib/notes";
+      copyOwnershipFromParent = true;
+      extra_devices = ["phone"];
+      # git stays on legion5; hp only wants the markdown. Ignore patterns are per-device, so this
+      # doesn't change what legion5 and the phone exchange with each other.
+      ignorePatterns = ["/.git"];
+    }
+  ];
+  # hp's syncthing already runs as the `syncthing` uid for the grafana/prometheus shares, so the
+  # notes folder goes next to those instead of under /var/lib/hermes: reaching a share inside
+  # /var/lib/hermes would mean either the hermes group (2770 = *group writable*, so a network-facing
+  # daemon could delete the agent's own state) or an execute-only POSIX ACL, which this ZFS dataset
+  # does not support. It is world-readable for the same reason dashboardsDir is: the agent runs in a
+  # user namespace, where foreign uids show up as nobody and only the `other` bits carry.
+  systemd.tmpfiles.rules = ["d /var/lib/notes 2755 syncthing hermes - -"];
+  # The agent's sandbox sees /var/lib/hermes and nothing else, so bind the share into it -
+  # read-only, since a write here would only come back as an unreadable 0600 file (the units run
+  # with UMask=0077 and syncthing reads them as `other`). The `-` prefix keeps the units up if the
+  # folder is ever missing instead of failing the mount. hermes-agent, hermes-backend and
+  # matrix-reader are the three units that get /var/lib/hermes bound in today.
+  systemd.services = let
+    notes-view = {
+      serviceConfig.BindReadOnlyPaths = ["-/var/lib/notes:/var/lib/hermes/notes"];
+    };
+  in
+    builtins.listToAttrs (map (name: {
+        inherit name;
+        value = notes-view;
+      }) [
+        "hermes-agent"
+        "hermes-backend"
+        "matrix-reader"
+      ]);
   services.tailscale = {
     extraSetFlags = ["--advertise-exit-node=true"];
     # extraSetFlags = ["--accept-dns=true" "--accept-routes=true"];
