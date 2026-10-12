@@ -23,8 +23,6 @@ in {
     librechatMongo = 8101;
     litellm = 8095;
     loki = 8031;
-    mcpSwitchboardTunnel = 8096;
-    mcpSwitchboardPrivate = 8099;
     n8n = 8097;
     n8nSandbox = 8098;
     nextcloud = 8088;
@@ -43,6 +41,13 @@ in {
     webhook = 8109;
     hermesDashboard = 8110;
     outline = 8111;
+    # Hermes' Matrix reader MCP server - loopback only; both Hermes units connect to it (E2EE
+    # state means exactly one reader process may run, so it is a service rather than a stdio child).
+    matrixReader = 8112;
+    # Paseo (modules/services/paseo.nix) - loopback only.
+    paseoDaemon = 6767;
+    paseoRelay = 8113;
+    paseoWeb = 8114;
     synapse = 8008;
     # mautrix bridges' appservice listeners - only Synapse on the same host connects to these.
     mautrixWhatsapp = 29318;
@@ -88,10 +93,13 @@ in {
     # Traefik's `public` entry point (traefik.nix's `public` options). Registered here anyway so
     # the duplicate-port assertion below still catches a future collision.
     traefikPublicFunnel = 8443;
-    # Outline's own Funnel listener (modules/services/outline.nix): it needs a dedicated origin
-    # (no path-prefix support, unlike mdbook's route on traefikPublicFunnel above), so it gets
-    # the third of Funnel's three allowed ports instead of a path on the shared one.
-    outlinePublicFunnel = 10000;
+    # Funnel port for Paseo's self-hosted relay (modules/services/paseo.nix): the relay client
+    # dials a bare host:port with the protocol-fixed path /ws, so no path-prefix sharing of
+    # traefikPublicFunnel is possible and it gets the third of Funnel's three allowed ports.
+    # It used to belong to Outline's own Funnel listener (modules/services/outline.nix, since
+    # disabled on hp); outline.nix still points at it for the day Outline returns - re-enable
+    # would then need its own port, since Funnel allows no fourth.
+    paseoRelayFunnel = 10000;
     ipfsSwarm = 4001;
     mosquitto = 1883;
     dns = 53;

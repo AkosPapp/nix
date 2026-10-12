@@ -19,7 +19,7 @@
   # tailnet too, whereas the tailnet subdomain's step-ca certificate isn't trusted by an
   # off-tailnet browser, which is what left a public visitor's page silently hanging - loading a
   # websocket/asset from https://outline.hp that only resolves and is trusted on the tailnet.
-  publicOrigin = "https://${config.networking.fqdn}:${toString config.PORTS.outlinePublicFunnel}";
+  publicOrigin = "https://${config.networking.fqdn}:${toString config.PORTS.paseoRelayFunnel}";
   url =
     if cfg.public.enable
     then publicOrigin
@@ -103,7 +103,7 @@ in {
       outline-public = {
         type = "funnel";
         target = nginxUrl;
-        httpsPort = config.PORTS.outlinePublicFunnel;
+        httpsPort = config.PORTS.paseoRelayFunnel;
       };
     };
   };

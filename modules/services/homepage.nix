@@ -249,12 +249,6 @@ in {
       # the UI first.
       MODULES.services.homepage.services.open-webui.icon = "open-webui.png";
     })
-    (mkIf (cfg.enable && config.MODULES.services.mcp-switchboard.enable) {
-      MODULES.services.homepage.services.mcp-switchboard = {
-        icon = "${traefik.urlOf "mcp-switchboard"}/favicon.svg";
-        description = "MCP gateway/registry";
-      };
-    })
     (mkIf (cfg.enable && config.MODULES.services.omniroute.enable) {
       MODULES.services.homepage.services.omniroute = {
         icon = "${traefik.urlOf "omniroute"}/favicon.svg";

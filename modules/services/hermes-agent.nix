@@ -13,80 +13,13 @@
   traefik = config.MODULES.networking.traefik;
 
   hermesHome = "${hermes.stateDir}/.hermes";
-  outlook = cfg.outlook.address != null && cfg.outlook.clientId != null;
 
-  # Credentials the MCP servers read, handed in by systemd (LoadCredential) so neither unit needs
-  # /run/secrets - see the InaccessiblePaths note below. Both Hermes units start MCP servers
-  # (the gateway for Matrix chats, the backend for dashboard chats), each under its own name.
-  credentialPaths = name: lib.concatMapStringsSep ":" (u: "/run/credentials/${u}.service/${name}") ["hermes-agent" "hermes-backend"];
-  credentials = ["matrix_password:${config.sops.secrets.${matrix.botPasswordSecret}.path}"];
-
-  matrixReader =
-    pkgs.writers.writePython3Bin "matrix-reader" {
-      libraries = [pkgs.python3Packages.mcp];
-      flakeIgnore = ["E501"];
-    }
-    (builtins.readFile ./hermes-agent/matrix-reader.py);
-
-  outlookOauth =
-    pkgs.writers.writePython3Bin "outlook-oauth" {flakeIgnore = ["E501"];}
-    (builtins.replaceStrings ["@clientId@" "@tenant@" "@tokenFile@"] [
-        (toString cfg.outlook.clientId)
-        cfg.outlook.tenant
-        "${hermesHome}/outlook_token.json"
-      ]
-      (builtins.readFile ./hermes-agent/outlook-oauth.py));
-
-  # oauth2 pulls in keyring at the cargo level; the nixpkgs derivation only adds the dbus
-  # dependency keyring needs when it is listed itself. The keyring is never used at runtime -
-  # tokens come from outlook-oauth via access-token.cmd.
-  himalayaPkg = pkgs.himalaya.override {buildFeatures = ["oauth2" "keyring"];};
-
-  himalayaConfig = (pkgs.formats.toml {}).generate "himalaya.toml" {
-    accounts.outlook = {
-      default = true;
-      email = cfg.outlook.address;
-      folder.aliases = {
-        inbox = "INBOX";
-        sent = "Sent";
-        drafts = "Drafts";
-        trash = "Deleted";
-      };
-      backend = {
-        type = "imap";
-        host = "outlook.office365.com";
-        port = 993;
-        encryption.type = "tls";
-        login = cfg.outlook.address;
-        auth = oauth "https://outlook.office.com/IMAP.AccessAsUser.All";
-      };
-      message.send.backend = {
-        type = "smtp";
-        host = "smtp.office365.com";
-        port = 587;
-        encryption.type = "start-tls";
-        login = cfg.outlook.address;
-        auth = oauth "https://outlook.office.com/SMTP.Send";
-      };
-    };
-  };
-  oauth = scope: {
-    type = "oauth2";
-    scopes = ["offline_access" scope];
-    method = "xoauth2";
-    client-id = cfg.outlook.clientId;
-    auth-url = "https://login.microsoftonline.com/${cfg.outlook.tenant}/oauth2/v2.0/authorize";
-    token-url = "https://login.microsoftonline.com/${cfg.outlook.tenant}/oauth2/v2.0/token";
-    access-token.cmd = "${outlookOauth}/bin/outlook-oauth access";
-    # Required by himalaya's schema, but only used by its own interactive authorization flow,
-    # which never runs here (outlook-oauth does the login).
-    pkce = true;
-  };
-
-  # Hermes scrubs most of its environment before running terminal commands, so the config path
-  # is baked into the binary the agent calls rather than passed as HIMALAYA_CONFIG.
-  himalaya = pkgs.writeShellScriptBin "himalaya" ''
-    exec ${himalayaPkg}/bin/himalaya --config ${himalayaConfig} "$@"
+  # The reader runs as its own singleton service (systemd.services.matrix-reader below) and both
+  # Hermes units reach it as a URL-based MCP server over loopback. It must be a singleton: the
+  # E2EE state is one device per account plus one sqlite crypto store per session, and two
+  # processes logging in as the same device invalidate each other and race on that store.
+  matrixReader = pkgs.writeShellScriptBin "matrix-reader" ''
+    exec ${hermes.package.passthru.hermesVenv}/bin/python3 ${./hermes-agent/matrix-reader.py} "$@"
   '';
 
   # The sandbox both Hermes units run in - the gateway and the dashboard backend, which share
@@ -140,8 +73,9 @@
   dashboardHost = "127.0.0.2";
 
   # Loopback ports Hermes (and every command it runs) may connect to; everything else on this
-  # host, the tailnet and the LAN is refused - see the firewall block below.
-  allowedLocalPorts = [config.PORTS.litellm config.PORTS.synapse];
+  # host, the tailnet and the LAN is refused - see the firewall block below. LiteLLM, Synapse,
+  # and the Matrix reader MCP server (matrix-reader.service, also on the hermes uid).
+  allowedLocalPorts = [config.PORTS.litellm config.PORTS.synapse config.PORTS.matrixReader];
   privateRanges = ["127.0.0.0/8" "10.0.0.0/8" "172.16.0.0/12" "192.168.0.0/16" "100.64.0.0/10" "169.254.0.0/16"];
 in {
   options.MODULES.services.hermes-agent = {
@@ -193,30 +127,6 @@ in {
         an @mention in a bridged room can never start an agent turn.
       '';
     };
-
-    outlook = {
-      address = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = "Outlook / Microsoft 365 address himalaya reads. Null leaves himalaya out.";
-      };
-      clientId = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = ''
-          Application (client) ID of the Entra app registered for IMAP/SMTP OAuth2 (see the
-          runbook). Public, not a secret - it is sent in the clear in every OAuth request.
-        '';
-      };
-      tenant = mkOption {
-        type = types.str;
-        default = "common";
-        description = ''
-          Entra tenant for the OAuth endpoints: "consumers" for a personal outlook.com account,
-          your tenant ID for a work account, or "common" for either.
-        '';
-      };
-    };
   };
 
   config = mkIf cfg.enable {
@@ -229,8 +139,9 @@ in {
 
     services.hermes-agent = {
       enable = true;
-      # mautrix for the Matrix adapter. E2EE stays off (MATRIX_E2EE_MODE below), but the
-      # adapter is in this extra and not in the default set.
+      # mautrix[encryption] for the Matrix adapter and for the matrix-reader MCP server (both run
+      # on this venv). The gateway's own E2EE stays off (MATRIX_E2EE_MODE below); the reader is
+      # the one that decrypts.
       extraDependencyGroups = ["matrix"];
 
       settings = {
@@ -253,7 +164,7 @@ in {
           models."futurelab/qwen3.8-flash-next".context_length = 125000;
         };
         # Commands run in this service's own sandbox (see serviceConfig below), not a container:
-        # the Google and himalaya skills work by running commands, and a rootless container
+        # the Google skills work by running commands, and a rootless container
         # runtime would need the setuid helpers and user namespaces the sandbox takes away.
         terminal.backend = "local";
       };
@@ -275,15 +186,12 @@ in {
         };
       environmentFiles = [config.sops.templates."hermes.env".path];
 
+      # Loopback HTTP, not stdio: stdio would make every Hermes unit spawn its own reader, and
+      # two readers can't share one E2EE device/crypto store. The singleton is
+      # matrix-reader.service below.
       mcpServers.matrix-reader = {
-        command = "${matrixReader}/bin/matrix-reader";
-        env = {
-          MATRIX_HOMESERVER = matrix.clientUrl;
-          MATRIX_USER_ID = matrix.botId;
-          MATRIX_PASSWORD_FILES = credentialPaths "matrix_password";
-        };
+        url = "http://127.0.0.1:${toString config.PORTS.matrixReader}/mcp";
       };
-      extraPackages = lib.optionals outlook [himalaya outlookOauth];
 
       # Web UI at https://hermes.<host> (tailnet only, through Traefik), with a password.
       backend = {
@@ -299,10 +207,6 @@ in {
       # is never on the Funnel side.
       basic_auth.username = "akos";
     };
-
-    # For the one-time `sudo -u hermes outlook-oauth login` (runbook step 6). Its paths are
-    # baked in, so it only ever touches the hermes user's token file.
-    environment.systemPackages = lib.optional outlook outlookOauth;
 
     # Same underlying value as the bot's password in matrix.nix, rendered into the env file the
     # module copies into $HERMES_HOME/.env at activation (root does the copy, so root-owned).
@@ -330,14 +234,80 @@ in {
     };
 
     systemd.services.hermes-agent = {
-      after = [config.services.matrix-synapse.serviceUnit "litellm.service" "matrix-provision-users.service"];
-      wants = ["matrix-provision-users.service"];
+      after = [config.services.matrix-synapse.serviceUnit "litellm.service" "matrix-provision-users.service" "matrix-reader.service"];
+      wants = ["matrix-provision-users.service" "matrix-reader.service"];
 
-      serviceConfig = sandbox // {LoadCredential = credentials;};
+      serviceConfig = sandbox;
     };
 
     # The dashboard (web UI) - a separate process from the gateway, same HERMES_HOME.
-    systemd.services.hermes-backend.serviceConfig = sandbox // {LoadCredential = credentials;};
+    systemd.services.hermes-backend.serviceConfig = sandbox;
+    systemd.services.hermes-backend.wants = ["matrix-reader.service"];
+    systemd.services.hermes-backend.after = ["matrix-reader.service"];
+
+    # The Matrix reader: both E2EE sessions (@hermes read+DM-to-admin, @akos read-only), served
+    # as one MCP server over loopback HTTP so it can stay the single owner of those devices and
+    # their crypto stores. Runs as the hermes user, so the egress chain below covers it too
+    # (it may only reach Synapse on loopback, like everything else here).
+    systemd.services.matrix-reader = {
+      description = "Hermes Matrix reader (E2EE MCP server on loopback)";
+      after = [config.services.matrix-synapse.serviceUnit];
+      requires = [config.services.matrix-synapse.serviceUnit];
+      wantedBy = ["multi-user.target"];
+      environment = {
+        MATRIX_HOMESERVER = matrix.clientUrl;
+        MATRIX_BOT_USER_ID = matrix.botId;
+        MATRIX_BOT_PASSWORD_FILES = "/run/credentials/matrix-reader.service/matrix_password";
+        MATRIX_ADMIN_USER_ID = matrix.adminId;
+        MATRIX_ADMIN_PASSWORD_FILES = "/run/credentials/matrix-reader.service/matrix_admin_password";
+        # Olm/Megolm crypto stores for both reader sessions; must survive restarts.
+        MATRIX_READER_STATE_DIR = "${hermesHome}/matrix-reader";
+        MATRIX_READER_HTTP_PORT = toString config.PORTS.matrixReader;
+      };
+      serviceConfig = {
+        User = hermes.user;
+        LoadCredential = [
+          "matrix_password:${config.sops.secrets.${matrix.botPasswordSecret}.path}"
+          "matrix_admin_password:${config.sops.secrets.${matrix.adminPasswordSecret}.path}"
+        ];
+        ExecStart = "${matrixReader}/bin/matrix-reader";
+        Restart = "always";
+        RestartSec = "10s";
+        # The Hermes sandbox (see above), minus what is specific to running the agent itself.
+        # MemoryDenyWriteExecute stays off: python-olm's cffi glue does libffi calls at runtime.
+        UMask = "0077";
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        TemporaryFileSystem = ["/var/lib:ro"];
+        BindPaths = [hermes.stateDir];
+        InaccessiblePaths = ["-/run/secrets.d" "-/run/secrets" "-/run/docker.sock" "-/run/postgresql" "-/srv" "-/mnt" "-/media"];
+        PrivateTmp = true;
+        PrivateDevices = true;
+        PrivateIPC = true;
+        NoNewPrivileges = true;
+        ProtectKernelTunables = true;
+        ProtectKernelModules = true;
+        ProtectKernelLogs = true;
+        ProtectControlGroups = true;
+        ProtectClock = true;
+        ProtectHostname = true;
+        ProtectProc = "invisible";
+        ProcSubset = "pid";
+        RestrictSUIDSGID = true;
+        LockPersonality = true;
+        RestrictRealtime = true;
+        RestrictNamespaces = true;
+        MemoryDenyWriteExecute = false;
+        RemoveIPC = true;
+        KeyringMode = "private";
+        DevicePolicy = "closed";
+        CapabilityBoundingSet = "";
+        AmbientCapabilities = "";
+        SystemCallFilter = ["@system-service"];
+        SystemCallArchitectures = "native";
+        RestrictAddressFamilies = ["AF_INET" "AF_INET6" "AF_UNIX"];
+      };
+    };
 
     MODULES.networking.traefik.services.hermes = "${dashboardHost}:${toString config.PORTS.hermesDashboard}";
     # The dashboard refuses any Host header but the address it is bound to (its DNS-rebinding
@@ -345,8 +315,9 @@ in {
     services.traefik.dynamicConfigOptions.http.services.hermes.loadBalancer.passHostHeader = false;
 
     # Per-uid egress filter: the sandbox can't express "these loopback ports only", the
-    # firewall can. Applies to the gateway and every command the agent runs (same uid).
-    # LiteLLM and Synapse on loopback, DNS anywhere, and the public internet (Google,
+    # firewall can. Applies to the gateway and every command the agent runs (same uid), plus
+    # the matrix-reader service. LiteLLM, Synapse and the reader on loopback, DNS anywhere,
+    # and the public internet (Google,
     # Microsoft, the providers behind LiteLLM's key never see this host directly anyway).
     # Nothing else on this host, the tailnet or the LAN.
     networking.firewall.extraCommands = ''

@@ -8,7 +8,6 @@
 
   cfg = config.MODULES.services.librechat;
   litellm = config.MODULES.services.litellm;
-  switchboard = config.MODULES.services.mcp-switchboard;
 
   dataDir = "/var/lib/librechat";
 
@@ -37,30 +36,15 @@
         modelDisplayLabel = "LiteLLM";
       }
     ];
-
-    mcpServers = lib.optionalAttrs switchboard.enable {
-      switchboard = {
-        type = "streamable-http";
-        url = "http://127.0.0.1:${toString config.PORTS.mcpSwitchboardPrivate}/mcp";
-      };
-    };
-
-    # Without this, LibreChat's SSRF guard rejects the switchboard URL above outright ("Domain
-    # ... is not allowed"): loopback/private-IP MCP targets are blocked by default. This is the
-    # narrow per-address exemption list, not `mcpSettings.allowedDomains` - that one flips the
-    # field into strict-whitelist mode and would also block every public MCP server.
-    mcpSettings = lib.optionalAttrs switchboard.enable {
-      allowedAddresses = ["127.0.0.1:${toString config.PORTS.mcpSwitchboardPrivate}"];
-    };
   };
 in {
   options.MODULES.services.librechat = {
     enable = mkEnableOption ''
       LibreChat, a browser chat UI with native MCP tool support. Talks to this host's LiteLLM
-      gateway as a custom OpenAI-compatible endpoint and to the mcp-switchboard hub's /mcp
-      endpoint for tools - both over loopback, since all three run on this machine. A second,
-      independent chat UI alongside Open WebUI (open-webui.nix): Open WebUI stays the simple/
-      always-on one, this is for MCP-tool-driven chats.
+      gateway as a custom OpenAI-compatible endpoint over loopback. A second, independent chat
+      UI alongside Open WebUI (open-webui.nix): Open WebUI stays the simple/always-on one, this
+      is for MCP-tool-driven chats (declare MCP servers under `mcpServers` here if needed - the
+      mcp-switchboard hub that used to be wired in automatically was removed).
 
       Needs its own MongoDB (no auth, loopback-only - see mongoImage) and no Postgres/Redis/
       Meilisearch: search indexing and file-RAG are left off, so `.env`'s SEARCH stays false
@@ -78,9 +62,8 @@ in {
       default = "mongo:8.0.20@sha256:098862b1339f031900ca66cf8fef799e616d6324fa41b9a263f2ec899552c1ef";
       description = ''
         MongoDB image, matching the version LibreChat's own docker-compose.yml pins. Run with
-        `--noauth`: the same "not reachable is a stronger guarantee than a password" call as
-        mcp-switchboard's private listener - its port is loopback-only, and nothing outside this
-        module ever talks to it.
+        `--noauth`: "not reachable is a stronger guarantee than a password" - its port is
+        loopback-only, and nothing outside this module ever talks to it.
       '';
     };
 
@@ -193,9 +176,9 @@ in {
 
       environmentFiles = [config.sops.templates."librechat.env".path];
 
-      # --network=host: reaches LiteLLM, mcp-switchboard's private listener and its own Mongo
-      # container all via 127.0.0.1, the same call litellm.nix and n8n.nix make and for the same
-      # reason - no bridge network or host.docker.internal indirection needed.
+      # --network=host: reaches LiteLLM and its own Mongo container all via 127.0.0.1, the same
+      # call litellm.nix and n8n.nix make and for the same reason - no bridge network or
+      # host.docker.internal indirection needed.
       # --user=0:0: the image's default (non-root, per its Dockerfile's `USER node`) can't write
       # the bind-mounted ${dataDir}/{uploads,images,logs} owned root:root 0700 by the tmpfiles
       # rule above - EACCES on its own error log at boot. Same call as litellm.nix/n8n.nix, for
@@ -204,7 +187,7 @@ in {
     };
 
     systemd.services.librechat = {
-      after = ["librechat-mongodb.service"] ++ lib.optional switchboard.enable "mcp-switchboard.service";
+      after = ["librechat-mongodb.service"];
       requires = ["librechat-mongodb.service"];
     };
 

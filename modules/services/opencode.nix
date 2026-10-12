@@ -2,6 +2,7 @@
   config,
   lib,
   pkgs,
+  pkgs-unstable,
   ...
 }: let
   inherit (lib) mkEnableOption mkIf mkOption types;
@@ -20,6 +21,35 @@
           host can't know up front - e.g. an aggregate LiteLLM model_name that can resolve to
           different backends - in which case opencode falls back to its own default.
         '';
+      };
+
+      outputLength = mkOption {
+        type = types.nullOr types.int;
+        default = null;
+        example = 32768;
+        description = "Max output tokens; overrides the quarter-of-contextLength default. Needs contextLength.";
+      };
+
+      modalities = mkOption {
+        type = types.nullOr (types.attrsOf (types.listOf types.str));
+        default = null;
+        example = {
+          input = ["text" "image"];
+          output = ["text"];
+        };
+        description = "opencode's `modalities` for this model - what it may be sent and returns.";
+      };
+
+      options = mkOption {
+        type = types.attrsOf types.anything;
+        default = {};
+        description = "Extra request-body fields sent with every call to this model, opencode's per-model `options`.";
+      };
+
+      variants = mkOption {
+        type = types.attrsOf (types.attrsOf types.anything);
+        default = {};
+        description = "Named option sets (e.g. reasoning effort levels) selectable in opencode, merged over `options`.";
       };
     };
   };
@@ -130,7 +160,7 @@ in {
         group = "users";
       });
 
-    environment.systemPackages = [pkgs.opencode];
+    environment.systemPackages = [pkgs-unstable.opencode];
 
     # Not under /etc/opencode/: that directory is opencode's *managed* config, which outranks
     # every other source including a project's own opencode.json. OPENCODE_CONFIG sits below the
@@ -161,9 +191,15 @@ in {
               // lib.optionalAttrs (m.contextLength != null) {
                 limit = {
                   context = m.contextLength;
-                  output = lib.min 8192 (m.contextLength / 4);
+                  output =
+                    if m.outputLength != null
+                    then m.outputLength
+                    else lib.min 8192 (m.contextLength / 4);
                 };
-              })
+              }
+              // lib.optionalAttrs (m.modalities != null) {inherit (m) modalities;}
+              // lib.optionalAttrs (m.options != {}) {inherit (m) options;}
+              // lib.optionalAttrs (m.variants != {}) {inherit (m) variants;})
             p.models;
           })
           cfg.providers;

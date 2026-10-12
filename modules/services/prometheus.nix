@@ -395,10 +395,6 @@ in {
       };
     })
 
-    # mcp-switchboard's own NixOS module registers its own scrape job directly on
-    # services.prometheus.scrapeConfigs when MODULES.services.mcp-switchboard.metrics is on
-    # (see mcp-switchboard.nix's `prometheus.register`) - nothing to add here.
-
     (mkIf (cfg.enable && config.MODULES.services.n8n.enable && config.MODULES.services.n8n.metrics) {
       # n8n serves its own /metrics natively (N8N_METRICS=true in n8n.nix) with no auth of its
       # own - same shape as the traefik/syncthing/immich jobs above.

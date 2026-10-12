@@ -17,11 +17,9 @@ in {
     enable = mkEnableOption ''
       n8n, the agent-building web UI. Runs as a single Docker container with its own SQLite
       database. Its LLM calls go through this host's LiteLLM gateway (an "LiteLLM" OpenAI-
-      compatible credential, pre-created via n8n's REST API once apiKeySecret is set), and any
-      MCP server tunnelled into MODULES.services.mcp-switchboard becomes available to n8n's AI
-      Agent nodes as a tool through the hub's Streamable HTTP /mcp endpoint - point an MCP
-      Client Tool node at it (no credential needed: that endpoint is unauthenticated by design,
-      reachable only from the tailnet - see mcp-switchboard.nix).
+      compatible credential, pre-created via n8n's REST API once apiKeySecret is set). Point
+      n8n's MCP Client Tool nodes at any Streamable HTTP MCP endpoint you run here; the
+      mcp-switchboard hub that used to aggregate tunnelled MCP servers was removed entirely.
 
       Served by Traefik on its own subdomain (n8n.<host>): n8n's subpath support is unreliable
       as of n8n 2.x, and it needs the origin root.
@@ -247,8 +245,7 @@ in {
         [ownerHashEnvFile]
         ++ lib.optional aiSandbox.enable config.sops.templates."n8n-sandbox-client.env".path;
 
-      # --network=host: mcp-switchboard runs as a native systemd service, not a container, so
-      # this reaches both it and LiteLLM (litellm.nix, also --network=host) via 127.0.0.1 with
+      # --network=host: reaches LiteLLM (litellm.nix, also --network=host) via 127.0.0.1 with
       # no bridge network or host.docker.internal indirection needed.
       # Root in-container: same call as litellm.nix, for the same reason (the official image's
       # node uid isn't worth pinning a bind-mount owner to).

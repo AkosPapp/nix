@@ -83,12 +83,7 @@
   MODULES.services.litellm.futurelabEnable = true;
   MODULES.services.prometheus.enable = true;
 
-  # MCP gateway/registry: remote MCP servers (devcontainers, other hosts) tunnel their local
-  # stdio servers in over an outbound WebSocket (see mcp-switchboard.nix), and the hub aggregates
-  # whatever's currently connected behind one Streamable HTTP /mcp endpoint.
-  MODULES.services.mcp-switchboard.enable = true;
-  # Agent-building UI: LLM calls go through the gateway above, MCP tools through the switchboard
-  # hub's /mcp endpoint (n8n.nix). apiKeySecret stays unset until the one-time manual step
+  # Agent-building UI: LLM calls go through the gateway above (n8n.nix). apiKeySecret stays unset until the one-time manual step
   # n8n.nix's `apiKeySecret` option documents (create a Public API key from n8n's own UI, since
   # nothing can mint one before a human has logged in once) - until then it comes up with no
   # pre-created credentials, which is still a fully usable instance.
@@ -99,10 +94,15 @@
   # n8n-sandbox.nix's enable option before running this alongside anything else on this host.
   MODULES.services.n8n-sandbox.enable = true;
 
-  # Second chat UI, alongside Open WebUI: MCP tools through the same switchboard hub /mcp
-  # endpoint n8n uses above, native in LibreChat's own agent/tool support rather than n8n's
-  # workflow-node model - see librechat.nix.
+  # Second chat UI, alongside Open WebUI - see librechat.nix. (The mcp-switchboard hub that used
+  # to feed both this and n8n's MCP nodes was removed entirely; see git history.)
   MODULES.services.librechat.enable = true;
+
+  # Paseo control plane - see hosts/hp/RUNBOOK/RUNBOOK-paseo.md + modules/services/paseo.nix. The hub
+  # daemon serves https://paseo.hp (tailnet), the relay is the one public piece (Funnel port
+  # 10000), and https://hp.tail546fb.ts.net:8443/install/<token>/{opencode,pi}.sh bootstraps
+  # remote harness machines. Secrets: sops paseo/*.
+  MODULES.services.paseo.enable = true;
 
   # Personal agent stack - see RUNBOOK-hermes.md next to this file for the manual steps (sops
   # secrets, bridge logins, OAuth). A private Matrix server with federation off, reachable only
@@ -116,12 +116,6 @@
     slack.enable = true;
   };
   MODULES.services.hermes-agent.enable = true;
-  # Fill these in once the Entra app exists (runbook step 6) - himalaya stays out until then.
-  # MODULES.services.hermes-agent.outlook = {
-  #   address = "you@outlook.com";
-  #   clientId = "00000000-0000-0000-0000-000000000000";
-  #   tenant = "consumers";
-  # };
 
   # Outline was tried and dropped - not needed. Its data (Postgres's "outline" database,
   # /var/lib/outline) was removed by hand on the host; see git history for how it was set up if

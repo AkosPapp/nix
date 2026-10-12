@@ -50,6 +50,30 @@
       secret = cfg.botPasswordSecret;
     }
   ];
+
+  # bcrypt is what Synapse hashes passwords with; only the library is needed here.
+  pyBcrypt = pkgs.python3.withPackages (ps: [ps.bcrypt]);
+
+  # register_new_matrix_user --exists-ok skips existing accounts, so its password-file only
+  # ever applies at creation. Make the sops secret authoritative for live accounts too: verify
+  # the stored hash against the secret and rewrite it only when they disagree (idempotent -
+  # no writes once in sync). Runs as postgres, straight over the unix socket; the secret files
+  # come through LoadCredential so nothing needs root. Matches register's and Hermes'
+  # convention of a stripped password.
+  syncPassword = u: ''
+    current=$(${psql} -d ${dbName} -tA \
+      -c "SELECT password_hash FROM users WHERE name = '@${u.name}:${cfg.serverName}'")
+    if [ -z "$current" ]; then
+      echo "matrix: @${u.name}:${cfg.serverName} has no password hash" >&2
+      exit 1
+    fi
+    if ! ${pyBcrypt}/bin/python3 -c 'import bcrypt,sys; sys.exit(0 if bcrypt.checkpw(open(sys.argv[2],"rb").read().strip(), sys.argv[1].encode()) else 1)' "$current" "$CREDENTIALS_DIRECTORY/${u.name}_password"; then
+      new=$( ${pyBcrypt}/bin/python3 -c 'import bcrypt,sys; print(bcrypt.hashpw(open(sys.argv[1],"rb").read().strip(), bcrypt.gensalt(prefix=b"2b")).decode())' "$CREDENTIALS_DIRECTORY/${u.name}_password")
+      ${psql} -d ${dbName} -c \
+        "UPDATE users SET password_hash = '$new' WHERE name = '@${u.name}:${cfg.serverName}'" >/dev/null
+      echo "matrix: password for @${u.name}:${cfg.serverName} resynced from its sops secret"
+    fi
+  '';
 in {
   options.MODULES.services.matrix = {
     enable = mkEnableOption ''
@@ -186,6 +210,30 @@ in {
 
         enable_registration = false;
         allow_guest_access = false;
+        # The bridges ask this endpoint for the upload limit and refuse larger attachments
+        # ("media too large"), so this is effectively also the bridge attachment cap. 50M default.
+        max_upload_size = "200M";
+        # Login rate limiting is tuned per source address, and every client here is a local
+        # service (Hermes gateway, the Matrix reader's two sessions, the provisioning script)
+        # sharing one 127.0.0.1 bucket - the defaults starve them into permanent 429 loops on
+        # any restart storm. Registration is off, the port is loopback, and the only route in
+        # is Traefik, so the anti-brute-force budget can be generous.
+        # (per_second/burst_count are the keys Synapse's parser reads; unknown ones like the
+        # docs' api/burst are silently ignored and the defaults stay in force.)
+        rc_login = {
+          address = {
+            per_second = 0.5;
+            burst_count = 20;
+          };
+          account = {
+            per_second = 0.5;
+            burst_count = 20;
+          };
+          failed_attempts = {
+            per_second = 0.5;
+            burst_count = 20;
+          };
+        };
         # URL previews make the server fetch arbitrary links posted in rooms - including the
         # bridged ones - from inside the network. Not worth it here.
         url_preview_enabled = false;
@@ -261,6 +309,24 @@ in {
             ${clientUrl}
         '')
         provisionedUsers;
+    };
+
+    # Runs right after the accounts exist (or were found existing); see syncPassword above.
+    systemd.services.matrix-password-sync = {
+      description = "Align provisioned Matrix users' passwords with their sops secrets";
+      after = ["matrix-provision-users.service" "postgresql.target"];
+      requires = ["matrix-provision-users.service" "postgresql.target"];
+      wantedBy = ["multi-user.target"];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        User = "postgres";
+        LoadCredential = map (u: "${u.name}_password:${config.sops.secrets.${u.secret}.path}") provisionedUsers;
+        PrivateTmp = true;
+        ProtectSystem = "strict";
+        ProtectHome = true;
+      };
+      script = lib.concatMapStringsSep "\n" syncPassword provisionedUsers;
     };
 
     services.nginx = {

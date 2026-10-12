@@ -84,7 +84,32 @@
           baseURL = "https://litellm.hp/v1";
           apiKeySecret = "opencode/litellm_api_key";
           models = {
-            "futurelab/qwen3.8-flash-next" = {};
+            "futurelab/qwen3.8-flash-next" = let
+              effort = e: {
+                chat_template_kwargs = {
+                  thinking = true;
+                  reasoning_effort = e;
+                };
+              };
+            in {
+              contextLength = 262144;
+              outputLength = 32768;
+              modalities = {
+                input = ["text" "image" "video"];
+                output = ["text"];
+              };
+              options = effort "xhigh";
+              variants = {
+                # Variants merge over `options`, so "off" has to switch the base thinking flag off too.
+                off = {
+                  enable_thinking = false;
+                  chat_template_kwargs.thinking = false;
+                };
+                low = effort "low";
+                medium = effort "medium";
+                xhigh = effort "xhigh";
+              };
+            };
           };
         };
       };
@@ -247,5 +272,7 @@
 
     services.netbird.enable = true;
     services.netbird.clients.default.autoStart = true;
+    services.netbird.clients.default.environment.NB_DISABLE_DNS = "true";
+    services.netbird.clients.default.config.DisableDNS = true;
   };
 }
