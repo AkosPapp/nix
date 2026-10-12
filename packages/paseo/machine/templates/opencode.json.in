@@ -1,0 +1,18 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "paseo": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Paseo hub",
+      "options": {
+        "baseURL": "%%MODEL_BASE_URL%%",
+        "apiKey": "{env:PASEO_MODEL_API_KEY}"
+      },
+      "models": {
+        "%%MODEL_ID%%": { "name": "%%MODEL_ID%%" }
+      }
+    }
+  },
+  "model": "paseo/%%MODEL_ID%%",
+  "small_model": "paseo/%%MODEL_ID%%"
+}

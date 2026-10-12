@@ -1,0 +1,13 @@
+{
+  "$schema": "https://pi.dev/schemas/models.schema.json",
+  "providers": {
+    "paseo": {
+      "baseUrl": "%%MODEL_BASE_URL%%",
+      "api": "openai-completions",
+      "apiKey": "$PASEO_MODEL_API_KEY",
+      "models": [
+        { "id": "%%MODEL_ID%%" }
+      ]
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "daemon": {
+    "listen": "%%LISTEN%%",
+    "relay": {
+      "enabled": true,
+      "endpoint": "%%RELAY_ENDPOINT%%",
+      "publicEndpoint": "%%RELAY_ENDPOINT%%",
+      "useTls": %%RELAY_TLS%%,
+      "publicUseTls": %%RELAY_TLS%%
+    }
+  },
+  "features": {
+    "webUi": {
+      "enabled": true
+    }
+  }
+}
