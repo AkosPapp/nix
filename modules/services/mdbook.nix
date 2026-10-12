@@ -38,6 +38,15 @@
         exit 1
       fi
       chmod -R a+rX "$incoming/tree"
+
+      # Stable favicon aliases: the mdbook theme ships its favicons content-hashed
+      # (favicon-<hash>.svg/png), and every consumer of them outside the docs HTML itself
+      # (the homepage tile) would have to track the hash. Link stable names next to them.
+      for ext in svg png; do
+        target=$(find "$incoming/tree/html" -maxdepth 1 -type f -name "favicon-*.$ext" -print -quit)
+        [ -z "$target" ] || ln -sf "$(basename "$target")" "$incoming/tree/html/favicon.$ext"
+      done
+
       mv "$incoming/tree" "$release"
 
       ln -sfn "$release" .current.new

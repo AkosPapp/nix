@@ -12,6 +12,16 @@
   paseoCli = pkgs.callPackage ../../packages/paseo/cli.nix {};
   paseoRelay = pkgs.callPackage ../../packages/paseo/relay.nix {};
 
+  # The hub's static logo, straight out of the daemon's bundled web UI (what it serves at
+  # <hub>/favicon.ico - there is no favicon.svg there: that path falls through to the SPA's
+  # index.html). The app swaps its own tab favicon for state variants (favicon-dark-running
+  # etc.) at runtime, so this plain one is the only sane static icon; the cockpit page and the
+  # homepage tiles use it.
+  paseoFavicon = "${paseoCli}/lib/node_modules/@getpaseo/cli/node_modules/@getpaseo/server/dist/server/web-ui/favicon.ico";
+
+  # The same icon as a URL, for things that fetch it over HTTP (homepage tiles).
+  paseoFaviconUrl = "${traefik.urlOf "paseo"}/favicon.ico";
+
   # The ONLY publicly reachable Paseo component. host:port because the daemon/clients build
   # `wss://<endpoint>/ws` and the path is protocol-fixed (protocol/src/daemon-endpoints.ts);
   # there is no way to hang the relay off the shared 8443 funnel under a sub-path, so it gets
@@ -364,6 +374,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Paseo cockpit</title>
+    <link rel="icon" href="favicon.ico">
     <style>
       body{font-family:system-ui,sans-serif;max-width:44rem;margin:2rem auto;padding:0 1rem;background:#101418;color:#dde}
       h1{font-size:1.4rem} h2{font-size:1.05rem;margin-top:2rem}
@@ -890,7 +901,7 @@
     # prune within an hour even when nothing else changes.
     stamp=/var/lib/paseo-web/.render-hash
     dyn="$( { cat /var/lib/paseo-web/pairing-url 2>/dev/null; cat /var/lib/paseo-web/hermes-pairing-url 2>/dev/null; cat /var/lib/paseo-web/registry/*.json 2>/dev/null; } | sort | md5sum | cut -d' ' -f1 || true)"
-    hash="$(printf '%s' "$(cat /run/secrets/rendered/paseo-web-render.env 2>/dev/null)|''${0}|${opencodeScriptTmpl}|${piScriptTmpl}|${cockpit}|$(date -u +%Y%m%d%H)|$dyn" | md5sum | cut -d' ' -f1)"
+    hash="$(printf '%s' "$(cat /run/secrets/rendered/paseo-web-render.env 2>/dev/null)|''${0}|${opencodeScriptTmpl}|${piScriptTmpl}|${cockpit}|${paseoFavicon}|$(date -u +%Y%m%d%H)|$dyn" | md5sum | cut -d' ' -f1)"
     if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$hash" ] && [ -L "${webDir}/install" ] && [ -L "${webDir}/cockpit" ]; then
       exit 0
     fi
@@ -944,6 +955,9 @@
     done
     # shellcheck disable=SC2016
     envsubst '$PASEO_ENROLLMENT_TOKEN $PASEO_ENROLLMENT_API_KEY $PASEO_PAIRING_URL $PASEO_MACHINES_HTML $PASEO_DAEMON_PASSWORD $PASEO_HERMES_PAIRING_HTML' <${cockpit} >"$rel/cockpit/index.html"
+    # The cockpit's <link rel="icon"> is relative, so it resolves under /paseo-c/ on every
+    # origin that serves the page (subdomain and funnel path alike) - served from here.
+    install -m 0644 ${paseoFavicon} "$rel/cockpit/favicon.ico"
     # Pairing URL is hub-owner material: the cockpit tree itself stays group-readable for
     # nginx only; the token appears there by design (tailnet-only page).
     chmod 0640 "$rel/cockpit/index.html"
@@ -1440,7 +1454,7 @@ in {
 
     MODULES.services.homepage.services.paseo = {
       href = "${traefik.urlOf "paseo"}/";
-      icon = "${traefik.urlOf "paseo"}/favicon.svg";
+      icon = paseoFaviconUrl;
       description = "Paseo agent control plane (hub)";
     };
 
@@ -1448,7 +1462,7 @@ in {
     # that same entry (same attr name merges) with a description and the hub's favicon.
     MODULES.services.homepage.services."paseo-c" = {
       description = "Paseo cockpit (pairing link, installers)";
-      icon = "${traefik.urlOf "paseo"}/favicon.svg";
+      icon = paseoFaviconUrl;
     };
   };
 }

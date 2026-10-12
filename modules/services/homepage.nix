@@ -285,7 +285,10 @@ in {
     (mkIf (cfg.enable && config.MODULES.services.mdbook.enable) {
       MODULES.services.homepage.services.mdbook = {
         href = traefik.public.urlOf "/mdbook/";
-        icon = "mdi-book-open-page-variant";
+        # The docs' own favicon (mdbook.nix symlinks this stable name next to the theme's
+        # content-hashed ones). Behind the login gate, but tile icons load in the browser,
+        # which carries the /mdbook session cookie.
+        icon = traefik.public.urlOf "/mdbook/favicon.svg";
         description = "Docs (public, robo4you login)";
       };
     })
@@ -304,9 +307,10 @@ in {
       };
     })
     (mkIf (cfg.enable && config.MODULES.services.hermes-agent.enable) {
-      # The dashboard's own favicon sits behind its login, so a generic icon.
+      # The dashboard serves its own favicon unauthenticated (only the app itself needs the
+      # password), so link it straight.
       MODULES.services.homepage.services.hermes = {
-        icon = "mdi-robot-outline";
+        icon = "${traefik.urlOf "hermes"}/favicon.ico";
         description = "Hermes agent dashboard";
       };
     })
