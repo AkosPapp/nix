@@ -300,7 +300,11 @@ psi_lock_acquire() {
   eval "exec 9>\"\$PSI_LOCK\"" || psi_die "cannot open lock file $PSI_LOCK"
   if flock -n 9; then
     PSI_LOCKED=1
-    : >"&9" 2>/dev/null || true
+    # Heartbeat for psi_lock_holder_names: the pid + phase of whoever holds the lock.
+    # No truncation first: exec 9> above already opened it at offset 0, and the old
+    # `: >"&9"` on this line was not a truncation of that fd - quoting the & makes it a
+    # *filename*, so every install silently dropped an empty file named "&9" in whatever
+    # directory it happened to be run from.
     printf '%s %s\n' "$$" "${PSI_PHASE:-start}" >&9 2>/dev/null || true
     return 0
   fi
