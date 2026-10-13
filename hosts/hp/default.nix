@@ -3,7 +3,17 @@
   pkgs,
   lib,
   ...
-}: {
+}: let
+  # PDF and JSON tooling for the Hermes agent, its cron jobs, and root's shell.
+  # enableLanguages must be pinned: the tesseract wrapper's default is *every*
+  # language (~1 GB of traineddata). eng is mandatory alongside (tessdata bug).
+  agentTools = with pkgs; [
+    poppler-utils # pdftotext, pdfimages, pdfinfo (attr renamed from poppler_utils)
+    pdfgrep
+    jq
+    (tesseract.override {enableLanguages = ["eng" "deu"];}) # scanned-PDF OCR, German
+  ];
+in {
   imports = [./hardware-configuration.nix];
 
   MODULES.networking.tailscale.hostIP = "100.92.36.52";
@@ -46,49 +56,51 @@
   # its sandbox and must not gain any: broad write access then exists only between an explicit
   # `grant` and the next `revoke`, and a reboot reasserts the tmpfiles modes anyway. No rebuild
   # involved, so it works while a chat session is live.
-  environment.systemPackages = [
-    (pkgs.writeShellScriptBin "hermes-notes-edit" ''
-      set -eu
+  environment.systemPackages =
+    [
+      (pkgs.writeShellScriptBin "hermes-notes-edit" ''
+        set -eu
 
-      if [ "$#" -lt 1 ]; then
-        echo "usage: hermes-notes-edit grant|revoke|status" >&2
-        exit 2
-      fi
-
-      # Everything in the share except syncthing's own state.
-      walk() {
-        find /var/lib/notes -not -path '*/.stfolder*' -not -name '.stignore' "$@"
-      }
-
-      case "$1" in
-        grant)
-          # g+w on directories lets the agent replace files; on files, edit them in place.
-          # New folders synced in afterwards need another grant pass (status shows the damage).
-          walk -type d -exec chmod g+w '{}' +
-          walk -type f -exec chmod g+w '{}' +
-          echo "granted: hermes can edit every file in the notes share"
-          ;;
-        revoke)
-          walk -type d -exec chmod 2755 '{}' +
-          walk -type f -exec chmod 644 '{}' +
-          chmod 2775 /var/lib/notes/hermes
-          echo "revoked: back to the agent's own hermes/ folder only"
-          ;;
-        status)
-          if walk -mindepth 1 -type d -not -path '/var/lib/notes/hermes*' -perm -g+w | grep -q .; then
-            echo "GRANTED: group-writable beyond hermes/:"
-            walk -mindepth 1 -type d -perm -g+w
-          else
-            echo "locked: agent writes limited to /var/lib/notes/hermes"
-          fi
-          ;;
-        *)
+        if [ "$#" -lt 1 ]; then
           echo "usage: hermes-notes-edit grant|revoke|status" >&2
           exit 2
-          ;;
-      esac
-    '')
-  ];
+        fi
+
+        # Everything in the share except syncthing's own state.
+        walk() {
+          find /var/lib/notes -not -path '*/.stfolder*' -not -name '.stignore' "$@"
+        }
+
+        case "$1" in
+          grant)
+            # g+w on directories lets the agent replace files; on files, edit them in place.
+            # New folders synced in afterwards need another grant pass (status shows the damage).
+            walk -type d -exec chmod g+w '{}' +
+            walk -type f -exec chmod g+w '{}' +
+            echo "granted: hermes can edit every file in the notes share"
+            ;;
+          revoke)
+            walk -type d -exec chmod 2755 '{}' +
+            walk -type f -exec chmod 644 '{}' +
+            chmod 2775 /var/lib/notes/hermes
+            echo "revoked: back to the agent's own hermes/ folder only"
+            ;;
+          status)
+            if walk -mindepth 1 -type d -not -path '/var/lib/notes/hermes*' -perm -g+w | grep -q .; then
+              echo "GRANTED: group-writable beyond hermes/:"
+              walk -mindepth 1 -type d -perm -g+w
+            else
+              echo "locked: agent writes limited to /var/lib/notes/hermes"
+            fi
+            ;;
+          *)
+            echo "usage: hermes-notes-edit grant|revoke|status" >&2
+            exit 2
+            ;;
+        esac
+      '')
+    ]
+    ++ agentTools;
   # The agent's sandbox sees /var/lib/hermes and nothing else, so bind the share into it. The two
   # Hermes units get it read-write at the mount, but write access is carried by the file modes
   # instead: 2755 everywhere except /var/lib/notes/hermes (2775), so the kernel denies the agent
@@ -102,6 +114,11 @@
   systemd.services = let
     notes-bind = "-/var/lib/notes:/var/lib/hermes/notes";
   in {
+    # The Hermes units run with a closed PATH; environment.systemPackages is NOT in
+    # it, so every tool the agent's terminal() or cron shells may execute has to be
+    # listed on the unit itself (the systemd module appends these to the unit PATH).
+    hermes-agent.path = agentTools;
+    hermes-backend.path = agentTools;
     hermes-agent.serviceConfig.BindPaths = [notes-bind];
     hermes-backend.serviceConfig.BindPaths = [notes-bind];
     matrix-reader.serviceConfig.BindReadOnlyPaths = [notes-bind];
