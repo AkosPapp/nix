@@ -1,11 +1,66 @@
 {
   config,
   lib,
+  pkgs,
   ...
 }: let
   inherit (lib) mkEnableOption mkIf mkOption types;
 
   cfg = config.MODULES.services.firefly-iii;
+
+  fireflyV3I18nGen = pkgs.writeText "ff3-json-translations.php" ''
+    <?php
+    declare(strict_types=1);
+
+    // Mirrors JC5/firefly-iii-dev app/Command/GenLanguageJson.php for version v3:
+    // builds public/v3/i18n/<locale>.json from config/translations.php + resources/lang/.
+
+    $root = $argv[1];
+    $cfg  = require $root . '/config/translations.php';
+
+    function enString(string $root, string $file, string $key): string
+    {
+        $eFileName = sprintf('%s/resources/lang/en_US/%s.php', $root, $file);
+        if (!file_exists($eFileName) || !is_file($eFileName)) {
+            return sprintf('(!%s.%s!)', $file, $key);
+        }
+        $loadLanguage = require $eFileName;
+        if (!array_key_exists($key, $loadLanguage)) {
+            return sprintf('(%s.%s)', $file, $key);
+        }
+        return (string) $loadLanguage[$key];
+    }
+
+    foreach ($cfg['languages'] as $language) {
+        $content = [];
+        foreach ($cfg['json']['v3'] as $file => $strings) {
+            $eFileName = sprintf('%s/resources/lang/%s/%s.php', $root, $language, $file);
+            if (!file_exists($eFileName) || !is_file($eFileName)) {
+                $content[$file] = [];
+                continue;
+            }
+            $loadLanguage = require $eFileName;
+            $ns           = [];
+            foreach (array_unique($strings) as $key) {
+                $translation = $loadLanguage[$key] ?? false;
+                if (false === $translation) {
+                    $translation = enString($root, $file, $key);
+                }
+                $ns[$key] = (string) $translation;
+            }
+            $content[$file] = $ns;
+        }
+        if (!array_key_exists('config', $content) || [] === $content['config']) {
+            continue;
+        }
+        $code = $content['config']['html_language'];
+        $json = json_encode($content, JSON_PRETTY_PRINT, 16);
+        $dash = str_replace('_', '-', $language);
+        foreach (array_unique([$code, $dash]) as $dest) {
+            file_put_contents(sprintf('%s/public/v3/i18n/%s.json', $root, $dest), $json);
+        }
+    }
+  '';
 
   # Firefly III's own user/database name. The nixpkgs module only creates the system user when
   # `services.firefly-iii.user` is left at this default, and Postgres' default `local all all peer`
@@ -49,6 +104,24 @@ in {
       enable = true;
       enableNginx = true;
       virtualHost = "firefly-iii";
+
+      # Upstream generates public/v3/i18n/<locale>.json in its release pipeline only
+      # (resources/lang PHP -> JSON, gitignored, committed by nothing), and nixpkgs never runs
+      # that step - worse, the release tarball it *does* download for resources/lang is the old
+      # v6.7.7 asset which has no public/v3 at all. The v3 frontend fetches those JSON files at
+      # runtime; on the 404 i18next hands back raw keys, date-fns gets 'config.month_and_day_fns'
+      # as a format string, throws, and every dashboard chart tick renders "(DATE ERROR)" while
+      # tooltips leak 'firefly.*' keys. Regenerate the files here from the same sources upstream
+      # uses - $out/config/translations.php (list of languages + expected strings per namespace)
+      # and $out/resources/lang - mirroring JC5/firefly-iii-dev's GenLanguageJson.
+      package = pkgs.firefly-iii.overrideAttrs (final: prev: {
+        postInstall =
+          prev.postInstall
+          + ''
+            chmod -R u+w $out/public/v3/i18n
+            php ${fireflyV3I18nGen} "$out"
+          '';
+      });
 
       settings = {
         APP_KEY_FILE = config.sops.secrets."firefly-iii/app-key".path;
