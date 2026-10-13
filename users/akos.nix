@@ -126,6 +126,12 @@
       # helpful tools
       starship
       ripgrep
+      # pi on PATH for interactive use - the same package (same unstable pin) the
+      # paseo-machine daemon drives; its litellm model config (~/.pi/agent/models.json)
+      # is written at service start by MODULES.services.paseo-machine. opencode comes from
+      # MODULES.services.opencode, whose /etc/opencode.json + $OPENCODE_CONFIG already
+      # registers the same litellm gateway for the shells.
+      pkgs-unstable.pi-coding-agent
       httm
       mpv
       fd

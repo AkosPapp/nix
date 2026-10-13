@@ -113,6 +113,28 @@ in {
   MODULES.hardware.nvidia.enable = true;
   MODULES.hardware.perifirals.mice.openmouse.enable = true;
   USERS.akos.enable = true;
+  # Paseo harness machine, declaratively - the twin of the `curl .../install/<token>/pi.sh |
+  # bash` installer (leftovers from it: bash packages/paseo/machine/cleanup-home.sh). A Paseo
+  # daemon runs as akos, dials out to hp's relay and registers itself on hp's cockpit
+  # automatically; harnesses are opted into individually per user. akos is always on the
+  # tailnet, so both harnesses use the same LiteLLM gateway as the interactive setup
+  # (MODULES.services.opencode in users/akos.nix): same provider id, model and sops key, so
+  # the configs the daemon writes (~/.pi/agent/models.json, ~/.config/opencode/opencode.json)
+  # match what the shells already use - pi/opencode on a prompt work identically by hand.
+  # If the script's user unit is still around, retire it first:
+  #   systemctl --user disable --now paseo && rm ~/.config/systemd/user/paseo.service
+  MODULES.services.paseo-machine = {
+    enable = true;
+    modelBaseUrl = "https://litellm.hp/v1";
+    modelProvider = "litellm";
+    modelProviderLabel = "LiteLLM (hp)";
+    modelId = "futurelab/qwen3.8-flash-next";
+    modelApiKeySecret = "opencode/litellm_api_key";
+    users.akos.harnesses = {
+      pi.enable = true;
+      opencode.enable = true;
+    };
+  };
   MODULES.networking.tailscale.hostIP = "100.126.232.60";
   MODULES.services.syncthing.deviceID = "U6G2UZ4-RX5WVKR-5MAIXOA-4GX6ZL6-PGTAPWD-KXLK3V4-N4EPLT3-GWR7MQ7";
   # Shares live under akos's home directory, which the default "syncthing" system user can't
