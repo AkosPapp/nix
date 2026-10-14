@@ -189,12 +189,38 @@
     chmod 600 "$PASEO_HOME/env"
 
     stop_any_daemon() {
+      # Graceful CLI stop first, then sweep the process family. The old 'bin/paseo daemon run'
+      # pattern matched nothing once setproctitle renames the processes ("Paseo Daemon"), so a
+      # re-run could leave the old daemon holding :6767 and the health gate would test IT.
+      PASEO_HOME="$PASEO_HOME" "$NPM_PREFIX/bin/paseo" daemon stop >/dev/null 2>&1 || true
       pkill -u "$(id -u)" -f 'bin/paseo daemon run' 2>/dev/null || true
+      # -f, not -x: the supervisor's title is 16 chars and comm (what -x matches) is
+      # truncated to 15, so 'Paseo Supervisor' can never match exactly.
+      pkill -u "$(id -u)" -f '^Paseo Supervisor' 2>/dev/null || true
+      pkill -u "$(id -u)" -f '^Paseo Daemon' 2>/dev/null || true
       sleep 1
     }
 
+    # systemd detection - the condition must be "systemd is the live init AND a user
+    # manager is reachable", never the systemctl exit code alone: devcontainer images
+    # ship a /usr/bin/systemctl SHIM that prints "'systemd' is not running in this
+    # container due to its overhead. Use the 'service' command instead." and STILL
+    # EXITS 0. The old check took the shim's word for it, "installed" a user unit
+    # into a filesystem nothing reads, the daemon never started, and the installer
+    # hung at "Waiting for the daemon...". /run/systemd/system only exists when
+    # systemd really is PID 1; no shim can fake that.
+    HAVE_SYSTEMD_USER=""
+    if [ "$OS" = "Linux" ] && [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1 && [ -n "''${XDG_RUNTIME_DIR:-}" ]; then
+      # Belt and braces: if the binary reports systemd is not running, believe the output.
+      SM_PROBE="$(systemctl --user show-environment 2>&1)" || SM_PROBE=""
+      case "$SM_PROBE" in
+        *"not running in this container"*|*"System has not been booted with systemd"*) SM_PROBE="" ;;
+      esac
+      [ -n "$SM_PROBE" ] && HAVE_SYSTEMD_USER=1
+    fi
+
     STARTED=""
-    if [ "$OS" = "Linux" ] && command -v systemctl >/dev/null 2>&1 && [ -n "''${XDG_RUNTIME_DIR:-}" ] && systemctl --user daemon-reload >/dev/null 2>&1; then
+    if [ -n "$HAVE_SYSTEMD_USER" ]; then
       log "Installing systemd user service paseo.service..."
       mkdir -p "$HOME/.config/systemd/user"
       cat >"$HOME/.config/systemd/user/paseo.service" <<EOF
@@ -248,12 +274,17 @@
     fi
 
     if [ -z "$STARTED" ]; then
-      # No usable service manager (containers etc.): background the daemon so this machine
-      # still pairs; add your own supervisor for permanent use.
+      # No usable service manager (containers without systemd, SLURM nodes, plain ssh
+      # sessions etc.): background the daemon so this machine still pairs. Re-running
+      # this script is the "supervisor" after a container restart; for real supervision
+      # add your own (s6, runit, docker-init, the SLURM deployer, or a systemd unit
+      # once a user manager exists).
       log "No systemd/launchd detected - starting the daemon in the background (nohup)."
+      log "  It will NOT survive a container restart: re-run this command, or run"
+      log "  'paseo daemon run' in the foreground yourself to keep it in the terminal."
       stop_any_daemon
       ( set -a; . "$PASEO_HOME/env"; set +a
-        nohup "$NPM_PREFIX/bin/paseo" daemon run >>"$PASEO_HOME/daemon.out" 2>&1 & )
+        setsid nohup "$NPM_PREFIX/bin/paseo" daemon run >>"$PASEO_HOME/daemon.out" 2>&1 & )
       STARTED=nohup
     fi
 
@@ -262,8 +293,11 @@
       curl -sf http://127.0.0.1:6767/api/health >/dev/null 2>&1 && break
       sleep 1
     done
-    curl -sf http://127.0.0.1:6767/api/health >/dev/null 2>&1 \
-      || die "daemon did not come up (see $PASEO_HOME/daemon.log)"
+    if ! curl -sf http://127.0.0.1:6767/api/health >/dev/null 2>&1; then
+      [ "$STARTED" = nohup ] && tail -n 15 "$PASEO_HOME/daemon.out" >&2 2>/dev/null || true
+      [ "$STARTED" = systemd ] && systemctl --user status paseo.service --no-pager -n 15 >&2 2>/dev/null || true
+      die "daemon did not come up (started via $STARTED; see $PASEO_HOME/daemon.log and $PASEO_HOME/daemon.out)"
+    fi
 
     # --- 5. Pairing link ------------------------------------------------------------------------
     # /api/health answers before the WS layer finishes warming (early attempts 503) - retry.
@@ -440,6 +474,18 @@
     fi
 
     # --- 1. stop + remove the service the installer installed -------------------------------------
+    # Kill the daemon FIRST, regardless of supervisor: on container images whose
+    # systemctl is a non-functional shim, 'systemctl disable --now' below "succeeds"
+    # while the nohup'd daemon keeps running off files we are about to delete.
+    if pgrep -u "$(id -u)" -f 'bin/paseo daemon run' >/dev/null 2>&1 \
+       || pgrep -u "$(id -u)" -f '^Paseo Daemon' >/dev/null 2>&1 \
+       || pgrep -u "$(id -u)" -f '^Paseo Supervisor' >/dev/null 2>&1; then
+      log "killing a running paseo daemon (nohup/manual start)"
+      pkill -u "$(id -u)" -f 'bin/paseo daemon run' 2>/dev/null || true
+      pkill -u "$(id -u)" -f '^Paseo Supervisor' 2>/dev/null || true
+      pkill -u "$(id -u)" -f '^Paseo Daemon' 2>/dev/null || true
+      sleep 1
+    fi
     if [ "$OS" = "Linux" ] && [ -f "$HOME/.config/systemd/user/paseo.service" ] && command -v systemctl >/dev/null 2>&1; then
       log "disabling + removing the installer's systemd user unit"
       systemctl --user disable --now paseo.service 2>/dev/null || true
