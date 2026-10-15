@@ -17,7 +17,10 @@ with lib; let
 
   # What `stripPrefix` removes from a route's path: `stripPrefixPath` when set, else the path the
   # route claims. See the stripPrefixPath option for when the two differ.
-  stripOf = r: if r.stripPrefixPath != null then r.stripPrefixPath else r.pathPrefix;
+  stripOf = r:
+    if r.stripPrefixPath != null
+    then r.stripPrefixPath
+    else r.pathPrefix;
 in {
   options.MODULES.networking.traefik = {
     enable = mkEnableOption "Traefik reverse proxy";
@@ -256,15 +259,17 @@ in {
     }
 
     (mkIf cfg.public.enable {
-      assertions = mapAttrsToList (name: r: {
-        assertion = r.stripPrefixPath == null || (r.pathPrefix != null && hasPrefix r.stripPrefixPath r.pathPrefix);
-        message = ''
-          MODULES.networking.traefik.public.routes.${name}: stripPrefixPath is
-          "${toString r.stripPrefixPath}", which does not start the route's own pathPrefix
-          "${toString r.pathPrefix}" - stripping it would forward a path the backend never serves.
-          Leave it null to strip pathPrefix itself.
-        '';
-      }) cfg.public.routes;
+      assertions =
+        mapAttrsToList (name: r: {
+          assertion = r.stripPrefixPath == null || (r.pathPrefix != null && hasPrefix r.stripPrefixPath r.pathPrefix);
+          message = ''
+            MODULES.networking.traefik.public.routes.${name}: stripPrefixPath is
+            "${toString r.stripPrefixPath}", which does not start the route's own pathPrefix
+            "${toString r.pathPrefix}" - stripping it would forward a path the backend never serves.
+            Leave it null to strip pathPrefix itself.
+          '';
+        })
+        cfg.public.routes;
 
       MODULES.networking.tailscale.serve = {
         traefik-public = {

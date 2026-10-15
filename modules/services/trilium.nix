@@ -213,7 +213,7 @@ in {
       # mkAfter puts this one behind the oci-containers' own post-stop): the DB is then closed,
       # so Trilium reads the seeded option into Becca on the next start instead of overwriting
       # it from its cache.
-      systemd.services.trilium.serviceConfig.ExecStopPost = lib.mkAfter [ "+${seedScript}" ];
+      systemd.services.trilium.serviceConfig.ExecStopPost = lib.mkAfter ["+${seedScript}"];
     }))
   ];
 }
