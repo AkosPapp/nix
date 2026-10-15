@@ -36,8 +36,11 @@
       port = int(os.environ["ICS_PORT"])
 
 
+      # NB: answer from do_GET/do_HEAD, never by overriding `handle()`: the base handle() is what
+      # parses the request line and dispatches, so an override sees no self.path and the client
+      # gets a closed socket with no response (Traefik renders that as 502).
       class Handler(http.server.BaseHTTPRequestHandler):
-          def handle(self, body=True):
+          def respond(self, body=True):
               try:
                   data = ics.read_bytes()
               except OSError:
@@ -55,10 +58,10 @@
                   self.wfile.write(data)
 
           def do_GET(self):
-              self.handle()
+              self.respond()
 
           def do_HEAD(self):
-              self.handle(body=False)
+              self.respond(body=False)
 
           def log_message(self, *args):
               pass
