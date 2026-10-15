@@ -245,12 +245,15 @@ in {
       restartUnits = ["hermes-agent.service" "hermes-backend.service"];
     };
 
-    # The module gives the user a bash login shell and lingering (a systemd user manager, for
-    # restart-safe cron). Neither is wanted: commands run through Hermes' own bash, and cron
-    # jobs launched in a user manager would run outside every restriction below. Without the
-    # user manager cron falls back to plain child processes of the gateway, inside the sandbox.
+    # Lingering (a systemd user manager, for restart-safe cron) is not wanted: cron jobs launched
+    # in a user manager would run outside every restriction below; without it cron falls back to
+    # plain child processes of the gateway, inside the sandbox. The login shell, however, MUST be
+    # real: Paseo's daemon (node) exports the passwd shell as $SHELL into every agent it spawns,
+    # and Hermes' terminal tool executes commands through $SHELL - a forced nologin there killed
+    # every terminal() call ("This account is currently not available"). bash as login shell
+    # opens nothing: the account has no password, no ssh keys, no groups, and linger stays false.
     users.users.${hermes.user} = {
-      shell = mkForce "${pkgs.shadow}/bin/nologin";
+      shell = mkForce "${pkgs.bash}/bin/bash";
       linger = mkForce false;
       extraGroups = mkForce [];
     };
