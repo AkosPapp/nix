@@ -255,10 +255,14 @@ in {
   MODULES.services.hermes-ics.enable = true;
 
   # Trilium Notes (https://triliumnotes.org) as the knowledge base - https://trilium.hp on the
-  # tailnet. Hermes edits the same notes over Trilium's ETAPI: create the first login password and
-  # an ETAPI token in the UI once, then fill in trilium/etapi_token in sops and
-  # MODULES.services.trilium.etapiTokenSecret (see trilium.nix's option docs for the exact steps).
+  # tailnet. The ETAPI token was created in the UI and stored in sops (trilium/etapi_token), so
+  # Hermes reads and writes notes through it (see trilium.nix).
   MODULES.services.trilium.enable = true;
+  MODULES.services.trilium.etapiTokenSecret = "trilium/etapi_token";
+  # Settings -> AI comes up with this host's LiteLLM as the provider, on the master-key-minted
+  # virtual key trilium/litellm_api_key (trilium.nix's `litellm` options for the seeding
+  # mechanics and the one-time key creation command).
+  MODULES.services.trilium.litellm.enable = true;
 
   # Outline was tried and dropped - not needed. Its data (Postgres's "outline" database,
   # /var/lib/outline) was removed by hand on the host; see git history for how it was set up if
