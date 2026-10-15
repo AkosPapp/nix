@@ -257,24 +257,36 @@ in {
 
     modelBaseUrl = mkOption {
       type = types.str;
-      default = "https://futurelab.robo4you.at/v1";
-      description = "OpenAI-compatible endpoint baked into the harness model configs.";
+      default = "${cfg.hubUrl}/litellm/v1";
+      defaultText = lib.literalExpression "hubUrl + \"/litellm/v1\"";
+      description = ''
+        OpenAI-compatible endpoint baked into the harness model configs: the hub's LiteLLM gateway,
+        on the public Funnel path its MODULES.services.litellm.public option registers (the same
+        URL the generated /install/<token>/machine.sh scripts carry). Derived from `hubUrl` so a
+        fleet pointed at another hub takes its models with it; that hub must have the public path
+        enabled or every agent fails its first request.
+
+        A machine that is itself on the tailnet can skip the trip through the Funnel and use the
+        hub's own subdomain instead - modelBaseUrl = "https://litellm.hp/v1", which is what legion5
+        sets to stay byte-identical with the interactive configs there.
+      '';
     };
 
     modelProvider = mkOption {
       type = types.str;
-      default = "futurelab";
+      default = "litellm";
       description = ''
         Provider id under which the model is registered in the harness configs, i.e. the
         "<provider>" half of the model reference (pi --model <provider>/<id>, opencode's
         model setting). Set it to the same id a host's interactive setup uses so harness
-        configs and daily use agree on one provider entry.
+        configs and daily use agree on one provider entry - which is what "litellm" is here:
+        the gateway is the endpoint these machines talk to, whoever answers behind it.
       '';
     };
 
     modelProviderLabel = mkOption {
       type = types.str;
-      default = "FutureLab Aqueduct";
+      default = "LiteLLM (hp)";
       description = "Display name for the provider (opencode's picker).";
     };
 
@@ -286,13 +298,23 @@ in {
         sops secret holding the model API key. Declared here (merging with any other module's
         declaration of the same key), handed to the daemon through LoadCredential and baked
         into the user's harness configs by the pre-start script.
+
+        It has to be a key the gateway accepts, since that is what these configs now point at -
+        either its master key or (better, on a machine that only ever needs one model) a virtual
+        key minted on it. On a host whose interactive setup already declares a LiteLLM key, point
+        this at that secret instead of adding a second one; the example is legion5's.
       '';
     };
 
     modelId = mkOption {
       type = types.str;
-      default = "qwen3.8-flash-next";
-      description = "Model id offered to the harnesses.";
+      default = "futurelab/qwen3.8-flash-next";
+      description = ''
+        Model offered to the harnesses, spelled the way the gateway spells it: a LiteLLM
+        `model_name`, vendor prefix included ("futurelab/..." is the wildcard Aqueduct deployment
+        in litellm.nix). So the reference a user types is <modelProvider>/<modelId>, two prefixes
+        deep - both harnesses take that, and users/akos.nix already does the same interactively.
+      '';
     };
 
     users = mkOption {

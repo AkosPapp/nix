@@ -14,6 +14,10 @@ with lib; let
     if hasInfix "://" target
     then target
     else "http://${target}";
+
+  # What `stripPrefix` removes from a route's path: `stripPrefixPath` when set, else the path the
+  # route claims. See the stripPrefixPath option for when the two differ.
+  stripOf = r: if r.stripPrefixPath != null then r.stripPrefixPath else r.pathPrefix;
 in {
   options.MODULES.networking.traefik = {
     enable = mkEnableOption "Traefik reverse proxy";
@@ -93,7 +97,21 @@ in {
             stripPrefix = mkOption {
               type = types.bool;
               default = false;
-              description = "Remove `pathPrefix` before forwarding, for backends that live at their own root.";
+              description = "Remove the path prefix (see `stripPrefixPath`) before forwarding, for backends that live at their own root.";
+            };
+            stripPrefixPath = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+              example = "/litellm";
+              description = ''
+                What `stripPrefix` removes; `pathPrefix` itself when null. Set it *shorter* than
+                `pathPrefix` to claim a deeper path than the backend serves from its own root:
+                litellm.nix registers the public route at `/litellm/v1` - so nothing else the proxy
+                serves is reachable from the Funnel at all - while the backend still has to receive
+                its own `/v1/...`, which means stripping only `/litellm`. It has to be a prefix of
+                `pathPrefix` (asserted), otherwise the backend would be handed a path it never
+                serves and the route would 404 on every request.
+              '';
             };
             tailnetOnly = mkOption {
               type = types.bool;
@@ -238,6 +256,16 @@ in {
     }
 
     (mkIf cfg.public.enable {
+      assertions = mapAttrsToList (name: r: {
+        assertion = r.stripPrefixPath == null || (r.pathPrefix != null && hasPrefix r.stripPrefixPath r.pathPrefix);
+        message = ''
+          MODULES.networking.traefik.public.routes.${name}: stripPrefixPath is
+          "${toString r.stripPrefixPath}", which does not start the route's own pathPrefix
+          "${toString r.pathPrefix}" - stripping it would forward a path the backend never serves.
+          Leave it null to strip pathPrefix itself.
+        '';
+      }) cfg.public.routes;
+
       MODULES.networking.tailscale.serve = {
         traefik-public = {
           type = "funnel";
@@ -259,7 +287,7 @@ in {
             # TLS ended in tailscaled; tell the backends the client was on HTTPS.
             public-https.headers.customRequestHeaders.X-Forwarded-Proto = "https";
           }
-          // mapAttrs' (name: r: nameValuePair "public-${name}-strip" {stripPrefix.prefixes = [r.pathPrefix];})
+          // mapAttrs' (name: r: nameValuePair "public-${name}-strip" {stripPrefix.prefixes = [(stripOf r)];})
           (filterAttrs (_: r: r.stripPrefix && r.pathPrefix != null) cfg.public.routes);
 
         routers =

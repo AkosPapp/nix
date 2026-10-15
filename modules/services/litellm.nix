@@ -10,6 +10,8 @@
 
   cfg = config.MODULES.services.litellm;
 
+  traefik = config.MODULES.networking.traefik;
+
   # Database and role share a name so ensureDBOwnership can tie them together.
   dbName = "litellm";
 
@@ -564,6 +566,54 @@ in {
       '';
     };
 
+    public = {
+      enable = mkEnableOption ''
+        the gateway's API on the public entry point: one route on
+        MODULES.networking.traefik.public puts `<public path>/v1` behind Tailscale Funnel, so a
+        machine with no Tailscale can use `public.baseUrl` as its OpenAI-compatible base URL over
+        HTTPS (Funnel terminates TLS with a real Let's Encrypt certificate, which is why this is
+        the way out and not a bare port).
+
+        Only that one path is routed. The route claims `<path>/v1` and strips just `<path>`, so
+        the proxy receives its own `/v1/...` and nothing else it serves has a router on the public
+        entry point: the admin UI (`/ui`), its management API (`/api`, `/key`, `/user`, ...),
+        `/health` and Prometheus' `/metrics` all stay on the tailnet-only subdomain
+        (MODULES.networking.traefik.urlOf "litellm", i.e. https://litellm.<host>). That is
+        deliberate - the UI and its admin API are built for use from inside a private network, and
+        `/metrics` publishes per-model usage - and it costs nothing, because an OpenAI-compatible
+        client only ever needs `<base>/v1/*`.
+
+        What the public path *does* expose is gated by LiteLLM itself: every request must carry a
+        key the gateway accepts (`masterKeySecret`, or a virtual key minted from it), which is the
+        only thing between the internet and the upstreams behind this proxy. Enabling it without a
+        master key is refused by an assertion.
+      '';
+
+      path = mkOption {
+        type = types.str;
+        default = "/litellm";
+        description = ''
+          Path prefix this gateway occupies on the shared Funnel origin
+          (MODULES.networking.traefik.public.baseUrl). The API hangs one level below it, at
+          `<path>/v1` - the prefix an OpenAI-compatible client appends to a base URL anyway, and
+          the part the public route actually claims.
+        '';
+      };
+
+      baseUrl = mkOption {
+        type = types.str;
+        readOnly = true;
+        default = traefik.public.urlOf "${cfg.public.path}/v1";
+        defaultText = lib.literalExpression ''MODULES.networking.traefik.public.urlOf "<public path>/v1"'';
+        description = ''
+          What goes in an off-tailnet client's `base_url`: `<funnel origin>/litellm/v1`. Answers
+          only when `enable` is set here and MODULES.networking.traefik.public is on; callers that
+          are themselves on the tailnet should use the subdomain (https://litellm.<host>) instead,
+          which is shorter, needs no port and never leaves the tailnet.
+        '';
+      };
+    };
+
     image = mkOption {
       type = types.str;
       default = "ghcr.io/berriai/litellm-database:v1.86.0";
@@ -631,6 +681,25 @@ in {
           Aqueduct would reject every request for lack of a virtual key. Create one at
           https://futurelab.robo4you.at/aqueduct/management/tokens/ and put it in sops under that
           name.
+        '';
+      }
+      {
+        assertion = !cfg.public.enable || traefik.public.enable;
+        message = ''
+          MODULES.services.litellm.public.enable is set but
+          MODULES.networking.traefik.public.enable is not - the public path is a route on Traefik's
+          Funnel-backed entry point, and with no such entry point nothing would ever answer on it.
+        '';
+      }
+      {
+        # The key check lives in the proxy, so this is the one switch that decides whether the
+        # public path is an authenticated gateway or an open proxy onto other people's quotas.
+        assertion = !cfg.public.enable || cfg.masterKeySecret != null || cfg.environmentFile != null;
+        message = ''
+          MODULES.services.litellm.public.enable is set with no master key (masterKeySecret is null
+          and environmentFile unset): every backend in this flake, plus OpenRouter, OmniRoute and
+          Aqueduct, would sit behind an unauthenticated OpenAI-compatible endpoint on a public URL.
+          Set masterKeySecret (or carry LITELLM_MASTER_KEY in environmentFile) first.
         '';
       }
     ];
@@ -761,5 +830,21 @@ in {
     # API at the origin root (OpenAI SDKs append /v1/... to their base URL), admin UI at /ui.
     MODULES.networking.traefik.enable = true;
     MODULES.networking.traefik.services.litellm = "127.0.0.1:${toString config.PORTS.litellm}";
+
+    # The public side of the same proxy: one route, and it claims only the OpenAI-compatible
+    # prefix. See the `public` options for why nothing else is reachable this way and for what the
+    # Funnel's TLS story is.
+    MODULES.networking.traefik.public = lib.mkIf cfg.public.enable {
+      enable = true;
+      routes.litellm = {
+        pathPrefix = "${cfg.public.path}/v1";
+        stripPrefix = true;
+        # Not `pathPrefix`: stripping "<path>/v1" would hand the proxy "/chat/completions", which
+        # it has no route for - it serves its own /v1. Stripping "<path>" alone is what keeps the
+        # rest of the proxy (`/ui`, `/api`, `/metrics`) unnameable through the Funnel.
+        stripPrefixPath = cfg.public.path;
+        target = "127.0.0.1:${toString config.PORTS.litellm}";
+      };
+    };
   };
 }

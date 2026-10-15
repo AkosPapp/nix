@@ -43,8 +43,13 @@
     set -uo pipefail
 
     PASEO_RELAY_ENDPOINT="${relayPublicHost}"
-    MODEL_BASE_URL="https://futurelab.robo4you.at/v1"
-    MODEL_ID="qwen3.8-flash-next"
+    # Model traffic goes to the hub's own LiteLLM gateway, on the same Funnel origin this script
+    # was downloaded from: an installed machine has no Tailscale, so https://litellm.hp would not
+    # even resolve for it. The key below is a LiteLLM key, which is what authorizes and meters
+    # every request - and $MODEL_ID names a deployment *in LiteLLM's config*, so pointing these
+    # machines at a different model is a gateway change, not a re-install.
+    MODEL_BASE_URL="${cfg.model.baseUrl}"
+    MODEL_ID="${cfg.model.id}"
     MODEL_KEY='$PASEO_ENROLLMENT_API_KEY'
     INSTALL_TOKEN='$PASEO_ENROLLMENT_TOKEN'
 
@@ -135,7 +140,7 @@
       || npm install -g $(as_flag "opencode-ai") opencode-ai >/dev/null \
       || die "npm install opencode-ai failed"
 
-    # --- 3. Point BOTH harness CLIs at the aqueduct endpoint ------------------------------------
+    # --- 3. Point BOTH harness CLIs at the hub's LiteLLM gateway ----------------------------------
     log "Configuring pi + opencode for $MODEL_BASE_URL ($MODEL_ID)..."
     ${piConfig}
 
@@ -335,8 +340,8 @@
     echo
     log "Daemon password: $DAEMON_PASSWORD (also in $PW_FILE)"
     log "Model: $MODEL_ID via $MODEL_BASE_URL"
-    log "  pi:       pi --model futurelab/$MODEL_ID -p \"...\""
-    log "  opencode: opencode run -m futurelab/$MODEL_ID \"...\""
+    log "  pi:       pi --model ${cfg.model.provider}/$MODEL_ID -p \"...\""
+    log "  opencode: opencode run -m ${cfg.model.provider}/$MODEL_ID \"...\""
   '';
 
   # opencode.json: custom OpenAI-compatible provider (opencode.ai/docs/providers), model
@@ -347,14 +352,14 @@
     {
       "\$schema": "https://opencode.ai/config.json",
       "provider": {
-        "futurelab": {
+        "${cfg.model.provider}": {
           "npm": "@ai-sdk/openai-compatible",
-          "name": "FutureLab Aqueduct",
+          "name": "${cfg.model.providerLabel}",
           "options": { "baseURL": "$MODEL_BASE_URL", "apiKey": "$MODEL_KEY" },
-          "models": { "qwen3.8-flash-next": { "name": "Qwen 3.8 Flash Next" } }
+          "models": { "$MODEL_ID": { "name": "$MODEL_ID" } }
         }
       },
-      "model": "futurelab/qwen3.8-flash-next"
+      "model": "${cfg.model.provider}/$MODEL_ID"
     }
     EOF
     chmod 600 "$HOME/.config/opencode/opencode.json"
@@ -368,11 +373,11 @@
     {
       "\$schema": "https://pi.dev/schemas/models.schema.json",
       "providers": {
-        "futurelab": {
+        "${cfg.model.provider}": {
           "baseUrl": "$MODEL_BASE_URL",
           "api": "openai-completions",
           "apiKey": "$MODEL_KEY",
-          "models": [ { "id": "qwen3.8-flash-next" } ]
+          "models": [ { "id": "$MODEL_ID" } ]
         }
       }
     }
@@ -671,8 +676,8 @@
     <h2>Add a harness machine</h2>
     <p class="note">Run on any Linux/macOS box (no Tailscale needed - it reaches the hub through the public relay):
     installs Node + <code>@getpaseo/cli</code> + <strong>both</strong> harness CLIs (pi and opencode, the daemon offers
-    either per agent), points them at the aqueduct model, registers the machine with the relay, and posts its pairing
-    link back here. Re-runnable.</p>
+    either per agent), points them at the hub's LiteLLM gateway, registers the machine with the
+    relay, and posts its pairing link back here. Re-runnable.</p>
     <h3>Direct (any box)</h3>
     <pre>curl -fsSL https://hp.tail546fb.ts.net:8443/install/$PASEO_ENROLLMENT_TOKEN/machine.sh | bash</pre>
     <h3>As a SLURM job (cluster)</h3>
@@ -702,7 +707,11 @@
     <h2>What this does / rotating secrets</h2>
     <p class="note">Architecture and rotation: <code>hosts/hp/RUNBOOK/RUNBOOK-paseo.md</code> in this repo.
     Enrollment token = the URL secret above (rotate: <code>sops set sops/secrets.yaml '["paseo"]["enrollment_token"]' ...</code> + rebuild - old URLs 404).
-    Model key: <code>sops set ... '["paseo"]["enrollment_api_key"]' ...</code> + rebuild - re-rendered scripts pick it up (machines already installed keep the old key in their CLI config).</p>
+    Model key (<code>${cfg.model.apiKeySecret}</code> in sops - a <strong>LiteLLM</strong> key, since the harnesses these
+    scripts write talk to the gateway now, not to the upstream behind it): <code>sops set sops/secrets.yaml ...</code> +
+    rebuild - re-rendered scripts pick it up (machines already installed keep the old key in their CLI config). Mint a
+    dedicated virtual key on the gateway (dashboard &rarr; API Keys, capped to one model) rather than reusing the master
+    key: this value goes to every machine that knows the enrollment URL.</p>
 
     <script>
     document.querySelectorAll("pre").forEach(function (pre) {
@@ -1157,8 +1166,9 @@
 
   render = pkgs.writeShellScriptBin "paseo-web-render" ''
     set -euo pipefail
-    # Secrets arrive via EnvironmentFile (sops template): PASEO_ENROLLMENT_TOKEN,
-    # PASEO_ENROLLMENT_API_KEY. The hub pairing URL is written by paseo-pair.service.
+    # Secrets arrive via EnvironmentFile (sops template): PASEO_ENROLLMENT_TOKEN (the URL segment),
+    # PASEO_ENROLLMENT_API_KEY (the model key the scripts embed - a LiteLLM key, from
+    # ${cfg.model.apiKeySecret}). The hub pairing URL is written by paseo-pair.service.
     umask 027
     export PATH=${lib.makeBinPath (with pkgs; [gettext coreutils findutils jq])}
 
@@ -1261,6 +1271,78 @@ in {
       defaultText = lib.literalExpression "config.MODULES.services.prometheus.enable";
       description = "Scrape the relay's Prometheus /metrics (loopback-only) in prometheus.nix.";
     };
+
+    # What the installers bake into the harnesses they configure (pi's models.json, opencode's
+    # opencode.json). Before this, those scripts carried FutureLab's URL and key and every installed
+    # machine was a direct client of that upstream; going through the gateway instead means one
+    # place to mint/revoke keys, meter spend and switch models, and the machines themselves never
+    # change. Defaults match MODULES.services.paseo-machine on legion5, so a scripted machine and a
+    # NixOS-declared one present the same provider id and model to their user.
+    model = {
+      baseUrl = mkOption {
+        type = types.str;
+        default = config.MODULES.services.litellm.public.baseUrl;
+        defaultText = lib.literalExpression "MODULES.services.litellm.public.baseUrl";
+        description = ''
+          OpenAI-compatible endpoint the installed harnesses talk to: this host's LiteLLM gateway
+          on its public Funnel path. Public because the scripts advertise "no Tailscale needed" -
+          and it has to be that origin rather than https://litellm.hp, which neither resolves nor
+          has a certificate these machines trust. Needs MODULES.services.litellm.public.enable:
+          with the route missing the scripts install fine and then fail their first request.
+        '';
+      };
+
+      provider = mkOption {
+        type = types.str;
+        default = "litellm";
+        description = ''
+          Provider id written into both harness configs - the first half of the model reference
+          users type (`pi --model <provider>/<id>`, opencode's `"model"`). Not "futurelab": the
+          name now describes the endpoint the key belongs to, and LiteLLM picks the upstream from
+          the model id's own prefix (see `model.id`).
+        '';
+      };
+
+      providerLabel = mkOption {
+        type = types.str;
+        default = "LiteLLM (hp)";
+        description = "Display name for that provider (opencode's model picker shows it).";
+      };
+
+      id = mkOption {
+        type = types.str;
+        default = "futurelab/qwen3.8-flash-next";
+        description = ''
+          Model the harnesses start on, spelled the way LiteLLM wants: a `model_name` from the
+          gateway's config, which is why it still carries a vendor prefix - "futurelab/..." is the
+          wildcard deployment litellm.nix registers under `futurelabEnable`, i.e. the same Aqueduct
+          model these scripts used to name directly, one hop further away. The full reference a
+          user passes is `<model.provider>/<model.id>`, two prefixes deep; that is how
+          MODULES.services.paseo-machine and the interactive setup in users/akos.nix already spell
+          it, so pi and opencode both handle it.
+        '';
+      };
+
+      apiKeySecret = mkOption {
+        type = types.str;
+        default = "opencode/litellm_api_key";
+        example = "litellm_master_key";
+        description = ''
+          sops secret the installers hand out as the harnesses' model key. It has to be a key
+          LiteLLM accepts - which is why this is not `paseo/enrollment_api_key` any more: that one
+          holds an Aqueduct key from before the gateway was in front of it, and the gateway rejects
+          it (the scripts would install happily and then 401 on the first request).
+
+          The default is the same virtual key the interactive setup in users/akos.nix and
+          MODULES.services.paseo-machine use, so scripted machines and declared ones present the
+          same credential to the same gateway. Consider minting a dedicated key for it (dashboard ->
+          API Keys, capped to `model.id`) and pointing this there: whatever this names is served to
+          anyone who knows the enrollment URL and written into ~/.pi and ~/.config/opencode on every
+          machine installed. The gateway's master key also works and is the least effort, and the
+          most of it.
+        '';
+      };
+    };
   };
 
   config = mkIf cfg.enable {
@@ -1276,6 +1358,18 @@ in {
       {
         assertion = config.MODULES.networking.tailscale.enable;
         message = "MODULES.services.paseo needs MODULES.networking.tailscale for the relay's Funnel.";
+      }
+      {
+        # The installers are advertised as needing no Tailscale, so their default model endpoint is
+        # the public one - which only exists if litellm.nix registers its route on this host.
+        assertion = cfg.model.baseUrl != config.MODULES.services.litellm.public.baseUrl || config.MODULES.services.litellm.public.enable;
+        message = ''
+          MODULES.services.paseo installs harnesses that point at
+          "${cfg.model.baseUrl}" (the default, MODULES.services.litellm.public.baseUrl), but
+          MODULES.services.litellm.public.enable is off, so no route answers there: every agent on
+          an installed machine would fail its first request. Enable the gateway's public path, or
+          set MODULES.services.paseo.model.baseUrl to an endpoint off-tailnet machines can reach.
+        '';
       }
       {
         # They would claim the same Funnel origin (PORTS.paseoRelayFunnel).
@@ -1346,14 +1440,15 @@ in {
         group = "paseo-registry";
         mode = "0440";
       };
-      "paseo/enrollment_api_key" = {};
+      # The model key the installers embed - a LiteLLM key, see MODULES.services.paseo.model.
+      "${cfg.model.apiKeySecret}" = {};
     };
 
     sops.templates."paseo-web-render.env" = {
       owner = "root";
       content = ''
         PASEO_ENROLLMENT_TOKEN=${config.sops.placeholder."paseo/enrollment_token"}
-        PASEO_ENROLLMENT_API_KEY=${config.sops.placeholder."paseo/enrollment_api_key"}
+        PASEO_ENROLLMENT_API_KEY=${config.sops.placeholder."${cfg.model.apiKeySecret}"}
         PASEO_DAEMON_PASSWORD=${config.sops.placeholder."paseo/daemon_password"}
       '';
       restartUnits = ["paseo-web-render.service"];

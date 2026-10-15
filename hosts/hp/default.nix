@@ -196,6 +196,14 @@ in {
   # since it sits behind the gateway's own login and nothing here can mint one - the same
   # manual-step situation omniroute's key is in.
   MODULES.services.litellm.futurelabEnable = true;
+  # The gateway itself, on the internet: https://hp.tail546fb.ts.net:8443/litellm/v1 through the
+  # shared Funnel origin (see RUNBOOK-public.md). It exists for the Paseo installers - the machines
+  # they install deliberately have no Tailscale, so https://litellm.hp is not an address they can
+  # use - and for any other off-tailnet client. Only the OpenAI-compatible prefix gets a route: the
+  # admin UI, its management API and /metrics stay tailnet-only, and what is public answers only to
+  # a LiteLLM key (litellm_master_key, or a virtual key minted from it). See the `public` options in
+  # litellm.nix.
+  MODULES.services.litellm.public.enable = true;
   MODULES.services.prometheus.enable = true;
 
   # Agent-building UI: LLM calls go through the gateway above (n8n.nix). apiKeySecret stays unset until the one-time manual step
