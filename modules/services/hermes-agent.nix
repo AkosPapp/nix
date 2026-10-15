@@ -75,7 +75,7 @@
   # Loopback ports Hermes (and every command it runs) may connect to; everything else on this
   # host, the tailnet and the LAN is refused - see the firewall block below. LiteLLM, Synapse,
   # and the Matrix reader MCP server (matrix-reader.service, also on the hermes uid).
-  allowedLocalPorts = [config.PORTS.litellm config.PORTS.synapse config.PORTS.matrixReader];
+  allowedLocalPorts = [config.PORTS.litellm config.PORTS.synapse config.PORTS.matrixReader] ++ cfg.extraAllowedLoopbackPorts;
   privateRanges = ["127.0.0.0/8" "10.0.0.0/8" "172.16.0.0/12" "192.168.0.0/16" "100.64.0.0/10" "169.254.0.0/16"];
 in {
   options.MODULES.services.hermes-agent = {
@@ -125,6 +125,17 @@ in {
         Room IDs Hermes answers in. Empty means any room the admin invites it to, as long as
         the admin @mentions it there. Set it to your DM room with Hermes once that exists, so
         an @mention in a bridged room can never start an agent turn.
+      '';
+    };
+
+    extraAllowedLoopbackPorts = mkOption {
+      type = types.listOf types.port;
+      default = [];
+      example = lib.literalExpression ''[ config.PORTS.trilium ]'';
+      description = ''
+        Additional loopback ports Hermes (and every command it runs, same uid) may connect to.
+        Services that Hermes is meant to talk to append theirs here - trilium.nix adds its ETAPI
+        port this way - instead of each growing its own hole in the hermes-egress chain.
       '';
     };
 

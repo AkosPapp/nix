@@ -52,6 +52,11 @@ in {
     # Hermes' own Paseo daemon (modules/services/paseo-hermes.nix) - loopback only, never shared
     # with the hub's 6767.
     paseoHermesDaemon = 8116;
+    # Hermes' ICS feed server (modules/services/hermes-ics.nix) - loopback only; Traefik's public
+    # entry point is its only client. Kept clear of PORTS.paseoMachine's 8117+idx range.
+    hermesIcs = 8130;
+    # Trilium Notes (modules/services/trilium.nix) - loopback only, behind Traefik.
+    trilium = 8131;
     synapse = 8008;
     # mautrix bridges' appservice listeners - only Synapse on the same host connects to these.
     mautrixWhatsapp = 29318;

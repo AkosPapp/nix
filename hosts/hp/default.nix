@@ -245,6 +245,21 @@ in {
   };
   MODULES.services.hermes-agent.enable = true;
 
+  # Hermes' calendar, out to the world: a token-gated ICS feed at
+  # https://hp.tail546fb.ts.net:8443/ics/<token>/hermes.ics (the token lives in sops as
+  # hermes/ics_token) - this is what goes into Google Calendar. It exists because Tailscale's own
+  # `serve` cannot: any serve entry makes tailscaled bind 443 on the tailscale IP, which is
+  # Traefik's listener, and Traefik then dies at its next restart (this took down every *.hp site
+  # once already). The feed file itself is /var/lib/hermes/ics-serve/hermes.ics, rewritten by
+  # Hermes' cron job. See hermes-ics.nix.
+  MODULES.services.hermes-ics.enable = true;
+
+  # Trilium Notes (https://triliumnotes.org) as the knowledge base - https://trilium.hp on the
+  # tailnet. Hermes edits the same notes over Trilium's ETAPI: create the first login password and
+  # an ETAPI token in the UI once, then fill in trilium/etapi_token in sops and
+  # MODULES.services.trilium.etapiTokenSecret (see trilium.nix's option docs for the exact steps).
+  MODULES.services.trilium.enable = true;
+
   # Outline was tried and dropped - not needed. Its data (Postgres's "outline" database,
   # /var/lib/outline) was removed by hand on the host; see git history for how it was set up if
   # it comes back. mdbook (public docs) is unrelated and stays on.

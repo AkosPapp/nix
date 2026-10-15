@@ -99,7 +99,9 @@
           sshUser = "root";
           user = "root";
           path = deploy-rs.lib.${system}.activate.nixos config;
-          remoteBuild = false;
+          # Build on the target (hp is fast enough and already has the substitutes; the laptop
+          # does not have to ship the closure).
+          remoteBuild = true;
         };
       })
       (nixpkgs.lib.attrsets.filterAttrs (name: _: name != "iso") self.nixosConfigurations);
