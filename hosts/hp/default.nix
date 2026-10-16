@@ -293,7 +293,12 @@ in {
   };
 
   services.logind.settings.Login = {
+    # lid closed = keep working, on battery AND external power AND docked
+    # (HandleLidSwitch alone only covers the battery case; the other two keys
+    # default to "lock" in systemd >= 256 and win when AC/dock is active)
     HandleLidSwitch = "ignore";
+    HandleLidSwitchExternalPower = "ignore";
+    HandleLidSwitchDocked = "ignore";
     HandlePowerKey = "ignore";
   };
 
