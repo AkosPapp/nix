@@ -365,6 +365,9 @@ class Session:
             body = None
             msgtype = ""
             sender = str(evt.sender)
+            # Outer (timeline) event id - what Element's "Copy Link" permalinks point at,
+            # so capture it before a decrypt reassignment could shadow it.
+            event_id = str(getattr(evt, "event_id", "") or "")
             timestamp = evt.timestamp  # Event.timestamp carries origin_server_ts (ms)
             if isinstance(evt, EncryptedEvent):
                 try:
@@ -388,6 +391,8 @@ class Session:
                 "sender": members.get(sender, sender),
                 "type": msgtype,
                 "body": body,
+                # Element-clickable permalink to THIS message (matrix.to resolves the rooms).
+                "link": ("https://matrix.to/#/%s/%s" % (room_id, event_id)) if event_id else "",
                 **media,
             })
         return {"messages": messages, "before": str(resp.end or ""), "pending_keys": pending}
@@ -584,6 +589,8 @@ async def read_rooms_since(
                         body = body[:body_cap] + "…"
                     row = {"time": m["time"], "sender": m["sender"],
                            "type": m["type"], "body": body}
+                    if m.get("link"):
+                        row["link"] = m["link"]  # Element permalink for citing sources
                     for extra in MEDIA_KEYS:
                         if extra in m:
                             row[extra] = m[extra]
