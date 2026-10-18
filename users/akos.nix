@@ -256,8 +256,8 @@
       blender
 
       # browsers
+      # firefox comes from programs.firefox below (its policies.json needs the module's wrapper).
       brave
-      firefox
 
       # network tools
       wireshark
@@ -280,5 +280,25 @@
     services.netbird.clients.default.autoStart = true;
     services.netbird.clients.default.environment.NB_DISABLE_DNS = "true";
     services.netbird.clients.default.config.DisableDNS = true;
+
+    # Brave and Firefox do their own DNS resolution and bypass systemd-resolved - Firefox with
+    # its built-in DoH (default: maximal), Brave with "Use secure DNS" - so both get a public
+    # NXDOMAIN for the internal robo4you.at views (e.g. grafana.futurelab.robo4you.at) while
+    # every CLI tool resolves fine. Firefox keeps DoH but excludes the zone, so those names fall
+    # back to the system resolver; Chromium has no per-domain DoH exclusion, so Brave's secure
+    # DNS and built-in client are switched off and it uses getaddrinfo like everything else.
+    # Verify after a switch at brave://policy and about:support (or about:policies).
+    programs.firefox = {
+      enable = true;
+      policies.DNSOverHTTPS = {
+        Enabled = true;
+        ProviderURL = "https://mozilla.cloudflare-dns.com/dns-query";
+        ExcludedDomains = ["robo4you.at"];
+      };
+    };
+    environment.etc."brave/policies/managed/dns.json".text = builtins.toJSON {
+      BuiltInDnsClientEnabled = false;
+      DnsOverHttpsMode = "off";
+    };
   };
 }

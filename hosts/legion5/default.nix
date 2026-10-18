@@ -130,6 +130,14 @@ in {
     modelProviderLabel = "LiteLLM (hp)";
     modelId = "futurelab/qwen3.8-flash-next";
     modelApiKeySecret = "opencode/litellm_api_key";
+    # What this one model can do, restated for the harness configs (pi's contextWindow /
+    # maxTokens / thinkingLevelMap, opencode's limit / variants) - same numbers and levels as
+    # users/akos.nix declares for the interactive opencode entry, so a daemon prompt and a shell
+    # prompt see one model. Per model on purpose: nothing here applies to a model this host does
+    # not name.
+    modelContextLength = 262144;
+    modelOutputLength = 32768;
+    modelThinkingLevels = ["low" "medium" "xhigh"];
     users.akos.harnesses = {
       pi.enable = true;
       opencode.enable = true;
@@ -252,31 +260,58 @@ in {
     "net.core.wmem_default" = 20971520;
   };
 
-  # Local resolver: the dnsmasq this host already runs as its traefik-zone authority is extended
-  # into the system resolver. *.robo4you.at goes to netbird's DNS group - netbird advertises the
-  # group's address as 172.18.0.1:53, but that is this host's own (down) docker bridge here, so
-  # the same server is addressed through r4uai01's netbird IP instead. Listing the tailnet
-  # resolver as a second server for the zone gives dnsmasq's per-server failover: while the
-  # netbird one is unreachable (VPN down, peer asleep past its lazy-connection window) queries
-  # retried on it go to 100.100.100.100 instead. Everything else goes straight there; it keeps
-  # answering tailnet names even with accept-dns off below.
-  services.dnsmasq.settings = {
-    server = [
-      "/robo4you.at/100.124.160.88"
-      "/robo4you.at/100.100.100.100"
-      "100.100.100.100"
-    ];
+  # Split DNS for robo4you.at without touching anything else: systemd-resolved (whose stub
+  # resolv.conf tailscale detects and feeds natively, so its accept-dns stays on and every other
+  # lookup behaves exactly as before) plus a dns-delegate sending the zone to netbird's DNS group
+  # - netbird advertises the group's address as 172.18.0.1:53, but that is this host's own (down)
+  # docker bridge, so the same server is reached through r4uai01's netbird IP. That peer sits
+  # behind lazy connections. The delegate carries ONLY r4uai01's netbird IP: every candidate the
+  # zone can fall to (the tailscale resolver's akos01 delegation, and netbird's own upstream)
+  # answers happily even when its netbird path is stale - with the PUBLIC view, i.e. a NODATA
+  # whose SOA carries Cloudflare's 1800s negative TTL - and a second delegate server merely let
+  # that fast wrong answer race the right one; caching such an negative is exactly what produced
+  # the observed "works, stops working, works again after ~half an hour" cycle. So the zone is
+  # sent only to the server that knows futurelab (direct dig against it always answered, even
+  # while resolved showed the poisoned negative), and Cache=no-negative stops resolved ever
+  # storing negative answers at all: a transient miss is retried live instead of blinding the
+  # zone until the SOA's TTL expires. Netbird deliberately keeps
+  # DisableDNS (NB_DISABLE_DNS in users/akos.nix): its group advertises 172.18.0.1, which is
+  # unreachable from most hosts, and its zone list predates futurelab.robo4you.at. Deliberately
+  # NOT solved with networkd managing wt0: networkd wipes the address/route config netbird put on
+  # the interface and leaves it admin-down (resolved ignores the DNS of a link that is not up),
+  # and wait-online then times out on it.
+  services.resolved = {
+    enable = true;
+    settings.Resolve = {
+      DNSOverTLS = "false";
+      DNSSEC = "false";
+      Cache = "no-negative";
+    };
+    dnsDelegates.robo4you = {
+      Delegate = {
+        DNS = ["100.124.160.88"];
+        Domains = ["robo4you.at"];
+      };
+    };
   };
 
-  networking.nameservers = lib.mkForce ["127.0.0.1"];
-  networking.search = lib.mkForce ["tail546fb.ts.net" "robo4you.at"];
-  # Otherwise NM rewrites the resolv.conf the activation script generates with the DHCP one.
-  networking.networkmanager.dns = "none";
-
-  # Keep tailscaled from rewriting resolv.conf over the resolver above.
-  services.tailscale.extraSetFlags = lib.mkForce [
-    "--accept-dns=false"
-    "--accept-routes=false"
-    "--advertise-exit-node=true"
-  ];
+  # r4uai01 sits behind netbird lazy connections: after an idle period the first packet to it is
+  # dropped while the tunnel wakes, the delegate server times out (5s), and the lookup falls to
+  # the tailscale resolver, which answers instantly with the public view (a NODATA that kills
+  # internal names). Keeping the peer awake removes the failure mode entirely: one trivial query
+  # every 20s ensures the delegate answers first and live.
+  systemd.services.netbird-dns-keepalive = {
+    description = "Keep netbird's DNS peer (r4uai01) awake for robo4you.at resolution";
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${pkgs.dnsutils}/bin/dig @100.124.160.88 robo4you.at SOA +short +time=1 +tries=1";
+    };
+  };
+  systemd.timers.netbird-dns-keepalive = {
+    wantedBy = ["timers.target"];
+    timerConfig = {
+      OnBootSec = "5s";
+      OnUnitActiveSec = "20s";
+    };
+  };
 }

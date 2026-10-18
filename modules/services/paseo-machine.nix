@@ -17,6 +17,60 @@
   # pairing link. Override per host to point a fleet at another hub.
   hubFqdn = "hp.tail546fb.ts.net";
 
+  # The model's own numbers, spelled per harness. Both harnesses describe the single model this
+  # machine dials out to, in their own vocabulary:
+  #
+  #   limit    pi: contextWindow / maxTokens      opencode: limit.context / limit.output
+  #   thinking pi: reasoning + thinkingLevelMap   opencode: options + variants
+  #            + compat.chatTemplateKwargs
+  #
+  # Nothing here has a default: a host that names a model also states what it can do, and unset
+  # options write no fields at all, so these values never leak onto a model they were not meant
+  # for. Without them both harnesses guess - pi assumes 128000/16384 (and then compacts at
+  # contextWindow - 16384, ~111K instead of the real window) and reports the model as unable to
+  # think, so /thinking has nothing to offer.
+  modelLimitContext = cfg.modelContextLength;
+  modelLimitOutput = cfg.modelOutputLength;
+  hasModelLimits = modelLimitContext != null || modelLimitOutput != null;
+
+  # Thinking levels, weakest first; the last one is what the harness starts on. Rendered into
+  # pi's level map (unsupported levels null, so pi hides them - and "off": null, which is pi's
+  # way of saying "off sends no effort field at all") and into opencode's variant set.
+  piThinkingLevelKeys = ["off" "minimal" "low" "medium" "high" "xhigh" "max"];
+  piThinkingLevelMap = builtins.listToAttrs (map (l: {
+      name = l;
+      value =
+        if l != "off" && builtins.elem l cfg.modelThinkingLevels
+        then l
+        else null;
+    })
+    piThinkingLevelKeys);
+
+  # The gateway takes thinking as vLLM-style chat_template_kwargs (same shape users/akos.nix
+  # hand-writes for the interactive opencode): pi needs compat.thinkingFormat = "chat-template"
+  # to put them on the wire at all, opencode just sends them as model options.
+  thinkingKwargs = e: {
+    chat_template_kwargs = {
+      thinking = true;
+      reasoning_effort = e;
+    };
+  };
+  opencodeVariants =
+    {
+      # Variants merge over the model's base options, so "off" has to switch the base thinking flag
+      # off too.
+      off = {
+        enable_thinking = false;
+        chat_template_kwargs.thinking = false;
+      };
+    }
+    // builtins.listToAttrs (map (e: {
+        name = e;
+        value = thinkingKwargs e;
+      })
+      cfg.modelThinkingLevels);
+  hasModelThinking = cfg.modelThinkingLevels != [];
+
   # One entry per harness the daemon can drive: its CLI lands on the daemon's PATH, and its
   # model config (a store template with a $PASEO_MODEL_API_KEY placeholder - the key itself is
   # substituted into the user's 0600 config at service start, never into the store) points it
@@ -33,7 +87,28 @@
           api = "openai-completions";
           apiKey = "$PASEO_MODEL_API_KEY";
           models = [
-            {id = cfg.modelId;}
+            (
+              {id = cfg.modelId;}
+              // lib.optionalAttrs (modelLimitContext != null) {
+                contextWindow = modelLimitContext;
+              }
+              // lib.optionalAttrs (modelLimitOutput != null) {
+                maxTokens = modelLimitOutput;
+              }
+              // lib.optionalAttrs hasModelThinking {
+                reasoning = true;
+                thinkingLevelMap = piThinkingLevelMap;
+                compat = {
+                  thinkingFormat = "chat-template";
+                  chatTemplateKwargs = {
+                    thinking = {"$var" = "thinking.enabled";};
+                    # Resolved through thinkingLevelMap, hence the map above is not decoration:
+                    # it is what turns pi's level into the gateway's reasoning_effort string.
+                    reasoning_effort = {"$var" = "thinking.effort";};
+                  };
+                };
+              }
+            )
           ];
         };
       });
@@ -50,9 +125,22 @@
             baseURL = cfg.modelBaseUrl;
             apiKey = "$PASEO_MODEL_API_KEY";
           };
-          models."${cfg.modelId}" = {
-            name = cfg.modelId;
-          };
+          models."${cfg.modelId}" =
+            {name = cfg.modelId;}
+            // lib.optionalAttrs hasModelLimits {
+              limit =
+                {}
+                // lib.optionalAttrs (modelLimitContext != null) {
+                  context = modelLimitContext;
+                }
+                // lib.optionalAttrs (modelLimitOutput != null) {
+                  output = modelLimitOutput;
+                };
+            }
+            // lib.optionalAttrs hasModelThinking {
+              options = thinkingKwargs (lib.last cfg.modelThinkingLevels);
+              variants = opencodeVariants;
+            };
         };
         model = "${cfg.modelProvider}/${cfg.modelId}";
       });
@@ -314,6 +402,46 @@ in {
         `model_name`, vendor prefix included ("futurelab/..." is the wildcard Aqueduct deployment
         in litellm.nix). So the reference a user types is <modelProvider>/<modelId>, two prefixes
         deep - both harnesses take that, and users/akos.nix already does the same interactively.
+      '';
+    };
+
+    modelContextLength = mkOption {
+      type = types.nullOr types.ints.positive;
+      default = null;
+      example = 262144;
+      description = ''
+        Context window of cfg.modelId in tokens - what the gateway behind modelBaseUrl actually
+        serves. Written as pi's contextWindow and opencode's limit.context. Set it next to
+        modelId, for the model it names: null (the default) writes neither field and leaves the
+        harnesses guessing, and pi guesses 128000, which makes it compact its history at ~111K
+        instead of using the window it was handed. Same number users/akos.nix gives the
+        interactive opencode entry for the same model.
+      '';
+    };
+
+    modelOutputLength = mkOption {
+      type = types.nullOr types.ints.positive;
+      default = null;
+      example = 32768;
+      description = ''
+        Max output tokens of cfg.modelId: pi's maxTokens, opencode's limit.output. pi guesses
+        16384 when unset, which caps every answer and truncates long tool-call arguments (pi
+        fails such a call rather than resume it). Keep it well under modelContextLength.
+      '';
+    };
+
+    modelThinkingLevels = mkOption {
+      type = types.listOf types.str;
+      default = [];
+      example = ["low" "medium" "xhigh"];
+      description = ''
+        Thinking levels cfg.modelId accepts, weakest first, spelled the way the gateway spells
+        reasoning_effort (pi's own level keys: minimal, low, medium, high, xhigh, max - "off" is
+        implied and never listed). The last entry is the level a harness starts on.
+
+        Empty (the default) means the model is declared as non-reasoning: pi reports thinking
+        "no" and opencode gets no variants. Set it per model, never as a default - a level the
+        gateway does not implement is a request it rejects.
       '';
     };
 
