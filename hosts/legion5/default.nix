@@ -251,4 +251,32 @@ in {
     "net.core.wmem_max" = 20971520;
     "net.core.wmem_default" = 20971520;
   };
+
+  # Local resolver: the dnsmasq this host already runs as its traefik-zone authority is extended
+  # into the system resolver. *.robo4you.at goes to netbird's DNS group - netbird advertises the
+  # group's address as 172.18.0.1:53, but that is this host's own (down) docker bridge here, so
+  # the same server is addressed through r4uai01's netbird IP instead. Listing the tailnet
+  # resolver as a second server for the zone gives dnsmasq's per-server failover: while the
+  # netbird one is unreachable (VPN down, peer asleep past its lazy-connection window) queries
+  # retried on it go to 100.100.100.100 instead. Everything else goes straight there; it keeps
+  # answering tailnet names even with accept-dns off below.
+  services.dnsmasq.settings = {
+    server = [
+      "/robo4you.at/100.124.160.88"
+      "/robo4you.at/100.100.100.100"
+      "100.100.100.100"
+    ];
+  };
+
+  networking.nameservers = lib.mkForce ["127.0.0.1"];
+  networking.search = lib.mkForce ["tail546fb.ts.net" "robo4you.at"];
+  # Otherwise NM rewrites the resolv.conf the activation script generates with the DHCP one.
+  networking.networkmanager.dns = "none";
+
+  # Keep tailscaled from rewriting resolv.conf over the resolver above.
+  services.tailscale.extraSetFlags = lib.mkForce [
+    "--accept-dns=false"
+    "--accept-routes=false"
+    "--advertise-exit-node=true"
+  ];
 }
