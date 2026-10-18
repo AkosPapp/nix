@@ -33,9 +33,9 @@
   modelLimitOutput = cfg.modelOutputLength;
   hasModelLimits = modelLimitContext != null || modelLimitOutput != null;
 
-  # Thinking levels, weakest first; the last one is what the harness starts on. Rendered into
-  # pi's level map (unsupported levels null, so pi hides them - and "off": null, which is pi's
-  # way of saying "off sends no effort field at all") and into opencode's variant set.
+  # Thinking levels, weakest first. Rendered into pi's level map (unsupported levels null, so pi
+  # hides them - and "off": null, which is pi's way of saying "off sends no effort field at all")
+  # and into opencode's variant set; cfg.modelThinkingDefault is the one a session starts on.
   piThinkingLevelKeys = ["off" "minimal" "low" "medium" "high" "xhigh" "max"];
   piThinkingLevelMap = builtins.listToAttrs (map (l: {
       name = l;
@@ -70,6 +70,18 @@
       })
       cfg.modelThinkingLevels);
   hasModelThinking = cfg.modelThinkingLevels != [];
+  # A startup level only makes sense among the levels the model lists: defaulting a low/medium-only
+  # model to xhigh would make every session open with a request the gateway rejects.
+  thinkingDefaultListed =
+    !hasModelThinking || lib.elem cfg.modelThinkingDefault cfg.modelThinkingLevels;
+
+  # pi's startup thinking level lives in settings.json (models.json has no such field), keyed by
+  # exact "provider/modelId" so it is a default for THIS model and changes nothing about any other
+  # model pi might drive. pi writes this same file when the user saves a level with Ctrl+S, which
+  # is why the prepare script merges this fragment instead of replacing the file.
+  piSettings = pkgs.writeText "paseo-machine-pi-settings.json" (builtins.toJSON {
+    modelThinkingLevels = {"${cfg.modelProvider}/${cfg.modelId}" = cfg.modelThinkingDefault;};
+  });
 
   # One entry per harness the daemon can drive: its CLI lands on the daemon's PATH, and its
   # model config (a store template with a $PASEO_MODEL_API_KEY placeholder - the key itself is
@@ -80,6 +92,12 @@
     pi = {
       package = pkgs-unstable.pi-coding-agent;
       configPath = ".pi/agent/models.json";
+      # Empty when the model declares no thinking levels: then there is no default to set and pi's
+      # settings.json is left entirely alone. Non-empty means one file to deep-merge, at path.
+      settings = lib.optionalAttrs hasModelThinking {
+        path = ".pi/agent/settings.json";
+        file = piSettings;
+      };
       config = pkgs.writeText "paseo-machine-pi-models.json" (builtins.toJSON {
         "$schema" = "https://pi.dev/schemas/models.schema.json";
         providers."${cfg.modelProvider}" = {
@@ -116,6 +134,7 @@
     opencode = {
       package = pkgs-unstable.opencode;
       configPath = ".config/opencode/opencode.json";
+      settings = {};
       config = pkgs.writeText "paseo-machine-opencode.json" (builtins.toJSON {
         "$schema" = "https://opencode.ai/config.json";
         provider."${cfg.modelProvider}" = {
@@ -138,7 +157,9 @@
                 };
             }
             // lib.optionalAttrs hasModelThinking {
-              options = thinkingKwargs (lib.last cfg.modelThinkingLevels);
+              # The base options are what a session sends with no variant chosen: thinking on, at
+              # the default level. Variants then merge over them.
+              options = thinkingKwargs cfg.modelThinkingDefault;
               variants = opencodeVariants;
             };
         };
@@ -186,6 +207,7 @@
       export PASEO_MODEL_API_KEY="$(cat "$CREDENTIALS_DIRECTORY/model_api_key")"
       ${lib.concatMapStrings (h: let
           d = harnessDefs.${h};
+          s = d.settings;
         in ''
           mkdir -p "$(dirname "${userCfg.home}/${d.configPath}")"
           envsubst '$PASEO_MODEL_API_KEY' <${d.config} >"${userCfg.home}/${d.configPath}.tmp"
@@ -194,6 +216,31 @@
           else
             rm -f "${userCfg.home}/${d.configPath}.tmp"
           fi
+          ${lib.optionalString (s != {}) ''
+            # pi's startup thinking level, deep-merged into a file pi also owns and writes: the
+            # user's own keys survive, the ones we name are asserted, and pi re-asserts them on
+            # every daemon start (so a level saved with Ctrl+S lasts until the next restart). An
+            # unparseable file is set aside rather than eaten.
+            s_target="${userCfg.home}/${s.path}"
+            s_dir="$(dirname "$s_target")"
+            mkdir -p "$s_dir"
+            chmod 700 "$s_dir" 2>/dev/null || true
+            s_tmp="$s_dir/.paseo-${h}-settings.tmp"
+            if [ -s "$s_target" ] && ! ${pkgs.jq}/bin/jq -e . "$s_target" >/dev/null 2>&1; then
+              cp -f "$s_target" "$s_target.paseo-backup"
+              cp ${s.file} "$s_tmp"
+            elif [ -s "$s_target" ] && ${pkgs.jq}/bin/jq -s '.[0] * .[1]' "$s_target" ${s.file} >"$s_tmp"; then
+              :
+            else
+              cp ${s.file} "$s_tmp"
+            fi
+            if cmp -s "$s_tmp" "$s_target" 2>/dev/null; then
+              rm -f "$s_tmp"
+            else
+              chmod 0600 "$s_tmp"
+              mv -f "$s_tmp" "$s_target"
+            fi
+          ''}
         '')
         harnesses}
     '';
@@ -445,6 +492,20 @@ in {
       '';
     };
 
+    modelThinkingDefault = mkOption {
+      type = types.str;
+      default = "xhigh";
+      example = "medium";
+      description = ''
+        Thinking level a session starts on for cfg.modelId, when modelThinkingLevels is non-empty:
+        opencode's base model options (what it sends until a variant is chosen) and the startup
+        level pi reads from its settings.json under modelThinkingLevels."<provider>/<modelId>".
+        Both harnesses still let the user change it per session (/thinking, opencode's variant
+        picker); pi re-asserts this level on every daemon start, so a level saved there with Ctrl+S
+        lasts until then. Must be one of modelThinkingLevels.
+      '';
+    };
+
     users = mkOption {
       type = types.attrsOf (types.submodule (_: {
         options = {
@@ -494,6 +555,10 @@ in {
           {
             assertion = lib.length (lib.unique machinePorts) == lib.length machinePorts;
             message = "paseo-machine loopback ports collide: ${lib.concatStringsSep ", " (map toString machinePorts)} - override users.<name>.port.";
+          }
+          {
+            assertion = thinkingDefaultListed;
+            message = "MODULES.services.paseo-machine.modelThinkingDefault = ${cfg.modelThinkingDefault} is not in modelThinkingLevels (${lib.concatStringsSep ", " cfg.modelThinkingLevels}) - a level the gateway never advertised is a request it rejects.";
           }
         ]
         ++ lib.mapAttrsToList (name: _: {

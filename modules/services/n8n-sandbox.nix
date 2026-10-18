@@ -40,24 +40,25 @@ in {
 
     serviceImage = mkOption {
       type = types.str;
-      default = "ghcr.io/n8n-io/n8n-sandbox-service-api:1.2.0";
+      default = "ghcr.io/n8n-io/n8n-sandbox-service-api:1.9.0";
       description = "Image for both the certs-bootstrap job and sandbox-api - upstream ships them from the same image, entrypoint override picks the job.";
     };
 
     runnerImage = mkOption {
       type = types.str;
-      default = "ghcr.io/n8n-io/n8n-sandbox-service-runner-dind:1.2.0";
+      default = "ghcr.io/n8n-io/n8n-sandbox-service-runner-dind:1.9.0";
       description = "Image for sandbox-runner-1.";
     };
 
     sandboxImage = mkOption {
       type = types.str;
-      default = "ghcr.io/n8n-io/n8n-sandbox-service-sandbox:latest";
+      default = "ghcr.io/n8n-io/n8n-sandbox-service-sandbox:1.9.0";
       description = ''
         SANDBOX_RUNNER_DOCKER_SANDBOX_IMAGE: the image sandbox-runner-1 launches per code
-        execution, not a container this module runs directly - upstream's own reference stack
-        leaves this floating on :latest (no pinned tag is published for it), so this inherits
-        that rather than pinning to something that doesn't exist.
+        execution, not a container this module runs directly. Upstream's reference stack leaves
+        this on :latest, but versioned tags are published now, so it is pinned to the same release
+        as the two images above - a :latest here means the sandbox a workflow runs in changes
+        whenever upstream pushes, with nothing to roll back to.
       '';
     };
   };

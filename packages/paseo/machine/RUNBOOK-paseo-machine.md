@@ -108,7 +108,7 @@ reports success and the daemon never starts.
 ## Building the installer
 
 ```bash
-./build-installer.sh --release cli=0.11.2,pi=1.1.0,opencode=latest \
+./build-installer.sh --release cli=0.11.4,pi=1.2.0,opencode=latest \
                      --relay relay.example:443 --hub https://hub.example \
                      --model-base-url https://hub.example/v1 --model-id some-model \
                      --harness pi -o /tmp/pi.sh

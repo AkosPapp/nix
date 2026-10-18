@@ -51,14 +51,14 @@ done
 
 [ -n "$OUT" ] || OUT="$HERE/paseo-install.generated.sh"
 
-# --release cli=0.11.2,pi=1.1.0,opencode=latest,package=@scope/name
+# --release cli=0.11.4,pi=1.2.0,opencode=latest,package=@scope/name
 #
 # Defaults live here (and only here) so a bare `./build-installer.sh` produces a
 # working installer; the Nix derivation passes explicit pins from pkgs. Each key
 # defaults individually, so `--release cli=...` does not silently unpin the harness.
 rel_get() { local k="$1" kv; for kv in ${REL:-}; do case "$kv" in $k=*) printf '%s' "${kv#$k=}" ; return 0;; esac; done; return 1; }
 REL="$(printf '%s' "${REL:-}" | tr ',' ' ')"
-for spec in "cli:0.11.2:PASEO_CLI_VERSION" "pi:1.1.0:PASEO_PI_VERSION" \
+for spec in "cli:0.11.4:PASEO_CLI_VERSION" "pi:1.2.0:PASEO_PI_VERSION" \
             "opencode:latest:PASEO_OPENCODE_VERSION" \
             "package:@earendil-works/pi-coding-agent:PASEO_PI_PACKAGE"; do
   key="${spec%%:*}"; rest="${spec#*:}"; def="${rest%%:*}"; tok="${rest##*:}"

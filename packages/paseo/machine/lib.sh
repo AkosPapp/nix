@@ -30,7 +30,7 @@ PSI_CLI_PACKAGE="${PSI_CLI_PACKAGE:-@getpaseo/cli}"
 # Node fallback (resolution step 3 - only used when nothing else can provide
 # >= 22.19). sha256 of the official tarball, from the *signed* SHASUMS256.txt
 # of that release; the downloader refuses a tarball that does not match.
-PSI_NODE_VERSION="${PSI_NODE_VERSION:-22.20.0}"
+PSI_NODE_VERSION="${PSI_NODE_VERSION:-22.23.3}"
 PSI_NODE_SHA256_linux_x64="${PSI_NODE_SHA256_linux_x64:-eeaccb0378b79406f2208e8b37a62479c70595e20be6b659125eb77dd1ab2a29}"
 PSI_NODE_SHA256_linux_arm64="${PSI_NODE_SHA256_linux_arm64:-4181609e03dcb9880e7e5bf956061ecc0503c77a480c6631d868cb1f65a2c7dd}"
 PSI_NODE_SHA256_darwin_x64="${PSI_NODE_SHA256_darwin_x64:-00df9c5df3e4ec6848c26b70fb47bf96492f342f4bed6b17f12d99b3a45eeecc}"
@@ -59,8 +59,8 @@ psi_token() { # psi_token <value> <fallback>
   esac
 }
 PSI_PI_PACKAGE="$(psi_token "$PSI_PI_PACKAGE" "@earendil-works/pi-coding-agent")"
-PSI_PI_VERSION="$(psi_token "$PSI_PI_VERSION" "1.1.0")"
-PSI_CLI_VERSION="$(psi_token "$PSI_CLI_VERSION" "0.11.2")"
+PSI_PI_VERSION="$(psi_token "$PSI_PI_VERSION" "1.2.0")"
+PSI_CLI_VERSION="$(psi_token "$PSI_CLI_VERSION" "0.11.4")"
 PSI_OPENCODE_VERSION="$(psi_token "$PSI_OPENCODE_VERSION" "latest")"
 
 # Colors only when stdout is a tty and NO_COLOR is unset.

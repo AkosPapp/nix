@@ -23,11 +23,15 @@
   # upstream by several releases; the images are what upstream tests and ship.
   #
   # Pinned to one vLLM release across all three backends, so hosts on different hardware still
-  # serve the same engine version behind LiteLLM.
+  # serve the same engine version behind LiteLLM. The release is the newest all three registries
+  # actually carry: vLLM's CUDA image moves fastest (v0.32.0 is out), while the CPU image in ECR
+  # and AMD's ROCm image stop at v0.29.0 - following CUDA alone would quietly split the fleet.
+  # ROCm's tag also restyles itself per release (underscores here, a hyphen before pytorch and
+  # vllm at 0.29.0), so check the tag verbatim against Docker Hub when bumping.
   defaultImages = {
-    cuda = "vllm/vllm-openai:v0.27.0";
-    cpu = "public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo:v0.27.0";
-    rocm = "rocm/vllm:rocm10.0.0_ubuntu24.04_py3.14_pytorch_2.12.0_vllm_0.27.0";
+    cuda = "vllm/vllm-openai:v0.29.0";
+    cpu = "public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo:v0.29.0";
+    rocm = "rocm/vllm:rocm10.1.0_ubuntu24.04_py3.14-pytorch_2.13.0_vllm-0.29.0";
   };
 
   isGpu = cfg.acceleration != "cpu";

@@ -30,6 +30,103 @@
 
   webDir = "/var/lib/paseo-web";
 
+  # What the model can do, spelled per harness - the same facts MODULES.services.paseo-machine
+  # declares for machines configured with Nix, baked into the installer here so a curl-piped machine
+  # describes the model identically. Neither harness asks the endpoint: pi and opencode read these
+  # out of their own config files and guess when a field is missing, and pi's guess (128000/16384)
+  # costs ~150K of window in early compaction while the missing `reasoning` flag makes /thinking
+  # offer nothing at all.
+  #
+  #   limit      pi: contextWindow / maxTokens      opencode: limit.context / limit.output
+  #   thinking   pi: reasoning + thinkingLevelMap   opencode: options + variants
+  #              + compat.chatTemplateKwargs        (pi's startup level: settings.json)
+  #
+  # These describe model.<id>, which defaults to the futurelab model the hub serves: changing
+  # model.id means restating them (or emptying thinkingLevels for a model that cannot think).
+  hasModelLimits = cfg.model.contextLength != null || cfg.model.outputLength != null;
+  hasModelThinking = cfg.model.thinkingLevels != [];
+  # A startup level only makes sense among the levels the model lists: defaulting a low/medium-only
+  # model to xhigh would make every installed machine open with a request the gateway rejects.
+  thinkingDefaultListed =
+    !hasModelThinking || lib.elem cfg.model.thinkingDefault cfg.model.thinkingLevels;
+
+  # pi's seven level keys, all present: a level the model does not offer is null, which is how pi
+  # hides it - including "off": null, pi's spelling of "off sends no effort field at all".
+  piThinkingLevelJson = builtins.toJSON (lib.genAttrs
+    ["off" "minimal" "low" "medium" "high" "xhigh" "max"]
+    (l:
+      if l != "off" && lib.elem l cfg.model.thinkingLevels
+      then l
+      else null));
+  # The gateway takes thinking as vLLM-style chat_template_kwargs. pi only puts them on the wire
+  # when compat.thinkingFormat says which dialect, and the $var forms are resolved through
+  # thinkingLevelMap - which is why that map is not decoration. The backslashes are for the shell
+  # heredoc this lands in: the file must end up saying "$var".
+  piCompatJson = ''{"thinkingFormat": "chat-template", "chatTemplateKwargs": {"thinking": {"\$var": "thinking.enabled"}, "reasoning_effort": {"\$var": "thinking.effort"}}}'';
+  # opencode's base options are what a session sends until a variant is chosen: thinking on, at the
+  # default level. Variants merge over them, so "off" has to clear the base flag too.
+  ocOptionsJson = builtins.toJSON {
+    chat_template_kwargs = {
+      thinking = true;
+      reasoning_effort = cfg.model.thinkingDefault;
+    };
+  };
+  ocVariantsJson = builtins.toJSON ({
+      off = {
+        enable_thinking = false;
+        chat_template_kwargs.thinking = false;
+      };
+    }
+    // lib.genAttrs cfg.model.thinkingLevels (e: {
+      chat_template_kwargs = {
+        thinking = true;
+        reasoning_effort = e;
+      };
+    }));
+
+  # One-line model entries, matching the compact style of the heredocs below. $MODEL_ID stays a
+  # shell placeholder: the installer learns the model from the hub, it does not hard-code it.
+  piModelJson =
+    "{"
+    + lib.concatStringsSep ", " (
+      ["\"id\": \"$MODEL_ID\""]
+      ++ lib.optionals (cfg.model.contextLength != null) [
+        "\"contextWindow\": ${toString cfg.model.contextLength}"
+      ]
+      ++ lib.optionals (cfg.model.outputLength != null) [
+        "\"maxTokens\": ${toString cfg.model.outputLength}"
+      ]
+      ++ lib.optionals hasModelThinking [
+        "\"reasoning\": true"
+        "\"thinkingLevelMap\": ${piThinkingLevelJson}"
+        "\"compat\": ${piCompatJson}"
+      ]
+    )
+    + "}";
+  ocModelJson =
+    "{"
+    + lib.concatStringsSep ", " (
+      ["\"name\": \"$MODEL_ID\""]
+      ++ lib.optionals hasModelLimits [
+        "\"limit\": ${
+          builtins.toJSON (
+            {}
+            // lib.optionalAttrs (cfg.model.contextLength != null) {
+              context = cfg.model.contextLength;
+            }
+            // lib.optionalAttrs (cfg.model.outputLength != null) {
+              output = cfg.model.outputLength;
+            }
+          )
+        }"
+      ]
+      ++ lib.optionals hasModelThinking [
+        "\"options\": ${ocOptionsJson}"
+        "\"variants\": ${ocVariantsJson}"
+      ]
+    )
+    + "}";
+
   # Non-secret install parameters; the two secrets (enrollment token -> URL segment + model key)
   # are substituted at activation from sops, never stored in the Nix store (see render script).
   # Combined installer for BOTH harnesses (pi + opencode), one script, one daemon: the daemon
@@ -94,7 +191,7 @@
         aarch64 | arm64) NARCH=arm64 ;;
         *) die "unsupported architecture: $ARCH" ;;
       esac
-      NV=22.20.0
+      NV=22.23.3
       # .tar.gz everywhere: slim containers may lack xz for the .xz form.
       if [ "$OS" = "Darwin" ]; then
         NPKG="node-v$NV-darwin-$NARCH.tar.gz"
@@ -132,7 +229,7 @@
     # npm >= 11 silently skips install scripts unless allowlisted; @getpaseo/cli needs its
     # node-pty/esbuild builds and the harness CLIs need their postinstall binary downloads.
     as_flag() { npm help install 2>/dev/null | grep -q -- '--allow-scripts' && printf -- '--allow-scripts=%s' "$1"; }
-    npm install -g $(as_flag "esbuild,node-pty,msgpackr-extract") @getpaseo/cli@0.11.2 >/dev/null || die "npm install @getpaseo/cli failed"
+    npm install -g $(as_flag "esbuild,node-pty,msgpackr-extract") @getpaseo/cli@0.11.4 >/dev/null || die "npm install @getpaseo/cli failed"
     npm ls -g @earendil-works/pi-coding-agent --depth=0 2>/dev/null | grep -q pi-coding-agent \
       || npm install -g --ignore-scripts @earendil-works/pi-coding-agent >/dev/null \
       || die "npm install @earendil-works/pi-coding-agent failed"
@@ -356,7 +453,7 @@
           "npm": "@ai-sdk/openai-compatible",
           "name": "${cfg.model.providerLabel}",
           "options": { "baseURL": "$MODEL_BASE_URL", "apiKey": "$MODEL_KEY" },
-          "models": { "$MODEL_ID": { "name": "$MODEL_ID" } }
+          "models": { "$MODEL_ID": ${ocModelJson} }
         }
       },
       "model": "${cfg.model.provider}/$MODEL_ID"
@@ -377,12 +474,36 @@
           "baseUrl": "$MODEL_BASE_URL",
           "api": "openai-completions",
           "apiKey": "$MODEL_KEY",
-          "models": [ { "id": "$MODEL_ID" } ]
+          "models": [ ${piModelJson} ]
         }
       }
     }
     EOF
     chmod 600 "$HOME/.pi/agent/models.json"
+    ${lib.optionalString hasModelThinking ''
+      # pi's startup thinking level, per model: settings.json's modelThinkingLevels is keyed by
+      # "<provider>/<modelId>", so this sets a default for THIS model and says nothing about any
+      # other pi might drive. pi owns and writes this file too (theme, changelog seen, levels saved
+      # with Ctrl+S), so merge our one key instead of replacing it - node is on PATH by now (step 1),
+      # and an unparseable file is set aside rather than eaten.
+      cat >"$HOME/.pi/agent/.paseo-settings.json" <<EOF
+      { "modelThinkingLevels": { "${cfg.model.provider}/$MODEL_ID": "${cfg.model.thinkingDefault}" } }
+      EOF
+      node -e '
+        const fs = require("fs");
+        const [target, add] = process.argv.slice(1);
+        let cur = {};
+        if (fs.existsSync(target)) {
+          try { cur = JSON.parse(fs.readFileSync(target, "utf8")); }
+          catch (e) { fs.copyFileSync(target, target + ".paseo-backup"); }
+        }
+        const want = JSON.parse(fs.readFileSync(add, "utf8"));
+        cur.modelThinkingLevels = Object.assign({}, cur.modelThinkingLevels, want.modelThinkingLevels);
+        fs.writeFileSync(target, JSON.stringify(cur, null, 2) + "\n");
+      ' "$HOME/.pi/agent/settings.json" "$HOME/.pi/agent/.paseo-settings.json" \
+        && rm -f "$HOME/.pi/agent/.paseo-settings.json" \
+        || log "could not set the default thinking level in ~/.pi/agent/settings.json (pi still offers /thinking)"
+    ''}
   '';
 
   # SLURM deployer: submits machine.sh as a long allocation so a cluster can host the machine.
@@ -1342,11 +1463,69 @@ in {
           most of it.
         '';
       };
+
+      contextLength = mkOption {
+        type = types.nullOr types.ints.positive;
+        default = 262144;
+        example = 131072;
+        description = ''
+          Context window of model.id in tokens - what the gateway actually serves. Written as pi's
+          contextWindow and opencode's limit.context. null omits both and leaves the harnesses
+          guessing, and pi guesses 128000: it then compacts its history at contextWindow - 16384
+          (~111K) instead of using the window it was handed. Keep this in step with model.id, and
+          with MODULES.services.paseo-machine.modelContextLength and the interactive entry in
+          users/akos.nix - three copies of one number, because the three install paths describe the
+          same model to two harnesses in two dialects.
+        '';
+      };
+
+      outputLength = mkOption {
+        type = types.nullOr types.ints.positive;
+        default = 32768;
+        example = 16384;
+        description = ''
+          Max output tokens of model.id: pi's maxTokens, opencode's limit.output. pi guesses 16384
+          when unset, which caps every answer and truncates long tool-call arguments (pi fails such
+          a call rather than resume it). null omits it.
+        '';
+      };
+
+      thinkingLevels = mkOption {
+        type = types.listOf types.str;
+        default = ["low" "medium" "xhigh"];
+        example = ["low" "medium"];
+        description = ''
+          Thinking levels model.id accepts, weakest first, spelled the way the gateway spells
+          `reasoning_effort` (pi's own keys: minimal, low, medium, high, xhigh, max - "off" is
+          implied and never listed). Rendered into pi's thinkingLevelMap and opencode's variants,
+          exactly as MODULES.services.paseo-machine.modelThinkingLevels does for declared machines.
+          Empty installs a non-reasoning model: no variants, and pi's /thinking has nothing to
+          offer. A level the gateway does not implement is a request it rejects.
+        '';
+      };
+
+      thinkingDefault = mkOption {
+        type = types.str;
+        default = "xhigh";
+        example = "medium";
+        description = ''
+          Thinking level a session starts on: opencode's base model options (what it sends until a
+          variant is chosen), and the level the installer merges into ~/.pi/agent/settings.json
+          under modelThinkingLevels."<provider>/<id>" - keyed per model, so other models pi might
+          drive keep pi's own default. Users can still change it per session (/thinking, opencode's
+          variant picker); a re-run of the installer resets it to this. Must be one of
+          thinkingLevels.
+        '';
+      };
     };
   };
 
   config = mkIf cfg.enable {
     assertions = [
+      {
+        assertion = thinkingDefaultListed;
+        message = "MODULES.services.paseo.model.thinkingDefault = ${cfg.model.thinkingDefault} is not in model.thinkingLevels (${lib.concatStringsSep ", " cfg.model.thinkingLevels}) - the installer would make every machine start on a level the gateway rejects.";
+      }
       {
         assertion = config.MODULES.security.sops.enable;
         message = "MODULES.services.paseo needs MODULES.security.sops.enable: daemon password, enrollment token, model key and relay cookie all come from sops.";

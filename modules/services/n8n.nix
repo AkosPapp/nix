@@ -27,7 +27,7 @@ in {
 
     image = mkOption {
       type = types.str;
-      default = "n8nio/n8n:2.39.6";
+      default = "n8nio/n8n:2.44.3";
       description = "Container image to run.";
     };
 
