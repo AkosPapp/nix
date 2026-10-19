@@ -129,7 +129,9 @@
         $IPT -w -C hermes-egress -j ${gatewayApiEgressChain} 2>/dev/null \
           || $IPT -w -I hermes-egress 2 -j ${gatewayApiEgressChain} 2>/dev/null || true
         $IPT -w -F ${gatewayApiEgressChain}
-        $IPT -w -A ${gatewayApiEgressChain} -d 127.0.0.1 -p tcp --dport "$port" -j RETURN \
+        # ACCEPT, not RETURN: RETURN inside a sub-chain only exits back into hermes-egress,
+        # where the packet would fall through to the privateRanges REJECT at the bottom.
+        $IPT -w -A ${gatewayApiEgressChain} -d 127.0.0.1 -p tcp --dport "$port" -j ACCEPT \
           || echo "hermes-egress: could not allow gateway api port $port" >&2
         exit 0
   '';
