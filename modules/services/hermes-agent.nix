@@ -104,10 +104,12 @@
           $IPT -w -F ${gatewayApiEgressChain} 2>/dev/null || true
           exit 0
         fi
-        # ONE discovery attempt (never wait - this must stay far below any unit timeout). Root
-        # reads the hermes-owned state/socket directly; discovery creates nothing. Not ready ->
-        # keep the current rule untouched and let the path/timer re-trigger later.
-        port=$(${pkgs.coreutils}/bin/env HOME=/tmp HERMES_HOME=${hermesHome} ${hermes.package.passthru.hermesVenv}/bin/python3 -c '
+        # ONE discovery attempt (never wait - this must stay far below any unit timeout). The
+        # gateway control socket authenticates by peer-uid, so ROOT is refused by discovery; the
+        # probe therefore drops to the hermes uid (setpriv as root cannot fail on setgroups),
+        # while iptables itself stays root. Discovery creates nothing. Not ready -> keep the
+        # current rule untouched and let the path/timer re-trigger later.
+        port=$(${pkgs.coreutils}/bin/env HOME=/tmp HERMES_HOME=${hermesHome} ${pkgs.util-linux}/bin/setpriv --reuid=${hermes.user} --regid=${hermes.user} --clear-groups ${hermes.package.passthru.hermesVenv}/bin/python3 -c '
     import sys
     from hermes_cli.gateway_runtime import discover_gateway_endpoint
     from urllib.parse import urlsplit
@@ -353,7 +355,7 @@ in {
       wantedBy = ["timers.target"];
       timerConfig = {
         OnBootSec = "2min";
-        OnUnitActiveSec = "10min";
+        OnUnitActiveSec = "2min";
         Unit = "hermes-gateway-api-egress-sync.service";
       };
     };
