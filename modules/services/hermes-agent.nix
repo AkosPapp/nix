@@ -82,50 +82,53 @@
   # gateway's own loopback API (gateway/run_api.py: bind port 0 = EPHEMERAL, no config knob). The
   # egress filter below REJECTs loopback except the static allowlist, so cron died with
   # "GatewayClientError: Gateway connection failed; no local fallback". Fix: a sub-chain carrying
-  # the gateway's CURRENT api port, re-synced by hermes-agent.service ExecStartPost on every
-  # (re)start. Empty chain = no-op (falls through), so an absent/stale sync only degrades cron.
+  # the gateway's CURRENT api port, re-synced by a PATH-TRIGGERED ONEWOT (see the
+  # hermes-gateway-api-egress-sync units) whenever the gateway rewrites gateway_state.json, plus a
+  # slow timer backstop. It must NOT live in the gateway's ExecStartPost: with Type=simple the
+  # start transaction (post included) is bounded by TimeoutStartSec, and a post that waits for a
+  # slow gateway boot crash-looped hermes-agent on 2026-10-19.
+  # Empty chain = no-op (falls through), so an absent/stale sync only degrades cron.
   gatewayApiEgressChain = "hermes-gateway-api";
   gatewayApiEgressJump = ''
     # Never -F here: a firewall restart must keep the port the running gateway bound.
-    # Only the gateway's own ExecStartPost (fresh bind, fresh port) flushes and refills it.
+    # Only the sync service (fresh bind, fresh port) flushes and refills it.
     iptables -w -N ${gatewayApiEgressChain} 2>/dev/null || true
     iptables -w -C hermes-egress -j ${gatewayApiEgressChain} 2>/dev/null \
       || iptables -w -I hermes-egress 2 -j ${gatewayApiEgressChain}
   '';
   syncGatewayApiEgress = pkgs.writeShellScriptBin "hermes-egress-sync-gateway-api" ''
         set -u
-        # Ask the gateway which api_origin it advertises (root reads the hermes-owned control
-        # socket directly; discovery creates nothing).
-        port=""
-        for i in {1..90}; do
-          port=$(${pkgs.coreutils}/bin/env HOME=/tmp HERMES_HOME=${hermesHome} ${hermes.package.passthru.hermesVenv}/bin/python3 -c '
+        IPT=${pkgs.iptables}/bin/iptables
+        if [ "''${1:-sync}" = "flush" ]; then
+          # Gateway stopped: drop the rule so nothing keeps a free api port open for reuse.
+          $IPT -w -F ${gatewayApiEgressChain} 2>/dev/null || true
+          exit 0
+        fi
+        # ONE discovery attempt (never wait - this must stay far below any unit timeout). Root
+        # reads the hermes-owned state/socket directly; discovery creates nothing. Not ready ->
+        # keep the current rule untouched and let the path/timer re-trigger later.
+        port=$(${pkgs.coreutils}/bin/env HOME=/tmp HERMES_HOME=${hermesHome} ${hermes.package.passthru.hermesVenv}/bin/python3 -c '
     import sys
     from hermes_cli.gateway_runtime import discover_gateway_endpoint
     from urllib.parse import urlsplit
     d = discover_gateway_endpoint(sys.argv[1])
     if d.state != "ready":
         sys.exit(1)
-    print(urlsplit(d.endpoint.api_origin).port)' ${hermesHome} 2>/dev/null) && [ -n "$port" ] && break
-          ${pkgs.coreutils}/bin/sleep 1
-          port=""
-        done
+    print(urlsplit(d.endpoint.api_origin).port)' ${hermesHome} 2>/dev/null) || port=""
         if [ -z "$port" ]; then
-          echo "hermes-egress: gateway api port not found; cron agent jobs will fail until resync" >&2
+          echo "hermes-egress: gateway api not ready; keeping current rule" >&2
           exit 0
         fi
-        IPT=${pkgs.iptables}/bin/iptables
+        cur="$($IPT -w -S ${gatewayApiEgressChain} 2>/dev/null \
+          | ${pkgs.gnugrep}/bin/grep -oE -- '--dport [0-9]+' | ${pkgs.gnugrep}/bin/grep -oE '[0-9]+' | ${pkgs.coreutils}/bin/head -1)" || cur=""
+        if [ "$cur" = "$port" ]; then exit 0; fi
         $IPT -w -N ${gatewayApiEgressChain} 2>/dev/null || true
+        # firewall.service owns the jump; re-add if missing (chain created after firewall start).
+        $IPT -w -C hermes-egress -j ${gatewayApiEgressChain} 2>/dev/null \
+          || $IPT -w -I hermes-egress 2 -j ${gatewayApiEgressChain} 2>/dev/null || true
         $IPT -w -F ${gatewayApiEgressChain}
-        # The jump lives in the per-uid egress chain, which firewall.service creates; at boot the
-        # gateway can reach here first, so retry until the anchor exists.
-        for i in {1..30}; do
-          $IPT -w -C hermes-egress -j ${gatewayApiEgressChain} 2>/dev/null && break
-          $IPT -w -I hermes-egress 2 -j ${gatewayApiEgressChain} 2>/dev/null || true
-          ${pkgs.coreutils}/bin/sleep 2
-        done
-        $IPT -w -A ${gatewayApiEgressChain} -d 127.0.0.1 -p tcp --dport "$port" -j RETURN || \
-          echo "hermes-egress: could not allow gateway api port $port" >&2
-        # ExecStartPost failure would mark the whole gateway unit failed; never do that over iptables.
+        $IPT -w -A ${gatewayApiEgressChain} -d 127.0.0.1 -p tcp --dport "$port" -j RETURN \
+          || echo "hermes-egress: could not allow gateway api port $port" >&2
         exit 0
   '';
 in {
@@ -316,10 +319,43 @@ in {
       serviceConfig =
         sandbox
         // {
-          # Root (+): keeps the egress allowlist in sync with the gateway's ephemeral api port, which
-          # the cron workers (and the dashboard) must reach on loopback. Runs on every start/restart.
-          ExecStartPost = "+${syncGatewayApiEgress}/bin/hermes-egress-sync-gateway-api";
+          # Root (+): while the gateway is down, drop the egress rule for its old api port.
+          # Flush-only, instant, exit-0-always - nothing here may ever block a transition.
+          ExecStopPost = "+${syncGatewayApiEgress}/bin/hermes-egress-sync-gateway-api flush";
         };
+    };
+
+    # The gateway records its freshly-bound loopback api port in gateway_state.json on every
+    # start. Sync the egress allow-rule OUT of the gateway's own start transaction (a waiting
+    # ExecStartPost there exceeded TimeoutStartSec and crash-looped the gateway, 2026-10-19):
+    # a oneshot triggered whenever that file changes, with a timer as self-healing backstop.
+    # Each sync run is one non-blocking check.
+    systemd.services.hermes-gateway-api-egress-sync = {
+      description = "Allow hermes egress to the gateway's current loopback API port";
+      after = ["firewall.service"];
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${syncGatewayApiEgress}/bin/hermes-egress-sync-gateway-api";
+      };
+    };
+
+    systemd.paths.hermes-gateway-api-egress-sync = {
+      description = "Sync hermes egress rule when the gateway advertises a new API port";
+      wantedBy = ["multi-user.target"];
+      pathConfig = {
+        PathModified = "${hermesHome}/gateway_state.json";
+        Unit = "hermes-gateway-api-egress-sync.service";
+      };
+    };
+
+    systemd.timers.hermes-gateway-api-egress-sync = {
+      description = "Backstop for the gateway api egress rule sync";
+      wantedBy = ["timers.target"];
+      timerConfig = {
+        OnBootSec = "2min";
+        OnUnitActiveSec = "10min";
+        Unit = "hermes-gateway-api-egress-sync.service";
+      };
     };
 
     # The dashboard (web UI) - a separate process from the gateway, same HERMES_HOME.
@@ -419,7 +455,7 @@ in {
         # of widening 100.64.0.0/10. The one and only deliberate hole in the private-range block.
         iptables -w -A hermes-egress -d ${config.MODULES.networking.tailscale.hostIP} -p tcp --dport ${toString config.PORTS.paseoRelayFunnel} -j RETURN
       ''}
-      # Gateway api-port sub-chain (port rules filled in by hermes-agent's ExecStartPost before
+      # Gateway api-port sub-chain (port rules filled in by hermes-gateway-api-egress-sync before
       # the REJECTs below; empty chain = no-op). The sub-chain survives the -F above, so a
       # firewall restart keeps the live port without needing a gateway restart.
       ${gatewayApiEgressJump}
