@@ -639,7 +639,7 @@ async def read_rooms_since(
 
 
 WORKSPACE_ROOT = "/var/lib/hermes/workspace"
-MAX_MEDIA_BYTES = 60 * 1024 * 1024  # lecture scripts/books are 5-30 MB; refuse anything bigger
+MAX_MEDIA_BYTES = 200 * 1024 * 1024  # lecture scripts/books are 5-30 MB; forwarded PDF packs hit ~100 MB
 
 
 @server.tool()
