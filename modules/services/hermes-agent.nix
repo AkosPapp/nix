@@ -77,6 +77,45 @@
   # and the Matrix reader MCP server (matrix-reader.service, also on the hermes uid).
   allowedLocalPorts = [config.PORTS.litellm config.PORTS.synapse config.PORTS.matrixReader] ++ cfg.extraAllowedLoopbackPorts;
   privateRanges = ["127.0.0.0/8" "10.0.0.0/8" "172.16.0.0/12" "192.168.0.0/16" "100.64.0.0/10" "169.254.0.0/16"];
+
+  # Hermes >= the "restart-safe cron" build: every agent cron run is a worker that attaches to the
+  # gateway's own loopback API (gateway/run_api.py: bind port 0 = EPHEMERAL, no config knob). The
+  # egress filter below REJECTs loopback except the static allowlist, so cron died with
+  # "GatewayClientError: Gateway connection failed; no local fallback". Fix: a sub-chain carrying
+  # the gateway's CURRENT api port, re-synced by hermes-agent.service ExecStartPost on every
+  # (re)start. Empty chain = no-op (falls through), so an absent/stale sync only degrades cron.
+  gatewayApiEgressChain = "hermes-gateway-api";
+  gatewayApiEgressJump = ''
+    iptables -w -N ${gatewayApiEgressChain} 2>/dev/null || iptables -w -F ${gatewayApiEgressChain}
+    iptables -w -C hermes-egress -j ${gatewayApiEgressChain} 2>/dev/null \
+      || iptables -w -I hermes-egress 2 -j ${gatewayApiEgressChain}
+  '';
+  syncGatewayApiEgress = pkgs.writeShellScriptBin "hermes-egress-sync-gateway-api" ''
+    set -u
+    # Ask the gateway which api_origin it advertises (root reads the hermes-owned control
+    # socket directly; discovery creates nothing).
+    port=""
+    for i in {1..90}; do
+      port=$(${pkgs.coreutils}/bin/env HOME=/tmp HERMES_HOME=${hermesHome} ${hermes.package.passthru.hermesVenv}/bin/python3 -c '
+import sys
+from hermes_cli.gateway_runtime import discover_gateway_endpoint
+from urllib.parse import urlsplit
+d = discover_gateway_endpoint(sys.argv[1])
+if d.state != "ready":
+    sys.exit(1)
+print(urlsplit(d.endpoint.api_origin).port)' ${hermesHome} 2>/dev/null) && [ -n "$port" ] && break
+      ${pkgs.coreutils}/bin/sleep 1
+      port=""
+    done
+    if [ -z "$port" ]; then
+      echo "hermes-egress: gateway api port not found; cron agent jobs will fail until resync" >&2
+      exit 0
+    fi
+    ${pkgs.iptables}/bin/iptables -w -N ${gatewayApiEgressChain} 2>/dev/null || ${pkgs.iptables}/bin/iptables -w -F ${gatewayApiEgressChain}
+    ${pkgs.iptables}/bin/iptables -w -C hermes-egress -j ${gatewayApiEgressChain} 2>/dev/null \
+      || ${pkgs.iptables}/bin/iptables -w -I hermes-egress 2 -j ${gatewayApiEgressChain}
+    ${pkgs.iptables}/bin/iptables -w -A ${gatewayApiEgressChain} -d 127.0.0.1 -p tcp --dport "$port" -j RETURN
+  '';
 in {
   options.MODULES.services.hermes-agent = {
     enable = mkEnableOption ''
@@ -262,7 +301,11 @@ in {
       after = [config.services.matrix-synapse.serviceUnit "litellm.service" "matrix-provision-users.service" "matrix-reader.service"];
       wants = ["matrix-provision-users.service" "matrix-reader.service"];
 
-      serviceConfig = sandbox;
+      serviceConfig = sandbox // {
+        # Root (+): keeps the egress allowlist in sync with the gateway's ephemeral api port, which
+        # the cron workers (and the dashboard) must reach on loopback. Runs on every start/restart.
+        ExecStartPost = "+${syncGatewayApiEgress}/bin/hermes-egress-sync-gateway-api";
+      };
     };
 
     # The dashboard (web UI) - a separate process from the gateway, same HERMES_HOME.
@@ -362,12 +405,18 @@ in {
         # of widening 100.64.0.0/10. The one and only deliberate hole in the private-range block.
         iptables -w -A hermes-egress -d ${config.MODULES.networking.tailscale.hostIP} -p tcp --dport ${toString config.PORTS.paseoRelayFunnel} -j RETURN
       ''}
+      # Gateway api-port sub-chain (port rules filled in by hermes-agent's ExecStartPost before
+      # the REJECTs below; empty chain = no-op). The sub-chain survives the -F above, so a
+      # firewall restart keeps the live port without needing a gateway restart.
+      ${gatewayApiEgressJump}
       ${lib.concatMapStringsSep "\n" (r: "iptables -w -A hermes-egress -d ${r} -j REJECT") privateRanges}
     '';
     networking.firewall.extraStopCommands = ''
       iptables -w -D OUTPUT -m owner --uid-owner ${hermes.user} -j hermes-egress 2>/dev/null || true
       iptables -w -F hermes-egress 2>/dev/null || true
       iptables -w -X hermes-egress 2>/dev/null || true
+      iptables -w -F ${gatewayApiEgressChain} 2>/dev/null || true
+      iptables -w -X ${gatewayApiEgressChain} 2>/dev/null || true
     '';
   };
 }
