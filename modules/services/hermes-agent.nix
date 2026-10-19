@@ -86,35 +86,47 @@
   # (re)start. Empty chain = no-op (falls through), so an absent/stale sync only degrades cron.
   gatewayApiEgressChain = "hermes-gateway-api";
   gatewayApiEgressJump = ''
-    iptables -w -N ${gatewayApiEgressChain} 2>/dev/null || iptables -w -F ${gatewayApiEgressChain}
+    # Never -F here: a firewall restart must keep the port the running gateway bound.
+    # Only the gateway's own ExecStartPost (fresh bind, fresh port) flushes and refills it.
+    iptables -w -N ${gatewayApiEgressChain} 2>/dev/null || true
     iptables -w -C hermes-egress -j ${gatewayApiEgressChain} 2>/dev/null \
       || iptables -w -I hermes-egress 2 -j ${gatewayApiEgressChain}
   '';
   syncGatewayApiEgress = pkgs.writeShellScriptBin "hermes-egress-sync-gateway-api" ''
-    set -u
-    # Ask the gateway which api_origin it advertises (root reads the hermes-owned control
-    # socket directly; discovery creates nothing).
-    port=""
-    for i in {1..90}; do
-      port=$(${pkgs.coreutils}/bin/env HOME=/tmp HERMES_HOME=${hermesHome} ${hermes.package.passthru.hermesVenv}/bin/python3 -c '
-import sys
-from hermes_cli.gateway_runtime import discover_gateway_endpoint
-from urllib.parse import urlsplit
-d = discover_gateway_endpoint(sys.argv[1])
-if d.state != "ready":
-    sys.exit(1)
-print(urlsplit(d.endpoint.api_origin).port)' ${hermesHome} 2>/dev/null) && [ -n "$port" ] && break
-      ${pkgs.coreutils}/bin/sleep 1
-      port=""
-    done
-    if [ -z "$port" ]; then
-      echo "hermes-egress: gateway api port not found; cron agent jobs will fail until resync" >&2
-      exit 0
-    fi
-    ${pkgs.iptables}/bin/iptables -w -N ${gatewayApiEgressChain} 2>/dev/null || ${pkgs.iptables}/bin/iptables -w -F ${gatewayApiEgressChain}
-    ${pkgs.iptables}/bin/iptables -w -C hermes-egress -j ${gatewayApiEgressChain} 2>/dev/null \
-      || ${pkgs.iptables}/bin/iptables -w -I hermes-egress 2 -j ${gatewayApiEgressChain}
-    ${pkgs.iptables}/bin/iptables -w -A ${gatewayApiEgressChain} -d 127.0.0.1 -p tcp --dport "$port" -j RETURN
+        set -u
+        # Ask the gateway which api_origin it advertises (root reads the hermes-owned control
+        # socket directly; discovery creates nothing).
+        port=""
+        for i in {1..90}; do
+          port=$(${pkgs.coreutils}/bin/env HOME=/tmp HERMES_HOME=${hermesHome} ${hermes.package.passthru.hermesVenv}/bin/python3 -c '
+    import sys
+    from hermes_cli.gateway_runtime import discover_gateway_endpoint
+    from urllib.parse import urlsplit
+    d = discover_gateway_endpoint(sys.argv[1])
+    if d.state != "ready":
+        sys.exit(1)
+    print(urlsplit(d.endpoint.api_origin).port)' ${hermesHome} 2>/dev/null) && [ -n "$port" ] && break
+          ${pkgs.coreutils}/bin/sleep 1
+          port=""
+        done
+        if [ -z "$port" ]; then
+          echo "hermes-egress: gateway api port not found; cron agent jobs will fail until resync" >&2
+          exit 0
+        fi
+        IPT=${pkgs.iptables}/bin/iptables
+        $IPT -w -N ${gatewayApiEgressChain} 2>/dev/null || true
+        $IPT -w -F ${gatewayApiEgressChain}
+        # The jump lives in the per-uid egress chain, which firewall.service creates; at boot the
+        # gateway can reach here first, so retry until the anchor exists.
+        for i in {1..30}; do
+          $IPT -w -C hermes-egress -j ${gatewayApiEgressChain} 2>/dev/null && break
+          $IPT -w -I hermes-egress 2 -j ${gatewayApiEgressChain} 2>/dev/null || true
+          ${pkgs.coreutils}/bin/sleep 2
+        done
+        $IPT -w -A ${gatewayApiEgressChain} -d 127.0.0.1 -p tcp --dport "$port" -j RETURN || \
+          echo "hermes-egress: could not allow gateway api port $port" >&2
+        # ExecStartPost failure would mark the whole gateway unit failed; never do that over iptables.
+        exit 0
   '';
 in {
   options.MODULES.services.hermes-agent = {
@@ -301,11 +313,13 @@ in {
       after = [config.services.matrix-synapse.serviceUnit "litellm.service" "matrix-provision-users.service" "matrix-reader.service"];
       wants = ["matrix-provision-users.service" "matrix-reader.service"];
 
-      serviceConfig = sandbox // {
-        # Root (+): keeps the egress allowlist in sync with the gateway's ephemeral api port, which
-        # the cron workers (and the dashboard) must reach on loopback. Runs on every start/restart.
-        ExecStartPost = "+${syncGatewayApiEgress}/bin/hermes-egress-sync-gateway-api";
-      };
+      serviceConfig =
+        sandbox
+        // {
+          # Root (+): keeps the egress allowlist in sync with the gateway's ephemeral api port, which
+          # the cron workers (and the dashboard) must reach on loopback. Runs on every start/restart.
+          ExecStartPost = "+${syncGatewayApiEgress}/bin/hermes-egress-sync-gateway-api";
+        };
     };
 
     # The dashboard (web UI) - a separate process from the gateway, same HERMES_HOME.
