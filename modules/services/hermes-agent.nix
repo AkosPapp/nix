@@ -314,6 +314,11 @@ in {
       shell = mkForce "${pkgs.bash}/bin/bash";
       linger = mkForce false;
       extraGroups = mkForce [];
+      # Put the hermes CLI on the service user's profile (/etc/profiles/per-user/<user>/bin,
+      # PATH-independent when referenced by absolute path) so Paseo terminal profiles can launch
+      # `hermes chat`/`--tui` as this user. Same package the gateway unit runs; HERMES_HOME and
+      # the LiteLLM key in $HERMES_HOME/.env are picked up from the environment of the daemon.
+      packages = [hermes.package];
     };
 
     systemd.services.hermes-agent = {
