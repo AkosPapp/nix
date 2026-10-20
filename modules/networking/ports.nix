@@ -63,6 +63,7 @@ in {
     mautrixSignal = 29328;
     mautrixSlack = 29335;
     mautrixDiscord = 29342;
+    mautrixMattermost = 29349;
     roundcube = 8086;
     searx = 8081;
     sftpgoHttp = 8090;

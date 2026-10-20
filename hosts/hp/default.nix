@@ -251,11 +251,17 @@ in {
     signal.enable = true;
     slack.enable = true;
     discord.enable = true;
-    matterbridge = {
+    mattermost = {
+      # puppeting bridge: messages appear from the real Mattermost users, and sends appear as me
       enable = true;
-      mattermostUser = "AkosPapp";
-      # mirror every public channel of both teams, not just the ones the account joined
-      autojoinPublicTeams = [ "fsinf" "w-inf-tuwien" ];
+      user = "AkosPapp";
+      teams = [ "fsinf" "w-inf-tuwien" ];
+    };
+    matterbridge = {
+      # relay-style predecessor, replaced by mautrix-mattermost (everything came from one
+      # account). Its rooms stay in the database as orphans until pruned by hand; re-enabling
+      # this one also requires disabling mattermost above (they would double-relay).
+      enable = false;
     };
   };
   MODULES.services.hermes-agent.enable = true;
