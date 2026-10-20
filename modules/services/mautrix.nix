@@ -6,7 +6,7 @@
 }: let
   inherit (lib) mkEnableOption mkIf mkMerge mkOption types;
 
-  cfg = config.MODULES.services.mautrix;
+  cfg = config.MODULES.services.matrix;
   matrix = config.MODULES.services.matrix;
   synapseUnit = config.services.matrix-synapse.serviceUnit;
 
@@ -17,7 +17,7 @@
   # Settings every bridge shares. Each module merges these over its own defaults with
   # recursiveUpdate, so anything the defaults set that isn't overridden here survives - which is
   # why "*" is spelled out below rather than just adding the admin entry: the upstream default
-  # is `"*" = "relay"` with relay mode on, i.e. anyone on the homeserver may use the bridge.
+  # is `*` = "relay" with relay mode on, i.e. anyone on the homeserver may use the bridge.
   bridgeSettings = port: {
     homeserver = {
       address = matrix.clientUrl;
@@ -90,7 +90,7 @@
     wantedBy = [synapseUnit];
   };
 
-  anyBridge = cfg.whatsapp.enable || cfg.signal.enable || cfg.slack.enable;
+  anyBridge = cfg.whatsapp.enable || cfg.signal.enable || cfg.slack.enable || cfg.discord.enable;
 
   # Double puppeting: a second, bridge-less appservice whose only namespace is the admin's own
   # user ID (non-exclusive). Bridges given its as_token can act as that user - so portal rooms
@@ -105,8 +105,9 @@
     pkgs.writers.writePython3Bin "mautrix-accept-invites" {flakeIgnore = ["E501"];}
     (builtins.readFile ./mautrix/accept-invites.py);
   # Who may invite the admin into a room that then gets auto-joined: the bridge bots and the
-  # ghosts they puppet, nobody else.
-  bridgeUsers = "^@(whatsappbot|signalbot|slackbot|whatsapp_.*|signal_.*|slack_.*):${lib.escapeRegex matrix.serverName}$";
+  # ghosts they puppet, nobody else. (matterbridge is not a mautrix bridge, but its rooms land
+  # in the same admin inbox, so it belongs in this list too.)
+  bridgeUsers = "^@(whatsappbot|signalbot|slackbot|discordbot|matterbridge|whatsapp_.*|signal_.*|slack_.*|discord_.*):${lib.escapeRegex matrix.serverName}$";
 
   # --- mautrix-slack: packaged in nixpkgs, but without a NixOS module ------------------------
   # Same shape as nixpkgs' mautrix-whatsapp module, so it behaves like the other two.
@@ -143,11 +144,67 @@
     } (bridgeSettings config.PORTS.mautrixSlack);
     settingsJson = (pkgs.formats.json {}).generate "mautrix-slack-config.json" settings;
   };
+
+  # --- mautrix-discord: same story, different shape -------------------------------------------
+  # This one is the old-style Go bridge, so its config layout differs from the python bridges
+  # (database lives under appservice, double puppeting is bridge.login_shared_secret_map), and
+  # unlike the others it takes no withGoolm: its go.mod has no goolm at all (no vendored copy
+  # either, so a build-time `go get` would be needed - impossible offline). It must link libolm.
+  # The libolm CVEs nixpkgs flags are side-channel issues in Matrix E2EE; this bridge runs
+  # encryption-off (0.7.x has no encryption config section, the library is linked, never used
+  # for anything here), so the "informed decision" nixpkgs' warning asks for is: clear the
+  # flag for this one build rather than export NIXPKGS_ALLOW_INSECURE host-wide.
+  discord = rec {
+    package = pkgs.mautrix-discord.override {
+      olm = pkgs.olm.overrideAttrs (finalOlm: prevOlm: {
+        meta = prevOlm.meta // {knownVulnerabilities = [];};
+      });
+    };
+    dataDir = "/var/lib/mautrix-discord";
+    registrationFile = "${dataDir}/discord-registration.yaml";
+    settingsFile = "${dataDir}/config.yaml";
+    settings = lib.recursiveUpdate {
+      appservice = {
+        id = "discord";
+        database = {
+          type = "sqlite3-fk-wal";
+          uri = "file:${dataDir}/mautrix-discord.db?_txlock=immediate";
+        };
+        bot = {
+          username = "discordbot";
+          displayname = "Discord Bridge Bot";
+        };
+        as_token = "";
+        hs_token = "";
+      };
+      bridge = {
+        username_template = "discord_{{.}}";
+        command_prefix = "!discord";
+        federate_rooms = false;
+        # The Go bridge needs the discovery map even for as_token logins; loopback is right
+        # here (the secret itself is spliced in at preStart, same env var as the others).
+        double_puppet_server_map.${matrix.serverName} = matrix.clientUrl;
+        login_shared_secret_map = {};
+        # Left empty rather than "generate", which would rotate them on every restart (the
+        # config is rewritten from the store each time).
+        avatar_proxy_key = "";
+        direct_media.server_key = "";
+        # History into new portals; discord's key shape (top-level backfill above is ignored).
+        backfill.forward_limits.initial = {
+          dm = 50;
+          channel = 50;
+          thread = 0;
+        };
+      };
+    } (bridgeSettings config.PORTS.mautrixDiscord);
+    settingsJson = (pkgs.formats.json {}).generate "mautrix-discord-config.json" settings;
+  };
 in {
-  options.MODULES.services.mautrix = {
+  options.MODULES.services.matrix = {
     whatsapp.enable = mkEnableOption "the mautrix-whatsapp bridge";
     signal.enable = mkEnableOption "the mautrix-signal bridge";
     slack.enable = mkEnableOption "the mautrix-slack bridge";
+    discord.enable = mkEnableOption "the mautrix-discord bridge";
   };
 
   config = mkMerge [
@@ -218,11 +275,12 @@ in {
       # Read by systemd (EnvironmentFile), so root-owned is fine. Each bridge's preStart writes
       # the value into double_puppet.secrets for this homeserver's domain.
       sops.templates."mautrix-doublepuppet.env" = {
-        content = lib.concatMapStrings (b: "MAUTRIX_${b}_BRIDGE_LOGIN_SHARED_SECRET=as_token:${config.sops.placeholder.${doublePuppetToken}}\n") ["WHATSAPP" "SIGNAL" "SLACK"];
+        content = lib.concatMapStrings (b: "MAUTRIX_${b}_BRIDGE_LOGIN_SHARED_SECRET=as_token:${config.sops.placeholder.${doublePuppetToken}}\n") ["WHATSAPP" "SIGNAL" "SLACK" "DISCORD"];
         restartUnits =
           lib.optional cfg.whatsapp.enable "mautrix-whatsapp.service"
           ++ lib.optional cfg.signal.enable "mautrix-signal.service"
-          ++ lib.optional cfg.slack.enable "mautrix-slack.service";
+          ++ lib.optional cfg.slack.enable "mautrix-slack.service"
+          ++ lib.optional cfg.discord.enable "mautrix-discord.service";
       };
     })
 
@@ -230,7 +288,7 @@ in {
       assertions = [
         {
           assertion = anyBridge -> matrix.enable;
-          message = "MODULES.services.mautrix bridges need MODULES.services.matrix on the same host.";
+          message = "MODULES.services.matrix bridges need MODULES.services.matrix.enable on the same host.";
         }
       ];
     }
@@ -330,6 +388,81 @@ in {
               SystemCallFilter = ["@system-service"];
             };
           restartTriggers = [slack.settingsJson];
+        };
+    })
+
+    (mkIf cfg.discord.enable {
+      users.users.mautrix-discord = {
+        isSystemUser = true;
+        group = "mautrix-discord";
+        home = discord.dataDir;
+        description = "mautrix-discord bridge user";
+      };
+      users.groups.mautrix-discord = {};
+
+      services.matrix-synapse.settings.app_service_config_files = [discord.registrationFile];
+      systemd.services.matrix-synapse.serviceConfig.SupplementaryGroups = ["mautrix-discord"];
+
+      systemd.services.mautrix-discord =
+        ordering
+        // {
+          description = "mautrix-discord, a Matrix-Discord puppeting bridge";
+          wants = ["network-online.target"];
+          after = ["network-online.target"];
+          preStart = ''
+            # The same dance as slack's, but the double-puppet secret goes into
+            # bridge.login_shared_secret_map (the Go bridge's key path, keyed by domain).
+            umask 0177
+            install -m 0600 '${discord.settingsJson}' '${discord.settingsFile}'
+            if [ ! -f '${discord.registrationFile}' ]; then
+              ${discord.package}/bin/mautrix-discord \
+                --generate-registration \
+                --config='${discord.settingsFile}' \
+                --registration='${discord.registrationFile}'
+            fi
+            chmod 640 '${discord.registrationFile}'
+            ${pkgs.yq}/bin/yq -s '.[0].appservice.as_token = .[1].as_token
+              | .[0].appservice.hs_token = .[1].hs_token
+              | .[0]
+              | if env.MAUTRIX_DISCORD_BRIDGE_LOGIN_SHARED_SECRET then .bridge.login_shared_secret_map.[.homeserver.domain] = env.MAUTRIX_DISCORD_BRIDGE_LOGIN_SHARED_SECRET else . end' \
+              '${discord.settingsFile}' '${discord.registrationFile}' > '${discord.settingsFile}.tmp'
+            mv '${discord.settingsFile}.tmp' '${discord.settingsFile}'
+          '';
+          serviceConfig =
+            hardening
+            // {
+              EnvironmentFile = doublePuppetEnv;
+              User = "mautrix-discord";
+              Group = "mautrix-discord";
+              StateDirectory = baseNameOf discord.dataDir;
+              StateDirectoryMode = "0750";
+              WorkingDirectory = discord.dataDir;
+              ExecStart = "${discord.package}/bin/mautrix-discord --config='${discord.settingsFile}' --registration='${discord.registrationFile}'";
+              Restart = "on-failure";
+              RestartSec = "30s";
+              Type = "simple";
+              UMask = "0027";
+
+              LockPersonality = true;
+              NoNewPrivileges = true;
+              PrivateDevices = true;
+              PrivateTmp = true;
+              PrivateUsers = true;
+              ProtectClock = true;
+              ProtectControlGroups = true;
+              ProtectHome = true;
+              ProtectHostname = true;
+              ProtectKernelLogs = true;
+              ProtectKernelModules = true;
+              ProtectKernelTunables = true;
+              ProtectSystem = "strict";
+              RestrictRealtime = true;
+              RestrictSUIDSGID = true;
+              SystemCallArchitectures = "native";
+              SystemCallErrorNumber = "EPERM";
+              SystemCallFilter = ["@system-service"];
+            };
+          restartTriggers = [discord.settingsJson];
         };
     })
   ];

@@ -62,6 +62,7 @@ in {
     mautrixWhatsapp = 29318;
     mautrixSignal = 29328;
     mautrixSlack = 29335;
+    mautrixDiscord = 29342;
     roundcube = 8086;
     searx = 8081;
     sftpgoHttp = 8090;

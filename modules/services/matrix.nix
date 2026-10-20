@@ -38,18 +38,20 @@
   };
 
   # Users created by matrix-provision-users. The admin is the human, the bot is Hermes.
-  provisionedUsers = [
-    {
-      name = cfg.adminUser;
-      admin = true;
-      secret = cfg.adminPasswordSecret;
-    }
-    {
-      name = cfg.botUser;
-      admin = false;
-      secret = cfg.botPasswordSecret;
-    }
-  ];
+  provisionedUsers =
+    [
+      {
+        name = cfg.adminUser;
+        admin = true;
+        secret = cfg.adminPasswordSecret;
+      }
+      {
+        name = cfg.botUser;
+        admin = false;
+        secret = cfg.botPasswordSecret;
+      }
+    ]
+    ++ cfg.extraUsers;
 
   # bcrypt is what Synapse hashes passwords with; only the library is needed here.
   pyBcrypt = pkgs.python3.withPackages (ps: [ps.bcrypt]);
@@ -150,6 +152,38 @@ in {
       defaultText = lib.literalExpression ''"matrix/''${botUser}_password"'';
       description = "sops secret holding the password of `botUser`, also read by Hermes.";
     };
+
+    extraUsers = mkOption {
+      type = types.listOf (types.submodule (_: {
+        options = {
+          name = mkOption {
+            type = types.str;
+            description = "Local part of the account.";
+          };
+          admin = mkOption {
+            type = types.bool;
+            default = false;
+            description = "Whether the account is a server admin.";
+          };
+          secret = mkOption {
+            type = types.str;
+            description = "sops secret holding its password (declared here, synced by matrix-sync-passwords).";
+          };
+        };
+      }));
+      default = [];
+      example = [
+        {
+          name = "matterbridge";
+          secret = "matrix/matterbridge_password";
+        }
+      ];
+      description = ''
+        Extra local accounts to provision on top of `adminUser` and `botUser`, for
+        services that log in as a regular Matrix client (matterbridge) rather than
+        holding an appservice registration.
+      '';
+    };
   };
 
   config = mkIf cfg.enable {
@@ -242,9 +276,14 @@ in {
       extraConfigFiles = [config.sops.templates."synapse-secrets.yaml".path];
     };
 
-    sops.secrets.${cfg.registrationSecret} = {};
-    sops.secrets.${cfg.adminPasswordSecret} = {};
-    sops.secrets.${cfg.botPasswordSecret} = {};
+    # One definition for all of them (mixing `sops.secrets = ...` with the dotted
+    # `sops.secrets.<x> = ...` form in the same config set is an eval error). The
+    # extraUsers secrets are declared here, so consumers (matterbridge) only need
+    # to name the account.
+    sops.secrets = builtins.listToAttrs (map (n: {
+      name = n;
+      value = {};
+    }) ([cfg.registrationSecret cfg.adminPasswordSecret cfg.botPasswordSecret] ++ map (u: u.secret) cfg.extraUsers));
 
     sops.templates."synapse-secrets.yaml" = {
       owner = "matrix-synapse";

@@ -12,6 +12,9 @@
     pdfgrep
     jq
     (tesseract.override {enableLanguages = ["eng" "deu"];}) # scanned-PDF OCR, German
+    # This nixpkgs' plain ffmpeg is the full build (libx264/x265, freetype/drawtext),
+    # verified against the locked flake's derivation - no need for ffmpeg-full here.
+    ffmpeg
   ];
 in {
   imports = [./hardware-configuration.nix];
@@ -237,11 +240,21 @@ in {
   # over the tailnet (https://matrix.hp, Element at https://element.hp); the mautrix bridges put
   # WhatsApp, Signal and Slack chats into it; Hermes talks to akos there and can read the bridged
   # rooms it is invited to.
-  MODULES.services.matrix.enable = true;
-  MODULES.services.mautrix = {
+  # One namespace for all Matrix bridges. whatsapp/signal/slack/discord are mautrix
+  # appservices (see modules/services/mautrix.nix); Mattermost rides in via matterbridge
+  # instead of a second appservice: relay style, one bot user, chats attached with `!mm
+  # join` in the control room; its login-as-you credentials come from sops
+  # (mattermost/password).
+  MODULES.services.matrix = {
+    enable = true;
     whatsapp.enable = true;
     signal.enable = true;
     slack.enable = true;
+    discord.enable = true;
+    matterbridge = {
+      enable = true;
+      mattermostUser = "AkosPapp";
+    };
   };
   MODULES.services.hermes-agent.enable = true;
 
