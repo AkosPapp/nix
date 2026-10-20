@@ -319,30 +319,60 @@ in {
         sanitize() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._\/=-]/_/g'; }
 
         ensure_room() {
-          local alias="$1" rname="$2" rtopic="$3"
+          # echoes the room id on success; $4 = extra createRoom JSON (e.g. space)
+          local alias="$1" rname="$2" rtopic="$3" extra="''${4:-}"
           local enc rid resp body tries=0
           enc=$(jq -rn --arg v "#$alias:$SRV" '$v|@uri')
           rid=$(curl -s "$CLIENT/directory/room/$enc" | jq -r '.room_id // empty')
-          if [ -n "$rid" ]; then return 0; fi
+          if [ -n "$rid" ]; then echo "$rid"; return 0; fi
           body=$(jq -n --arg a "$alias" --arg b "$BOT" --arg n "$rname" --arg t "$rtopic" \
             '{room_alias_name:$a, invite:[$b], name:$n, topic:$t,
               preset:"private_chat", visibility:"private"}')
+          if [ -n "$extra" ]; then
+            body=$(echo "$body" | jq --argjson x "$extra" '. + $x')
+          fi
           while :; do
             resp=$(curl -s -X POST "$CLIENT/createRoom" \
-              -H "Authorization: Bearer $MTOKEN" -H 'Content-Type: application/json' -d "$body")
+              -H "Authorization: Bearer ***" -H 'Content-Type: application/json' -d "$body")
             rid=$(echo "$resp" | jq -r '.room_id // empty')
             if [ -n "$rid" ]; then
-              echo "matterbridge-autochannels: created room #$alias:$SRV"
+              echo "matterbridge-autochannels: created room #$alias:$SRV" >&2
+              echo "$rid"
               return 0
             fi
             if echo "$resp" | grep -q M_LIMIT_EXCEEDED && [ "$tries" -lt 5 ]; then
               tries=$((tries + 1))
-              sleep "$(echo "$resp" | jq -r '(.["retry_after_ms"] // 5000) / 1000 + 1')"
+              sleep "$(echo "$resp" | jq -r '(.["retry_after_ms"] // 5000) / 1000 + 1' 2>/dev/null || echo 6)"
               continue
             fi
             echo "matterbridge-autochannels: createRoom #$alias failed: $resp" >&2
             return 1
           done
+        }
+
+        # ---------- one Space per Mattermost server (Element side panel) ----------
+        MMDOM=$(printf '%s' "$MM" | sed 's|^[a-z]*://||')
+        SPACE_ALIAS=$(sanitize "''${PREFIX}space-$MMDOM" | tr '.' '-')
+        SPACE_RID=$(ensure_room "$SPACE_ALIAS" "Mattermost ($MMDOM)" \
+          "All Mattermost channels and DMs of $MMUSER, auto-bridged" \
+          '{"creation_content":{"type":"m.space"}}' || true)
+        if [ -z "$SPACE_RID" ]; then
+          echo "matterbridge-autochannels: could not ensure space room, continuing ungrouped" >&2
+        fi
+
+        space_add_child() {
+          # idempotent: skip the PUT when the child event already exists
+          local crid="$1" encs encc code
+          [ -n "$SPACE_RID" ] || return 0
+          encs=$(jq -rn --arg v "$SPACE_RID" '$v|@uri')
+          encc=$(jq -rn --arg v "$crid" '$v|@uri')
+          code=$(curl -s -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer ***" "$CLIENT/rooms/$encs/state/m.space.child/$encc")
+          if [ "$code" = "200" ]; then return 0; fi
+          curl -s -o /dev/null -X PUT "$CLIENT/rooms/$encs/state/m.space.child/$encc" \
+            -H "Authorization: Bearer ***" -H 'Content-Type: application/json' \
+            -d "$(jq -n --arg s "$SRV" '{via:[$s]}')"
+          sleep 0.1
         }
 
         : > "$TMPD/rows"
@@ -386,7 +416,9 @@ in {
               ;;
             *) continue ;;
           esac
-          if ensure_room "$ALIAS" "$RNAME" "$RTOPIC"; then
+          RID=$(ensure_room "$ALIAS" "$RNAME" "$RTOPIC" || true)
+          if [ -n "$RID" ]; then
+            space_add_child "$RID"
             printf '%s %s\n' "$ALIAS" "$ID" >> "$TMPD/rows"
             sleep 0.2
           fi
