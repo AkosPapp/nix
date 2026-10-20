@@ -112,6 +112,8 @@ in {
   MODULES.system.printing.enable = true;
   MODULES.hardware.nvidia.enable = true;
   MODULES.hardware.perifirals.mice.openmouse.enable = true;
+  # ZED 2i capture camera: no USB runtime suspend (see modules/hardware/perifirals/zed.nix).
+  MODULES.hardware.perifirals.zed.enable = true;
   USERS.akos.enable = true;
   # Paseo harness machine, declaratively - the twin of the `curl .../install/<token>/pi.sh |
   # bash` installer (leftovers from it: bash packages/paseo/machine/cleanup-home.sh). A Paseo
