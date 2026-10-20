@@ -400,7 +400,7 @@ in {
         # ---------- one Space per Mattermost server (Element side panel) ----------
         MMDOM=$(printf '%s' "$MM" | sed 's|^[a-z]*://||')
         SPACE_ALIAS=$(sanitize "''${PREFIX}space-$MMDOM" | tr '.' '-')
-        SPACE_RID=$(ensure_room "$SPACE_ALIAS" "Mattermost ($MMDOM)" \
+        SPACE_RID=$(ensure_room "$SPACE_ALIAS" "Mattermost" \
           "All Mattermost channels and DMs of $MMUSER, auto-bridged" \
           '{"creation_content":{"type":"m.space"}}' || true)
         if [ -z "$SPACE_RID" ]; then
@@ -409,9 +409,10 @@ in {
 
         space_add_child() {
           # idempotent: skip the PUT when the child event already exists
-          local crid="$1" encs encc code
-          [ -n "$SPACE_RID" ] || return 0
-          encs=$(jq -rn --arg v "$SPACE_RID" '$v|@uri')
+          # $1 = space room id, $2 = child room id (room or nested space)
+          local sprid="$1" crid="$2" encs encc code
+          [ -n "$sprid" ] && [ -n "$crid" ] || return 0
+          encs=$(jq -rn --arg v "$sprid" '$v|@uri')
           encc=$(jq -rn --arg v "$crid" '$v|@uri')
           code=$(curl -s -o /dev/null -w '%{http_code}' \
             -H "Authorization: Bearer $MTOKEN" "$CLIENT/rooms/$encs/state/m.space.child/$encc")
@@ -422,8 +423,52 @@ in {
           sleep 0.1
         }
 
+        team_space() {
+          # one subspace per Mattermost team, nested under the server space;
+          # echoes the subspace room id (falls back to the server space)
+          local team="$1" ts_rid
+          ts_rid=$(grep -m1 "^$team " "$TMPD/teamspaces" | cut -d' ' -f2 || true)
+          if [ -n "$ts_rid" ]; then printf '%s' "$ts_rid"; return 0; fi
+          ts_rid=$(ensure_room "$(sanitize "''${PREFIX}space-$MMDOM-$team" | tr '.' '-')" \
+            "$team" "Mattermost team $team on $MMDOM (auto-bridged)" \
+            '{"creation_content":{"type":"m.space"}}' || true)
+          if [ -z "$ts_rid" ]; then
+            echo "matterbridge-autochannels: no team space for $team, attaching to server space" >&2
+            printf '%s' "$SPACE_RID"; return 0
+          fi
+          echo "$team $ts_rid" >> "$TMPD/teamspaces"
+          space_add_child "$SPACE_RID" "$ts_rid"
+          printf '%s' "$ts_rid"
+        }
+
+        flatten_name() {
+          # one-shot legacy rename: rooms created before the space restructure
+          # were named "MM <team> / <channel>"; shorten them once, never again
+          local encc cur
+          encc=$(jq -rn --arg v "$1" '$v|@uri')
+          cur=$(curl -s -H "Authorization: Bearer $MTOKEN" \
+            "$CLIENT/rooms/$encc/state/m.room.name" | jq -r '.name // ""')
+          case "$cur" in
+            "MM "*)
+              curl -s -o /dev/null -X PUT "$CLIENT/rooms/$encc/state/m.room.name" \
+                -H "Authorization: Bearer $MTOKEN" -H 'Content-Type: application/json' \
+                -d "$(jq -n --arg n "$2" '{name:$n}')"
+              sleep 0.1 ;;
+          esac
+        }
+
         : > "$TMPD/rows"
         : > "$TMPD/usercache"
+        : > "$TMPD/teamspaces"
+        # FLAT: one-shot rename pass, marker lives in the state dir
+        FLAT=0
+        [ -e /var/lib/matterbridge/.names-flattened ] || FLAT=1
+        if [ "$FLAT" = "1" ] && [ -n "$SPACE_RID" ]; then
+          curl -s -o /dev/null -X PUT \
+            "$CLIENT/rooms/$(jq -rn --arg v "$SPACE_RID" '$v|@uri')/state/m.room.name" \
+            -H "Authorization: Bearer $MTOKEN" -H 'Content-Type: application/json' \
+            -d '{"name":"Mattermost"}'
+        fi
         while read -r CH; do
           TYPE=$(echo "$CH" | jq -r .type)
           ID=$(echo "$CH" | jq -r .id)
@@ -433,7 +478,7 @@ in {
           case "$TYPE" in
             O|P)
               ALIAS=$(sanitize "''${PREFIX}''${TEAM}_''${NAME}")
-              RNAME="MM $TEAM / $DN"
+              RNAME="$DN"
               RTOPIC="Mattermost $TEAM/$NAME (auto-bridged)"
               ;;
             D)
@@ -452,24 +497,33 @@ in {
                 echo "$PID $PEER" >> "$TMPD/usercache"
               fi
               ALIAS=$(sanitize "''${PREFIX}dm_$PEER")
-              RNAME="MM DM: $PEER"
+              RNAME="$PEER"
               RTOPIC="Mattermost direct message with $PEER (auto-bridged)"
               ;;
             G)
               SHORT=$(echo "$ID" | cut -c1-8)
               ALIAS=$(sanitize "''${PREFIX}gm_$SHORT")
-              RNAME="MM group: $DN"
+              RNAME="$DN"
               RTOPIC="Mattermost group message $ID (auto-bridged)"
               ;;
             *) continue ;;
           esac
           RID=$(ensure_room "$ALIAS" "$RNAME" "$RTOPIC" || true)
           if [ -n "$RID" ]; then
-            space_add_child "$RID"
+            case "$TYPE" in
+              O|P) space_add_child "$(team_space "$TEAM")" "$RID" ;;
+              *)   space_add_child "$SPACE_RID" "$RID" ;;
+            esac
+            [ "$FLAT" = "1" ] && flatten_name "$RID" "$RNAME"
             printf '%s %s\n' "$ALIAS" "$ID" >> "$TMPD/rows"
             sleep 0.2
           fi
         done < <(jq -c '.[]' "$TMPD/chans.json")
+        if [ "$FLAT" = "1" ]; then
+          : > /var/lib/matterbridge/.names-flattened || true
+          echo "matterbridge-autochannels: legacy room names flattened once" \
+            >&2
+        fi
 
         NROW=$(grep -c . "$TMPD/rows" || true)
         if [ "$NROW" -eq 0 ]; then
