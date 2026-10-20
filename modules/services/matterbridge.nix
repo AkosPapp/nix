@@ -258,7 +258,7 @@ in {
         # a JSON body (and stays out of the journal).
         if [ "$AUTHMODE" = password ]; then
           jq -n --arg u "$MMUSER" --arg p "$(cat "$MMPWFILE")" \
-            '{login:$u,password:$p}' > "$TMPD/mmin"
+            '{login_id:$u,password:$p}' > "$TMPD/mmin"
           curl -sS -D "$TMPD/hdr" -o "$TMPD/mmlogin" -X POST "$MM/api/v4/users/login" \
             -H 'Content-Type: application/json' -d @"$TMPD/mmin" >/dev/null
           MMTOK=$(sed -n 's/^[Tt]oken:[[:space:]]*\([[:graph:]]*\).*/\1/p' "$TMPD/hdr" | tr -d '\r\n')
