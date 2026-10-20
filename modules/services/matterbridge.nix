@@ -288,25 +288,31 @@ in {
         MYID=$(mm_get /users/me | jq -r .id)
         ${if cfg.autojoinPublicTeams == [] then "" else ''
         # Join every public channel of the configured teams first; the membership
-        # enumeration below then sees them. Re-joins return an error body, ignored.
+        # enumeration below then sees them. Already-member answers 409 and is
+        # counted as benign; anything else is reported with its body once.
         for AT in ${builtins.concatStringsSep " " cfg.autojoinPublicTeams}; do
           ATID=$(mm_get "/teams/name/$AT" | jq -r '.id // empty')
           if [ -z "$ATID" ]; then
             echo "matterbridge-autochannels: autojoin: team $AT not visible to $MMUSER, skipping" >&2
             continue
           fi
-          curl -sS -o /dev/null -X POST "$MM/api/v4/users/$MYID/teams/$ATID/members" \
-            -H "Authorization: Bearer ***" -H 'Content-Type: application/json' \
-            -d "$(jq -n --arg t "$ATID" --arg u "$MYID" '{team_id:$t,user_id:$u}')"
-          mm_get "/teams/$ATID/channels?per_page=200" \
-            | jq -r 'if type=="array" then .[].id elif (.data|type)=="array" then .data[].id else empty end' \
-            | while read -r CID; do
-                curl -sS -o /dev/null -X POST "$MM/api/v4/channels/$CID/members" \
-                  -H "Authorization: Bearer ***" -H 'Content-Type: application/json' \
-                  -d "$(jq -n --arg u "$MYID" '{user_id:$u}')"
-                sleep 0.05
-              done
-          echo "matterbridge-autochannels: autojoin: team $AT done" >&2
+          TC=$(curl -sS -o "$TMPD/tjerr" -w '%{http_code}' -X POST "$MM/api/v4/users/$MYID/teams/$ATID/members" \
+            -H "Authorization: Bearer $MMTOKEN" -H 'Content-Type: application/json' \
+            -d "$(jq -n --arg t "$ATID" --arg u "$MYID" '{team_id:$t,user_id:$u}')")
+          JC=0; JF=0; FIRST=""
+          while read -r CID; do
+            JC=$((JC + 1))
+            CC=$(curl -sS -o "$TMPD/cjerr" -w '%{http_code}' -X POST "$MM/api/v4/channels/$CID/members" \
+              -H "Authorization: Bearer $MMTOKEN" -H 'Content-Type: application/json' \
+              -d "$(jq -n --arg c "$CID" --arg u "$MYID" '{channel_id:$c,user_id:$u}')")
+            case "$CC" in
+              2*|409) ;;
+              *) JF=$((JF + 1)); if [ -z "$FIRST" ]; then FIRST="$CC $(tr -d '\n' < "$TMPD/cjerr" | head -c 160)"; fi ;;
+            esac
+            sleep 0.05
+          done < <(mm_get "/teams/$ATID/channels?per_page=200" \
+            | jq -r 'if type=="array" then .[].id elif (.data|type)=="array" then .data[].id else empty end')
+          echo "matterbridge-autochannels: autojoin: team $AT (team-join http $TC): $JC channels, $JF failures, first error: ''${FIRST:-none}" >&2
         done
         ''}
         mm_get "/users/me/teams?per_page=200" \
@@ -374,7 +380,7 @@ in {
           fi
           while :; do
             resp=$(curl -s -X POST "$CLIENT/createRoom" \
-              -H "Authorization: Bearer ***" -H 'Content-Type: application/json' -d "$body")
+              -H "Authorization: Authorization: Bearer $MTTOKEN" -H 'Content-Type: application/json' -d "$body")
             rid=$(echo "$resp" | jq -r '.room_id // empty')
             if [ -n "$rid" ]; then
               echo "matterbridge-autochannels: created room #$alias:$SRV" >&2
@@ -408,10 +414,10 @@ in {
           encs=$(jq -rn --arg v "$SPACE_RID" '$v|@uri')
           encc=$(jq -rn --arg v "$crid" '$v|@uri')
           code=$(curl -s -o /dev/null -w '%{http_code}' \
-            -H "Authorization: Bearer ***" "$CLIENT/rooms/$encs/state/m.space.child/$encc")
+            -H "Authorization: Authorization: Bearer $MTTOKEN" "$CLIENT/rooms/$encs/state/m.space.child/$encc")
           if [ "$code" = "200" ]; then return 0; fi
           curl -s -o /dev/null -X PUT "$CLIENT/rooms/$encs/state/m.space.child/$encc" \
-            -H "Authorization: Bearer ***" -H 'Content-Type: application/json' \
+            -H "Authorization: Authorization: Bearer $MTTOKEN" -H 'Content-Type: application/json' \
             -d "$(jq -n --arg s "$SRV" '{via:[$s]}')"
           sleep 0.1
         }
