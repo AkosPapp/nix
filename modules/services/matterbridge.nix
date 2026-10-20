@@ -430,7 +430,10 @@ in {
         else
           install -o matterbridge -g matterbridge -m 0600 "$CFGF" "$OUT"
           echo "matterbridge-autochannels: $NROW channels, config updated, restarting matterbridge"
-          systemctl try-restart matterbridge.service || true
+          # --no-block: matterbridge is After= this unit, so a synchronous restart here
+          # deadlocks the job queue (generator waits for the restart job, the restart
+          # waits for the generator job to retire). Queue it and return.
+          systemctl try-restart --no-block matterbridge.service || true
         fi
       '';
     };
