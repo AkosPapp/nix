@@ -380,7 +380,7 @@ in {
           fi
           while :; do
             resp=$(curl -s -X POST "$CLIENT/createRoom" \
-              -H "Authorization: Authorization: Bearer $MTTOKEN" -H 'Content-Type: application/json' -d "$body")
+              -H "Authorization: Authorization: Bearer $MTOKEN" -H 'Content-Type: application/json' -d "$body")
             rid=$(echo "$resp" | jq -r '.room_id // empty')
             if [ -n "$rid" ]; then
               echo "matterbridge-autochannels: created room #$alias:$SRV" >&2
@@ -414,10 +414,10 @@ in {
           encs=$(jq -rn --arg v "$SPACE_RID" '$v|@uri')
           encc=$(jq -rn --arg v "$crid" '$v|@uri')
           code=$(curl -s -o /dev/null -w '%{http_code}' \
-            -H "Authorization: Authorization: Bearer $MTTOKEN" "$CLIENT/rooms/$encs/state/m.space.child/$encc")
+            -H "Authorization: Authorization: Bearer $MTOKEN" "$CLIENT/rooms/$encs/state/m.space.child/$encc")
           if [ "$code" = "200" ]; then return 0; fi
           curl -s -o /dev/null -X PUT "$CLIENT/rooms/$encs/state/m.space.child/$encc" \
-            -H "Authorization: Authorization: Bearer $MTTOKEN" -H 'Content-Type: application/json' \
+            -H "Authorization: Authorization: Bearer $MTOKEN" -H 'Content-Type: application/json' \
             -d "$(jq -n --arg s "$SRV" '{via:[$s]}')"
           sleep 0.1
         }
