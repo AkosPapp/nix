@@ -297,13 +297,13 @@ in {
             continue
           fi
           TC=$(curl -sS -o "$TMPD/tjerr" -w '%{http_code}' -X POST "$MM/api/v4/users/$MYID/teams/$ATID/members" \
-            -H "Authorization: Bearer $MMTOKEN" -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer $MMTOK" -H 'Content-Type: application/json' \
             -d "$(jq -n --arg t "$ATID" --arg u "$MYID" '{team_id:$t,user_id:$u}')")
           JC=0; JF=0; FIRST=""
           while read -r CID; do
             JC=$((JC + 1))
             CC=$(curl -sS -o "$TMPD/cjerr" -w '%{http_code}' -X POST "$MM/api/v4/channels/$CID/members" \
-              -H "Authorization: Bearer $MMTOKEN" -H 'Content-Type: application/json' \
+              -H "Authorization: Bearer $MMTOK" -H 'Content-Type: application/json' \
               -d "$(jq -n --arg c "$CID" --arg u "$MYID" '{channel_id:$c,user_id:$u}')")
             case "$CC" in
               2*|409) ;;
