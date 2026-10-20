@@ -39,6 +39,19 @@ in {
       description = "Mattermost account the bridge logs in as (used with passwordSecret).";
     };
 
+    autojoinPublicTeams = mkOption {
+      type = types.listOf types.str;
+      default = [];
+      example = [ "fsinf" "w-inf-tuwien" ];
+      description = ''
+        Mattermost teams whose public channels the bridge account joins before each
+        enumeration pass, so channels the account never opened (team town-squares,
+        lecture channels, ...) are mirrored too. Mattermost allows self-joining public
+        channels; already-member joins are no-ops. Joined channels also appear in that
+        account's Mattermost sidebar.
+      '';
+    };
+
     team = mkOption {
       type = types.str;
       default = "fsinf";
@@ -222,6 +235,7 @@ in {
       };
       path = [
         pkgs.curl
+        pkgs.diffutils
         pkgs.gawk
         pkgs.jq
       ];
@@ -272,6 +286,29 @@ in {
         mm_get() { curl -sS -H "Authorization: Bearer $MMTOK" "$MM/api/v4$1"; }
 
         MYID=$(mm_get /users/me | jq -r .id)
+        ${if cfg.autojoinPublicTeams == [] then "" else ''
+        # Join every public channel of the configured teams first; the membership
+        # enumeration below then sees them. Re-joins return an error body, ignored.
+        for AT in ${builtins.concatStringsSep " " cfg.autojoinPublicTeams}; do
+          ATID=$(mm_get "/teams/name/$AT" | jq -r '.id // empty')
+          if [ -z "$ATID" ]; then
+            echo "matterbridge-autochannels: autojoin: team $AT not visible to $MMUSER, skipping" >&2
+            continue
+          fi
+          curl -sS -o /dev/null -X POST "$MM/api/v4/users/$MYID/teams/$ATID/members" \
+            -H "Authorization: Bearer ***" -H 'Content-Type: application/json' \
+            -d "$(jq -n --arg t "$ATID" --arg u "$MYID" '{team_id:$t,user_id:$u}')"
+          mm_get "/teams/$ATID/channels?per_page=200" \
+            | jq -r 'if type=="array" then .[].id elif (.data|type)=="array" then .data[].id else empty end' \
+            | while read -r CID; do
+                curl -sS -o /dev/null -X POST "$MM/api/v4/channels/$CID/members" \
+                  -H "Authorization: Bearer ***" -H 'Content-Type: application/json' \
+                  -d "$(jq -n --arg u "$MYID" '{user_id:$u}')"
+                sleep 0.05
+              done
+          echo "matterbridge-autochannels: autojoin: team $AT done" >&2
+        done
+        ''}
         mm_get "/users/me/teams?per_page=200" \
           | jq -r '.[] | "\(.id) \(.name)"' > "$TMPD/teams"
         if [ ! -s "$TMPD/teams" ]; then
@@ -326,10 +363,14 @@ in {
           rid=$(curl -s "$CLIENT/directory/room/$enc" | jq -r '.room_id // empty')
           if [ -n "$rid" ]; then echo "$rid"; return 0; fi
           body=$(jq -n --arg a "$alias" --arg b "$BOT" --arg n "$rname" --arg t "$rtopic" \
-            '{room_alias_name:$a, invite:[$b], name:$n, topic:$t,
-              preset:"private_chat", visibility:"private"}')
+            '{room_alias_name:$a, invite:[$b], name:$n, topic:$t, visibility:"private"}')
           if [ -n "$extra" ]; then
+            # Space rooms: create exactly like Element does (creation_content +
+            # visibility, no preset). preset "private_chat" combined with a room
+            # type made Synapse answer 500 on this server.
             body=$(echo "$body" | jq --argjson x "$extra" '. + $x')
+          else
+            body=$(echo "$body" | jq '. + {preset:"private_chat"}')
           fi
           while :; do
             resp=$(curl -s -X POST "$CLIENT/createRoom" \

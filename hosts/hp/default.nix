@@ -254,6 +254,8 @@ in {
     matterbridge = {
       enable = true;
       mattermostUser = "AkosPapp";
+      # mirror every public channel of both teams, not just the ones the account joined
+      autojoinPublicTeams = [ "fsinf" "w-inf-tuwien" ];
     };
   };
   MODULES.services.hermes-agent.enable = true;
