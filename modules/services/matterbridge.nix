@@ -289,16 +289,16 @@ in {
         while read -r TID TNAME; do
           mm_get "/users/$MYID/teams/$TID/channels?per_page=200" \
             | jq -c --arg team "$TNAME" \
-                '(if type=="array" then . else .data end)[]
-                 | select('"$keepTypes"')
+                'if type=="array" then .[] elif (.data|type)=="array" then .data[] else empty end
+                 | select(${keepTypes})
                  | select(.delete_at == null or .delete_at == 0)
                  | {id, type, name, dn: .display_name, team: $team}' >> "$TMPD/raw"
         done < "$TMPD/teams"
         # ... unioned with the global membership endpoint in case DMs are not team-scoped.
         mm_get "/users/$MYID/channels?per_page=200" \
           | jq -c \
-              '(if type=="array" then . else .data end)[]
-               | select('"$keepTypes"')
+              'if type=="array" then .[] elif (.data|type)=="array" then .data[] else empty end
+               | select(${keepTypes})
                | select(.delete_at == null or .delete_at == 0)
                | {id, type, name, dn: .display_name, team: ""}' >> "$TMPD/raw"
         # dedupe by id, preferring the entry that carries a team name
