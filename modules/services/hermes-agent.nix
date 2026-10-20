@@ -238,10 +238,10 @@ in {
           # What /model offers: whatever this key may use, straight from LiteLLM.
           discover_models = true;
           # LiteLLM can't report context windows for wildcard models, so Hermes would guess from
-          # the name (1M, which is also Aqueduct's max_model_len). Deliberately far below that:
-          # Hermes compresses the conversation before it reaches this, so prompts stay around
-          # 125k tokens instead of growing until a full 1M-token KV cache strains the GPU.
-          models."futurelab/qwen3.8-flash-next".context_length = 125000;
+          # the name (1M, which is also Aqueduct's max_model_len). Pinned to the FutureLab-documented
+          # window for this model (262144, output cap 32768 — same values as users/akos.nix uses for
+          # opencode/paseo), so Hermes compresses before 262k instead of drifting toward the 1M ceiling.
+          models."futurelab/qwen3.8-flash-next".context_length = 262144;
         };
         # Commands run in this service's own sandbox (see serviceConfig below), not a container:
         # the Google skills work by running commands, and a rootless container
