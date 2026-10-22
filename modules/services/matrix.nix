@@ -204,6 +204,18 @@ in {
         server_name = cfg.serverName;
         public_baseurl = "${traefik.urlOf "matrix"}/";
 
+        # Pinned to v11: with the spec-mandated v12 default (creator implicitly unlimited and
+        # forbidden from m.room.power_levels.users), mautrix-mattermost's createRoom - which
+        # lists itself at PL 9001 - is rejected with "Creator user must not appear in
+        # content.users" AFTER the room row exists, so every retry orphaned a broken room
+        # (100k+ of them on 2026-10-21). Pre-v12 semantics are what the bridge assumes.
+        # Unpin once the fork stops overriding the creator's power level.
+        # NOTE the exact key name: Synapse 1.162 reads top-level `default_room_version`
+        # (config/server.py:612, handlers/room.py:1140). A `room_version:` *mapping* with a
+        # `default:` subkey - which looks natural and is what we wrote first - is silently
+        # parsed as nothing at all: no warning, no restart, v12 rooms anyway. Only this key works.
+        default_room_version = "11";
+
         # Client API only, on loopback, behind Traefik. The module's default listener also
         # serves the "federation" resource on this port; leaving it out is what makes this
         # server unreachable for other homeservers, not merely unadvertised.
