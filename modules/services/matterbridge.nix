@@ -42,7 +42,7 @@ in {
     autojoinPublicTeams = mkOption {
       type = types.listOf types.str;
       default = [];
-      example = [ "fsinf" "w-inf-tuwien" ];
+      example = ["fsinf" "w-inf-tuwien"];
       description = ''
         Mattermost teams whose public channels the bridge account joins before each
         enumeration pass, so channels the account never opened (team town-squares,
@@ -286,35 +286,39 @@ in {
         mm_get() { curl -sS -H "Authorization: Bearer $MMTOK" "$MM/api/v4$1"; }
 
         MYID=$(mm_get /users/me | jq -r .id)
-        ${if cfg.autojoinPublicTeams == [] then "" else ''
-        # Join every public channel of the configured teams first; the membership
-        # enumeration below then sees them. Already-member answers 409 and is
-        # counted as benign; anything else is reported with its body once.
-        for AT in ${builtins.concatStringsSep " " cfg.autojoinPublicTeams}; do
-          ATID=$(mm_get "/teams/name/$AT" | jq -r '.id // empty')
-          if [ -z "$ATID" ]; then
-            echo "matterbridge-autochannels: autojoin: team $AT not visible to $MMUSER, skipping" >&2
-            continue
-          fi
-          TC=$(curl -sS -o "$TMPD/tjerr" -w '%{http_code}' -X POST "$MM/api/v4/users/$MYID/teams/$ATID/members" \
-            -H "Authorization: Bearer $MMTOK" -H 'Content-Type: application/json' \
-            -d "$(jq -n --arg t "$ATID" --arg u "$MYID" '{team_id:$t,user_id:$u}')")
-          JC=0; JF=0; FIRST=""
-          while read -r CID; do
-            JC=$((JC + 1))
-            CC=$(curl -sS -o "$TMPD/cjerr" -w '%{http_code}' -X POST "$MM/api/v4/channels/$CID/members" \
-              -H "Authorization: Bearer $MMTOK" -H 'Content-Type: application/json' \
-              -d "$(jq -n --arg c "$CID" --arg u "$MYID" '{channel_id:$c,user_id:$u}')")
-            case "$CC" in
-              2*|409) ;;
-              *) JF=$((JF + 1)); if [ -z "$FIRST" ]; then FIRST="$CC $(tr -d '\n' < "$TMPD/cjerr" | head -c 160)"; fi ;;
-            esac
-            sleep 0.05
-          done < <(mm_get "/teams/$ATID/channels?per_page=200" \
-            | jq -r 'if type=="array" then .[].id elif (.data|type)=="array" then .data[].id else empty end')
-          echo "matterbridge-autochannels: autojoin: team $AT (team-join http $TC): $JC channels, $JF failures, first error: ''${FIRST:-none}" >&2
-        done
-        ''}
+        ${
+          if cfg.autojoinPublicTeams == []
+          then ""
+          else ''
+            # Join every public channel of the configured teams first; the membership
+            # enumeration below then sees them. Already-member answers 409 and is
+            # counted as benign; anything else is reported with its body once.
+            for AT in ${builtins.concatStringsSep " " cfg.autojoinPublicTeams}; do
+              ATID=$(mm_get "/teams/name/$AT" | jq -r '.id // empty')
+              if [ -z "$ATID" ]; then
+                echo "matterbridge-autochannels: autojoin: team $AT not visible to $MMUSER, skipping" >&2
+                continue
+              fi
+              TC=$(curl -sS -o "$TMPD/tjerr" -w '%{http_code}' -X POST "$MM/api/v4/users/$MYID/teams/$ATID/members" \
+                -H "Authorization: Bearer $MMTOK" -H 'Content-Type: application/json' \
+                -d "$(jq -n --arg t "$ATID" --arg u "$MYID" '{team_id:$t,user_id:$u}')")
+              JC=0; JF=0; FIRST=""
+              while read -r CID; do
+                JC=$((JC + 1))
+                CC=$(curl -sS -o "$TMPD/cjerr" -w '%{http_code}' -X POST "$MM/api/v4/channels/$CID/members" \
+                  -H "Authorization: Bearer $MMTOK" -H 'Content-Type: application/json' \
+                  -d "$(jq -n --arg c "$CID" --arg u "$MYID" '{channel_id:$c,user_id:$u}')")
+                case "$CC" in
+                  2*|409) ;;
+                  *) JF=$((JF + 1)); if [ -z "$FIRST" ]; then FIRST="$CC $(tr -d '\n' < "$TMPD/cjerr" | head -c 160)"; fi ;;
+                esac
+                sleep 0.05
+              done < <(mm_get "/teams/$ATID/channels?per_page=200" \
+                | jq -r 'if type=="array" then .[].id elif (.data|type)=="array" then .data[].id else empty end')
+              echo "matterbridge-autochannels: autojoin: team $AT (team-join http $TC): $JC channels, $JF failures, first error: ''${FIRST:-none}" >&2
+            done
+          ''
+        }
         mm_get "/users/me/teams?per_page=200" \
           | jq -r '.[] | "\(.id) \(.name)"' > "$TMPD/teams"
         if [ ! -s "$TMPD/teams" ]; then
