@@ -1,0 +1,13 @@
+diff --git a/pkg/connector/chatinfo.go b/pkg/connector/chatinfo.go
+--- a/pkg/connector/chatinfo.go	2026-10-22 15:41:12.354084198 +0200
++++ b/pkg/connector/chatinfo.go	2026-10-22 15:41:15.989606825 +0200
+@@ -70,6 +70,9 @@
+ 			},
+ 			Membership: event.MembershipJoin,
+ 		}
++		if member.UserId == m.userID {
++			chatMember.IsFromMe = true
++		}
+ 		// Mark channel admins as moderators.
+ 		if member.SchemeAdmin {
+ 			chatMember.PowerLevel = func() *int {

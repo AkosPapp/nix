@@ -1,0 +1,30 @@
+disable bridgev2's "backfill thread inside backfill" pass.
+
+FetchMessages ignores params.ThreadRoot, so bridgev2's thread backfill
+resolves to GetPostsAfter(threadRoot) and receives the whole channel
+window after the thread root as if it were "the thread". Every post in
+that window that was already backfilled is sent to Matrix a second time
+(the later Message.Insert fails with a UNIQUE violation, so the bridge
+DB stays right but the room fills with duplicates: observed up to 26
+copies of a message in a busy channel, 27 rooms / ~8k duplicate events,
+2026-10-22 incident).
+
+This fork models Mattermost threads as ordinary reply events
+(m.in_reply_to) and thread replies are already part of the channel post
+list the main backfill path fetches, so a separate thread pass is not
+needed at all: clearing the flag makes bridgev2 skip it.
+
+--- a/pkg/connector/backfill.go
++++ b/pkg/connector/backfill.go
+@@ -79,10 +79,6 @@
+ 			ID:        MakeMessageID(post.Id),
+ 			Timestamp: time.UnixMilli(post.CreateAt),
+ 		}
+ 
+-		if post.RootId != "" {
+-			msg.ShouldBackfillThread = true
+-		}
+-
+ 		messages = append(messages, msg)
+ 	}
+ 

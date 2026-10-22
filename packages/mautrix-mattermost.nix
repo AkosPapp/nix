@@ -22,44 +22,49 @@
 let
   mmVersion = "0.3.0-unstable-2026-02-26";
 in
-buildGoModule {
-  pname = "mautrix-mattermost";
-  version = mmVersion;
+  buildGoModule {
+    pname = "mautrix-mattermost";
+    version = mmVersion;
 
-  src = fetchFromGitHub {
-    owner = "aiku";
-    repo = "mautrix-mattermost";
-    rev = "96283ac8e34181e089dcdc09ffd2bcf22732c9f4";
-    hash = "sha256-3hNLThK/rYhc06nwyYw8HZNxA8SNE/IhHdt2rYM3GcA=";
-  };
+    src = fetchFromGitHub {
+      owner = "aiku";
+      repo = "mautrix-mattermost";
+      rev = "96283ac8e34181e089dcdc09ffd2bcf22732c9f4";
+      hash = "sha256-3hNLThK/rYhc06nwyYw8HZNxA8SNE/IhHdt2rYM3GcA=";
+    };
 
-  vendorHash = "sha256-pMdOaYPQCHzJxx4MGRp8ywwKMMLJIUMdAmCcHV+DMFM=";
+    vendorHash = "sha256-pMdOaYPQCHzJxx4MGRp8ywwKMMLJIUMdAmCcHV+DMFM=";
 
-  subPackages = [ "cmd/mautrix-mattermost" ];
-  tags = [ "goolm" ];
+    # Upstream-frozen fork: fetches a whole channel window when bridgev2 asks for a
+    # thread's messages, duplicating every backfilled message in threaded channels.
+    # See the patch header for the incident details. Drop if the fork ever revives.
+    patches = [./mautrix-mattermost/thread-backfill.patch ./mautrix-mattermost/dp-member.patch];
 
-  # CGO stays on (native stdenv default): go-sqlite3 needs it.
-  nativeBuildInputs = [ pkg-config ];
-  buildInputs = [
-    sqlite
-    openssl
-  ];
+    subPackages = ["cmd/mautrix-mattermost"];
+    tags = ["goolm"];
 
-  # The Makefile stamps version info via -X ldflags from git; unnecessary here (the binary only
-  # logs it), and there is no .git in the fixed-output source.
-  ldflags = [
-    "-s"
-    "-w"
-    "-X main.Tag=${mmVersion}"
-  ];
+    # CGO stays on (native stdenv default): go-sqlite3 needs it.
+    nativeBuildInputs = [pkg-config];
+    buildInputs = [
+      sqlite
+      openssl
+    ];
 
-  doCheck = false;
+    # The Makefile stamps version info via -X ldflags from git; unnecessary here (the binary only
+    # logs it), and there is no .git in the fixed-output source.
+    ldflags = [
+      "-s"
+      "-w"
+      "-X main.Tag=${mmVersion}"
+    ];
 
-  meta = {
-    description = "Matrix-Mattermost puppeting bridge (mautrix-go bridgev2)";
-    homepage = "https://github.com/aiku/mautrix-mattermost";
-    license = lib.licenses.mpl20;
-    mainProgram = "mautrix-mattermost";
-    platforms = lib.platforms.linux;
-  };
-}
+    doCheck = false;
+
+    meta = {
+      description = "Matrix-Mattermost puppeting bridge (mautrix-go bridgev2)";
+      homepage = "https://github.com/aiku/mautrix-mattermost";
+      license = lib.licenses.mpl20;
+      mainProgram = "mautrix-mattermost";
+      platforms = lib.platforms.linux;
+    };
+  }

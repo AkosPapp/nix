@@ -127,6 +127,25 @@ in {
         defaultModel/smallModel and of any model's full name.
       '';
     };
+
+    secretOwner = mkOption {
+      type = types.str;
+      default = "akos";
+      example = "root";
+      description = ''
+        Owner of the mounted provider API-key secrets. The workstation hosts run the module from
+        users/akos.nix, so akos is the default; a host without an akos uid (hp, where only root
+        has shells) must set this to its own consumer - sops-nix cannot chown to a uid that
+        does not exist.
+      '';
+    };
+
+    secretGroup = mkOption {
+      type = types.str;
+      default = "users";
+      example = "root";
+      description = "Group of the mounted provider API-key secrets; see secretOwner.";
+    };
   };
 
   config = mkIf cfg.enable {
@@ -156,8 +175,8 @@ in {
       lib.genAttrs (lib.unique (
         lib.filter (s: s != null) (lib.mapAttrsToList (_: p: p.apiKeySecret) cfg.providers)
       )) (_: {
-        owner = "akos";
-        group = "users";
+        owner = cfg.secretOwner;
+        group = cfg.secretGroup;
       });
 
     environment.systemPackages = [pkgs-unstable.opencode];

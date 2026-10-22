@@ -32,8 +32,23 @@ if [ -n "$tok" ] && $CURL -sf -o /dev/null -H "Authorization: Bearer $tok" "$URL
   log "existing PAT still valid"
 else
   pass="$(cat "$CREDENTIALS_DIRECTORY/mm_password")"
-  sess="$($CURL -sf -X POST "$URL/api/v4/users/login" \
-    -d "{\"login_id\":\"$MM_USER\",\"password\":\"$pass\"}" | $JQ -r .token)"
+  # Build the login JSON with jq: the password may contain quotes/backslashes
+  # that raw string interpolation would turn into a malformed body (server
+  # answers "invalid credentials"). Body goes via file, not argv (ps-visible).
+  bodyf="$(mktemp)"
+  chmod 600 "$bodyf"
+  $JQ -cn --arg u "$MM_USER" --arg p "$pass" '{login_id:$u,password:$p}' > "$bodyf"
+  # Mattermost delivers the session token in the "Token" response header (docs for
+  # v10+; the body is only the user object). Some servers use the MMAUTHTOKEN cookie
+  # instead; accept either.
+  sess="$($CURL -sf -D - -o /dev/null -X POST "$URL/api/v4/users/login" \
+    --data-binary "@$bodyf" \
+    | tr -d '\r' \
+    | { sed -n 's/^[Tt]oken:[[:space:]]*\([^[:space:]]*\).*/\1/p'
+        sed -n 's/^[Ss]et-[Cc]ookie:[[:space:]]*MMAUTHTOKEN=\([^;]*\).*/\1/p'; } \
+    | head -n1)"
+  rm -f "$bodyf"
+  [ -n "$sess" ] || { log "login returned no session token"; exit 1; }
   # Drop our PATs from previous runs (they stay valid in Mattermost until disabled), so the
   # account does not accumulate one token per deploy. Match on our description only.
   $CURL -sf -H "Authorization: Bearer $sess" "$URL/api/v4/users/me/tokens" \
@@ -41,23 +56,41 @@ else
     | while read -r old; do
         [ -n "$old" ] && $CURL -sf -o /dev/null -X POST "$URL/api/v4/users/tokens/$old/disable" || true
       done
-  new="$($CURL -sf -X POST -H "Authorization: Bearer $sess" "$URL/api/v4/users/me/tokens" \
-    -d "{\"friendly_name\":\"mautrix-mattermost\",\"description\":\"$DESC\"}" | $JQ -r .token)"
-  [ -n "$new" ] || { log "no PAT in response"; exit 1; }
+  crf="$(mktemp)"; chmod 600 "$crf"
+  code="$($CURL -s -o "$crf" -w '%{http_code}' -X POST \
+    -H "Authorization: Bearer $sess" -H 'Content-Type: application/json' \
+    "$URL/api/v4/users/me/tokens" \
+    -d "{\"friendly_name\":\"mautrix-mattermost\",\"description\":\"$DESC\"}")"
+  new="$($JQ -r '.token // empty' "$crf")"
+  if [ -z "$new" ]; then
+    # Only echo Mattermost's machine-readable error id (safe, never the body:
+    # a partial-success body could contain a token).
+    err="$(grep -o '"id":"api[.a-z_]*"' "$crf" | head -n1)"
+    if [ "$code" = 403 ] && [ "$err" = '"id":"api.context.permissions.app_error"' ]; then
+      # The server admin disabled user access tokens (EnableUserAccessTokens=false).
+      # The session token from the password login is an equivalent Bearer credential;
+      # it expires, but the bootstrap timer re-validates /users/me and re-logins.
+      log "user access tokens disabled on server; using the login session token"
+      new="$sess"
+    else
+      log "no PAT in response (http=$code ${err:-no error id})"
+      rm -f "$crf"; exit 1
+    fi
+  fi
+  rm -f "$crf"
   old_contents="$(cat "$PAT_FILE" 2>/dev/null || true)"
   umask 0177
-  printf 'MATTERMOST_AUTO_TOKEN=%s\nMATTERMOST_AUTO_SERVER_URL=%s\nMATTERMOST_AUTO_OWNER_MXID=%s\n' \
+printf 'MATTERMOST_AUTO_TOKEN=%s\nMATTERMOST_AUTO_SERVER_URL=%s\nMATTERMOST_AUTO_OWNER_MXID=%s\n' \
     "$new" "$URL" "$MM_OWNER" >"$PAT_FILE.tmp"
-  # The bridge unit reads this file as its user; the script itself runs as root (systemctl
-  # restart rights for the trigger below), so hand ownership over explicitly.
-  chown "$MM_OWNER_USER:$MM_OWNER_USER" "$PAT_FILE.tmp"
+  # The file lands in bootstrap's OWN root-owned StateDirectory; systemd reads it as
+  # root when starting the bridge, so a plain 0600 root file is all this ever needs.
+  chmod 600 "$PAT_FILE.tmp"
   mv -f "$PAT_FILE.tmp" "$PAT_FILE"
-  chmod 600 "$PAT_FILE"
   tok="$new"
-  if [ "$old_contents" != "$(cat "$PAT_FILE")" ]; then
-    log "new PAT minted"
-    systemctl try-restart --no-block __SERVICE__.service || true
-  fi
+  log "new token written"
+  # Unconditional restart: the old content-compare guard no-ops silently when the
+  # previous file was unreadable by root (both sides compared as empty strings).
+  systemctl try-restart --no-block __SERVICE__.service || true
 fi
 
 # Join all public channels of the configured teams; already-member is a 400, which is fine and

@@ -209,14 +209,21 @@
   # Config layout is the bridgev2 generation, i.e. the same shape as slack's.
   mmopts = config.MODULES.services.matrix.mattermost;
   mattermost = rec {
-    package = pkgs.callPackage ../../packages/mautrix-mattermost.nix { };
+    package = pkgs.callPackage ../../packages/mautrix-mattermost.nix {};
     dataDir = "/var/lib/mautrix-mattermost";
     registrationFile = "${dataDir}/mautrix-mattermost-registration.yaml";
     settingsFile = "${dataDir}/config.yaml";
     # Written by the bootstrap unit, read via EnvironmentFile below: the Mattermost Personal
     # Access Token the bridge logs in with. Optional prefix on the unit: first boot runs the
     # bridge before the token exists, and the bootstrap restarts it once minted.
-    autoLoginEnvFile = "${dataDir}/auto-login.env";
+    # The token file lives in a dir that is BOOTSTRAP's own StateDirectory, mode 0700
+    # root:root. systemd reads EnvironmentFile as root at service start, so the bridge
+    # process needs no read access at all. It must NOT sit in dataDir: systemd chowns
+    # every StateDirectory to the starting unit's user, so the root bootstrap unit
+    # declaring the bridge's dataDir yanked /var/lib/mautrix-mattermost (and with it
+    # the bridge's SQLite DB) away from the bridge user on every bootstrap run.
+    credDir = "/var/lib/mautrix-mattermost-cred";
+    autoLoginEnvFile = "${credDir}/auto-login.env";
     bootstrap = pkgs.writeShellScript "mautrix-mattermost-bootstrap" (
       builtins.replaceStrings [
         "__CURL__"
@@ -260,8 +267,8 @@
         private_chat_portal_meta = true;
       };
       double_puppet = {
-        servers = { };
-        secrets = { };
+        servers = {};
+        secrets = {};
       };
       # Left empty rather than "generate", which would rotate them on every restart (the
       # config is rewritten from the store each time).
@@ -297,7 +304,7 @@ in {
 
       teams = mkOption {
         type = types.listOf types.str;
-        default = [ ];
+        default = [];
         example = [
           "fsinf"
           "w-inf-tuwien"
@@ -405,12 +412,13 @@ in {
           assertion = anyBridge -> matrix.enable;
           message = "MODULES.services.matrix bridges need MODULES.services.matrix.enable on the same host.";
         }
-      {
-        assertion = !(matrix.matterbridge.enable && cfg.mattermost.enable);
-        message = ""
-          + "matterbridge and mautrix-mattermost are two alternative bridges for the same "
-          + "Mattermost server - enabling both would relay every message twice. Pick one.";
-      }
+        {
+          assertion = !(matrix.matterbridge.enable && cfg.mattermost.enable);
+          message =
+            ""
+            + "matterbridge and mautrix-mattermost are two alternative bridges for the same "
+            + "Mattermost server - enabling both would relay every message twice. Pick one.";
+        }
       ];
     }
 
@@ -588,7 +596,7 @@ in {
     })
 
     (mkIf cfg.mattermost.enable {
-      sops.secrets.${mmopts.passwordSecret} = { };
+      sops.secrets.${mmopts.passwordSecret} = {};
 
       # The bootstrap script chowns the PAT file to this user; keep the names in sync.
       users.users.mautrix-mattermost = {
@@ -597,7 +605,7 @@ in {
         home = mattermost.dataDir;
         description = "mautrix-mattermost bridge user";
       };
-      users.groups.mautrix-mattermost = { };
+      users.groups.mautrix-mattermost = {};
 
       services.matrix-synapse.settings.app_service_config_files = [mattermost.registrationFile];
       systemd.services.matrix-synapse.serviceConfig.SupplementaryGroups = ["mautrix-mattermost"];
@@ -675,7 +683,7 @@ in {
       systemd.services.mautrix-mattermost-bootstrap = {
         description = "Mattermost credentials and channel autojoin for mautrix-mattermost";
         wants = ["network-online.target"];
-        after = ["network-online.target" "mautrix-mattermost.service"];
+        after = ["network-online.target"];
         wantedBy = ["multi-user.target"];
         environment = {
           MM_URL = "https://${mmopts.server}";
@@ -689,7 +697,8 @@ in {
           Type = "oneshot";
           ExecStart = "${mattermost.bootstrap}";
           LoadCredential = ["mm_password:${config.sops.secrets.${mmopts.passwordSecret}.path}"];
-          StateDirectory = baseNameOf mattermost.dataDir;
+          StateDirectory = baseNameOf mattermost.credDir;
+          StateDirectoryMode = "0700";
           RemainAfterExit = "no";
           NoNewPrivileges = true;
           PrivateTmp = true;
@@ -702,6 +711,9 @@ in {
           ProtectKernelLogs = true;
           ProtectKernelModules = true;
           ProtectKernelTunables = true;
+          # Root with no capabilities at all: the token file is written into the
+          # unit's own root-owned StateDirectory and consumed by systemd itself as
+          # EnvironmentFile, so nothing ever needs to hand file ownership over.
           CapabilityBoundingSet = "";
           RestrictNamespaces = true;
           RestrictRealtime = true;
@@ -717,7 +729,10 @@ in {
         wantedBy = ["timers.target"];
         timerConfig = {
           OnBootSec = "1min";
-          OnUnitActiveSec = "30min";
+          # A run takes ~5min of sequential per-channel API calls and (via bridge
+          # restarts) a full channel resync; 30min was needlessly aggressive next
+          # to the other bridges and amplified the 2026-10-22 create-storms.
+          OnUnitInactiveSec = "6h";
           Persistent = true;
         };
       };

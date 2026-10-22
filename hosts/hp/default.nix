@@ -235,6 +235,54 @@ in {
   # Secret: sops paseo/hermes_daemon_password.
   MODULES.services.paseo-hermes.enable = true;
 
+  # opencode (terminal coding agent) on this host, for root's shell. hp has no akos uid, so the
+  # module cannot be reached via users/akos.nix and is enabled here directly, with the API-key
+  # secret mounted root:root (secretOwner/secretGroup). What root gets is exactly the interactive
+  # setup legion5's akos uses - the package (environment.systemPackages = root's PATH),
+  # /etc/opencode.json + $OPENCODE_CONFIG pointing at it, and the same litellm.hp provider,
+  # model and sops key restated verbatim from users/akos.nix (repo convention: every consumer
+  # restates the catalogue, cf. the paseo-machine block in hosts/legion5/default.nix).
+  MODULES.services.opencode = {
+    enable = true;
+    secretOwner = "root";
+    secretGroup = "root";
+    defaultModel = "litellm/futurelab/qwen3.8-flash-next";
+    smallModel = "litellm/futurelab/qwen3.8-flash-next";
+    providers.litellm = {
+      displayName = "LiteLLM (hp)";
+      baseURL = "https://litellm.hp/v1";
+      apiKeySecret = "opencode/litellm_api_key";
+      models = {
+        "futurelab/qwen3.8-flash-next" = let
+          effort = e: {
+            chat_template_kwargs = {
+              thinking = true;
+              reasoning_effort = e;
+            };
+          };
+        in {
+          contextLength = 262144;
+          outputLength = 32768;
+          modalities = {
+            input = ["text" "image" "video"];
+            output = ["text"];
+          };
+          options = effort "xhigh";
+          variants = {
+            # Variants merge over `options`, so "off" has to switch the base thinking flag off too.
+            off = {
+              enable_thinking = false;
+              chat_template_kwargs.thinking = false;
+            };
+            low = effort "low";
+            medium = effort "medium";
+            xhigh = effort "xhigh";
+          };
+        };
+      };
+    };
+  };
+
   # Personal agent stack - see RUNBOOK-hermes.md next to this file for the manual steps (sops
   # secrets, bridge logins, OAuth). A private Matrix server with federation off, reachable only
   # over the tailnet (https://matrix.hp, Element at https://element.hp); the mautrix bridges put
@@ -255,7 +303,7 @@ in {
       # puppeting bridge: messages appear from the real Mattermost users, and sends appear as me
       enable = true;
       user = "AkosPapp";
-      teams = [ "fsinf" "w-inf-tuwien" ];
+      teams = ["fsinf" "w-inf-tuwien"];
     };
     matterbridge = {
       # relay-style predecessor, replaced by mautrix-mattermost (everything came from one
