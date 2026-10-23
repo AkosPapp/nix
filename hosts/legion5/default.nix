@@ -30,35 +30,71 @@
     })
     varLibSharePaths;
 
-  # Only route the zone through netbird while it can actually answer. The timer probes the real
-  # path - wt0 exists and is up, the route to r4uai01 leaves through it, and r4uai01 answers the
-  # zone's SOA - then sets the per-link DNS server and route-only domain. If any check fails, the
-  # link's per-interface DNS settings are cleared and resolved falls back to its normal default
-  # (tailscale's resolver when it is up, the wlo1/DHCP resolver otherwise). The probe doubles as
-  # the keepalive for r4uai01, which sits behind netbird lazy connections: the first packet after
-  # an idle period is dropped while the tunnel wakes, so a few retries are built in.
-  netbirdSplitDns = pkgs.writeShellScript "netbird-split-dns" ''
-    export PATH="${lib.makeBinPath [config.systemd.package pkgs.iproute2 pkgs.dnsutils]}"
-    iface=wt0
-    server=100.124.160.88
-    zone=robo4you.at
+  # Other hosts' Traefik zones (by default their host name: hp, akos01, ...) and the Tailscale IP
+  # behind each. Generated from the flake, so a new host needs no edit here.
+  tailnetZones = lib.filter (z: z.ip != null) (lib.mapAttrsToList (host: h: {
+    domain = h.config.MODULES.networking.traefik.domain;
+    ip = h.config.MODULES.networking.tailscale.hostIP;
+  }) (lib.removeAttrs nixosConfigurations [configName]));
 
-    answer=
-    if ip link show dev "$iface" up >/dev/null 2>&1; then
-      route=$(ip route get "$server" 2>/dev/null) || route=
+  # dnsmasq's dynamic include, regenerated on a timer. While tailscale is connected, its zone
+  # (MagicDNS) is forwarded and every other host's zone resolves to that host's tailscale IP.
+  # robo4you.at points at r4uai01's netbird IP only while its route leaves through wt0 and it
+  # answers the zone; otherwise none of those lines exist and dnsmasq falls through to the public
+  # servers. The file is only replaced (and dnsmasq restarted) when its contents change.
+  splitDns = pkgs.writeShellScript "split-dns" ''
+    export PATH="${lib.makeBinPath [
+      config.systemd.package
+      config.services.tailscale.package
+      pkgs.coreutils
+      pkgs.jq
+      pkgs.iproute2
+      pkgs.dnsutils
+      pkgs.diffutils
+    ]}"
+
+    conf=/run/dnsmasq.d/split.conf
+    mkdir -p "$(dirname "$conf")"
+
+    netbird_dns=100.124.160.88
+    netbird_zone=robo4you.at
+
+    # tailscale0 survives `tailscale down`, so ask the backend instead of the interface.
+    tailscale_up=0
+    if ip link show dev tailscale0 up >/dev/null 2>&1; then
+      state=$(timeout 2 tailscale status --json 2>/dev/null | jq -r '.BackendState // empty') || state=
+      if [ "$state" = "Running" ]; then
+        tailscale_up=1
+      fi
+    fi
+
+    netbird_up=0
+    if ip link show dev wt0 up >/dev/null 2>&1; then
+      route=$(ip route get "$netbird_dns" 2>/dev/null) || route=
       case " $route " in
-        *" dev $iface "*)
-          answer=$(dig +time=1 +tries=3 +short "@$server" "$zone" SOA 2>/dev/null) || answer=
+        *" dev wt0 "*)
+          if [ -n "$(dig +time=1 +tries=3 +short "@$netbird_dns" "$netbird_zone" SOA 2>/dev/null)" ]; then
+            netbird_up=1
+          fi
           ;;
       esac
     fi
 
-    if [ -n "$answer" ]; then
-      resolvectl dns "$iface" "$server"
-      resolvectl domain "$iface" "~$zone"
+    {
+      if [ "$tailscale_up" = 1 ]; then
+        echo "server=/${config.MODULES.networking.tailscale.tailnetDnsName}/100.100.100.100"
+        ${lib.concatMapStringsSep "\n    " (z: "echo 'address=/${z.domain}/${z.ip}'") tailnetZones}
+      fi
+      if [ "$netbird_up" = 1 ]; then
+        echo "server=/$netbird_zone/$netbird_dns"
+      fi
+    } > "$conf.new"
+
+    if ! cmp -s "$conf.new" "$conf"; then
+      mv "$conf.new" "$conf"
+      systemctl restart dnsmasq
     else
-      resolvectl dns "$iface" "" 2>/dev/null || true
-      resolvectl domain "$iface" "" 2>/dev/null || true
+      rm -f "$conf.new"
     fi
   '';
 in {
@@ -294,51 +330,69 @@ in {
     "net.core.wmem_default" = 20971520;
   };
 
-  # Split DNS for robo4you.at without touching anything else: systemd-resolved (whose stub
-  # resolv.conf tailscale detects and feeds natively, so its accept-dns stays on and every other
-  # lookup behaves exactly as before) gets the zone routed to netbird's DNS group - netbird
-  # advertises the group's address as 172.18.0.1:53, but that is this host's own (down) docker
-  # bridge, so the same server is reached through r4uai01's netbird IP (100.124.160.88). The
-  # routing is applied per-link on the netbird interface (wt0) by netbird-split-dns below, NOT as
-  # a static resolved dns-delegate: a static delegate keeps sending the zone to 100.124.160.88
-  # even with netbird down, where it blackholes every query for the full 5s timeout and public
-  # robo4you.at lookups fail outright instead of using the normal resolver.
-  #
-  # The delegate also has to carry ONLY r4uai01's netbird IP: every candidate the zone can fall
-  # back to (the tailscale resolver's akos01 delegation, and netbird's own upstream) answers
-  # happily even when its netbird path is stale - with the PUBLIC view, i.e. a NODATA whose SOA
-  # carries Cloudflare's 1800s negative TTL - and a second delegate server merely let that fast
-  # wrong answer race the right one; caching such a negative is exactly what produced the
-  # observed "works, stops working, works again after ~half an hour" cycle. Cache=no-negative
-  # stops resolved ever storing negative answers at all: a transient miss is retried live instead
-  # of blinding the zone until the SOA's TTL expires. Netbird deliberately keeps DisableDNS
-  # (NB_DISABLE_DNS in users/akos.nix): its group advertises 172.18.0.1, which is unreachable
-  # from most hosts, and its zone list predates futurelab.robo4you.at. Deliberately NOT solved
-  # with networkd managing wt0: networkd wipes the address/route config netbird put on the
-  # interface and leaves it admin-down (resolved ignores the DNS of a link that is not up), and
-  # wait-online then times out on it.
-  services.resolved = {
+  # One local resolver (dnsmasq) instead of systemd-resolved, because the split depends on
+  # whether each VPN is actually usable:
+  # - public backups, in the requested order: 9.9.9.9, 1.1.1.1, 8.8.8.8
+  # - AirLab's DNS only for its zone (the DHCP-provided servers are otherwise ignored)
+  # - Tailscale's MagicDNS and the other hosts' Traefik zones only while tailscale is connected
+  # - robo4you.at via netbird's r4uai01 (100.124.160.88) only while wt0 is up, the route to it
+  #   leaves through wt0, and it answers the zone. netbird's advertised 172.18.0.1 is this host's
+  #   own docker bridge, and its DNS client is disabled in users/akos.nix.
+  # The dynamic parts come from splitDns above; dnsmasq is restarted only when its include
+  # actually changes.
+  services.resolved.enable = false;
+
+  services.dnsmasq = {
     enable = true;
-    settings.Resolve = {
-      DNSOverTLS = "false";
-      DNSSEC = "false";
-      Cache = "no-negative";
+    # modules/networking/dns.nix already runs this host's authoritative zone in dnsmasq and
+    # deliberately keeps it off the system resolver; here we also want it to be the system
+    # resolver, and to keep listening on the tailscale address for the authoritative zone.
+    resolveLocalQueries = lib.mkForce true;
+    settings = {
+      # Never adopt the DHCP servers as defaults: the public list below is the fallback.
+      no-resolv = lib.mkForce true;
+      # `no-resolv` already ignores this; drop the module's marker to avoid a startup warning.
+      resolv-file = lib.mkForce [];
+      # The tailscale address may not exist yet when dnsmasq starts.
+      bind-dynamic = lib.mkForce true;
+      listen-address = lib.mkForce [
+        "127.0.0.1"
+        "::1"
+        config.MODULES.networking.tailscale.hostIP
+      ];
+      strict-order = true;
+      server = [
+        "9.9.9.9"
+        "1.1.1.1"
+        "8.8.8.8"
+        "/airlab/10.50.20.2"
+      ];
+      conf-dir = "/run/dnsmasq.d,*.conf";
     };
   };
 
-  systemd.services.netbird-split-dns = {
-    description = "Route robo4you.at to netbird's DNS only while the netbird path is usable";
-    after = ["netbird.service" "systemd-resolved.service"];
+  systemd.tmpfiles.rules = ["d /run/dnsmasq.d 0755 root root -"];
+
+  systemd.services.split-dns = {
+    description = "Regenerate dnsmasq's VPN-dependent split-DNS include";
+    # A transient dnsmasq restart failure must not stop the timer from retrying.
+    startLimitIntervalSec = 0;
     serviceConfig = {
       Type = "oneshot";
-      ExecStart = "${netbirdSplitDns}";
+      ExecStart = "${splitDns}";
     };
   };
-  systemd.timers.netbird-split-dns = {
+  systemd.timers.split-dns = {
     wantedBy = ["timers.target"];
     timerConfig = {
       OnBootSec = "5s";
       OnUnitActiveSec = "10s";
     };
   };
+
+  # Tailscale still provides the tailnet; dnsmasq forwards its zone explicitly.
+  services.tailscale.extraSetFlags = lib.mkForce [
+    "--accept-dns=false"
+    "--accept-routes=true"
+  ];
 }

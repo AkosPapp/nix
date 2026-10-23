@@ -30,8 +30,8 @@ in {
 
     services.dnsmasq = {
       enable = true;
-      # The default would make this the machine's own resolver, and with no upstream that would
-      # break every lookup that isn't in the zone.
+      # The default would make this the machine's own resolver; with no upstream here that would
+      # break every lookup outside the zone. Hosts that add upstreams opt back in (legion5 does).
       resolveLocalQueries = false;
       settings = {
         port = config.PORTS.dns;
