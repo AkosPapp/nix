@@ -394,5 +394,6 @@ in {
   services.tailscale.extraSetFlags = lib.mkForce [
     "--accept-dns=false"
     "--accept-routes=true"
+    "--advertise-exit-node=false"
   ];
 }
