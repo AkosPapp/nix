@@ -29,6 +29,38 @@
       override_path = "/home/akos/servers${path}";
     })
     varLibSharePaths;
+
+  # Only route the zone through netbird while it can actually answer. The timer probes the real
+  # path - wt0 exists and is up, the route to r4uai01 leaves through it, and r4uai01 answers the
+  # zone's SOA - then sets the per-link DNS server and route-only domain. If any check fails, the
+  # link's per-interface DNS settings are cleared and resolved falls back to its normal default
+  # (tailscale's resolver when it is up, the wlo1/DHCP resolver otherwise). The probe doubles as
+  # the keepalive for r4uai01, which sits behind netbird lazy connections: the first packet after
+  # an idle period is dropped while the tunnel wakes, so a few retries are built in.
+  netbirdSplitDns = pkgs.writeShellScript "netbird-split-dns" ''
+    export PATH="${lib.makeBinPath [config.systemd.package pkgs.iproute2 pkgs.dnsutils]}"
+    iface=wt0
+    server=100.124.160.88
+    zone=robo4you.at
+
+    answer=
+    if ip link show dev "$iface" up >/dev/null 2>&1; then
+      route=$(ip route get "$server" 2>/dev/null) || route=
+      case " $route " in
+        *" dev $iface "*)
+          answer=$(dig +time=1 +tries=3 +short "@$server" "$zone" SOA 2>/dev/null) || answer=
+          ;;
+      esac
+    fi
+
+    if [ -n "$answer" ]; then
+      resolvectl dns "$iface" "$server"
+      resolvectl domain "$iface" "~$zone"
+    else
+      resolvectl dns "$iface" "" 2>/dev/null || true
+      resolvectl domain "$iface" "" 2>/dev/null || true
+    fi
+  '';
 in {
   imports = [./hardware-configuration.nix];
 
@@ -264,24 +296,27 @@ in {
 
   # Split DNS for robo4you.at without touching anything else: systemd-resolved (whose stub
   # resolv.conf tailscale detects and feeds natively, so its accept-dns stays on and every other
-  # lookup behaves exactly as before) plus a dns-delegate sending the zone to netbird's DNS group
-  # - netbird advertises the group's address as 172.18.0.1:53, but that is this host's own (down)
-  # docker bridge, so the same server is reached through r4uai01's netbird IP. That peer sits
-  # behind lazy connections. The delegate carries ONLY r4uai01's netbird IP: every candidate the
-  # zone can fall to (the tailscale resolver's akos01 delegation, and netbird's own upstream)
-  # answers happily even when its netbird path is stale - with the PUBLIC view, i.e. a NODATA
-  # whose SOA carries Cloudflare's 1800s negative TTL - and a second delegate server merely let
-  # that fast wrong answer race the right one; caching such an negative is exactly what produced
-  # the observed "works, stops working, works again after ~half an hour" cycle. So the zone is
-  # sent only to the server that knows futurelab (direct dig against it always answered, even
-  # while resolved showed the poisoned negative), and Cache=no-negative stops resolved ever
-  # storing negative answers at all: a transient miss is retried live instead of blinding the
-  # zone until the SOA's TTL expires. Netbird deliberately keeps
-  # DisableDNS (NB_DISABLE_DNS in users/akos.nix): its group advertises 172.18.0.1, which is
-  # unreachable from most hosts, and its zone list predates futurelab.robo4you.at. Deliberately
-  # NOT solved with networkd managing wt0: networkd wipes the address/route config netbird put on
-  # the interface and leaves it admin-down (resolved ignores the DNS of a link that is not up),
-  # and wait-online then times out on it.
+  # lookup behaves exactly as before) gets the zone routed to netbird's DNS group - netbird
+  # advertises the group's address as 172.18.0.1:53, but that is this host's own (down) docker
+  # bridge, so the same server is reached through r4uai01's netbird IP (100.124.160.88). The
+  # routing is applied per-link on the netbird interface (wt0) by netbird-split-dns below, NOT as
+  # a static resolved dns-delegate: a static delegate keeps sending the zone to 100.124.160.88
+  # even with netbird down, where it blackholes every query for the full 5s timeout and public
+  # robo4you.at lookups fail outright instead of using the normal resolver.
+  #
+  # The delegate also has to carry ONLY r4uai01's netbird IP: every candidate the zone can fall
+  # back to (the tailscale resolver's akos01 delegation, and netbird's own upstream) answers
+  # happily even when its netbird path is stale - with the PUBLIC view, i.e. a NODATA whose SOA
+  # carries Cloudflare's 1800s negative TTL - and a second delegate server merely let that fast
+  # wrong answer race the right one; caching such a negative is exactly what produced the
+  # observed "works, stops working, works again after ~half an hour" cycle. Cache=no-negative
+  # stops resolved ever storing negative answers at all: a transient miss is retried live instead
+  # of blinding the zone until the SOA's TTL expires. Netbird deliberately keeps DisableDNS
+  # (NB_DISABLE_DNS in users/akos.nix): its group advertises 172.18.0.1, which is unreachable
+  # from most hosts, and its zone list predates futurelab.robo4you.at. Deliberately NOT solved
+  # with networkd managing wt0: networkd wipes the address/route config netbird put on the
+  # interface and leaves it admin-down (resolved ignores the DNS of a link that is not up), and
+  # wait-online then times out on it.
   services.resolved = {
     enable = true;
     settings.Resolve = {
@@ -289,31 +324,21 @@ in {
       DNSSEC = "false";
       Cache = "no-negative";
     };
-    dnsDelegates.robo4you = {
-      Delegate = {
-        DNS = ["100.124.160.88"];
-        Domains = ["robo4you.at"];
-      };
-    };
   };
 
-  # r4uai01 sits behind netbird lazy connections: after an idle period the first packet to it is
-  # dropped while the tunnel wakes, the delegate server times out (5s), and the lookup falls to
-  # the tailscale resolver, which answers instantly with the public view (a NODATA that kills
-  # internal names). Keeping the peer awake removes the failure mode entirely: one trivial query
-  # every 20s ensures the delegate answers first and live.
-  systemd.services.netbird-dns-keepalive = {
-    description = "Keep netbird's DNS peer (r4uai01) awake for robo4you.at resolution";
+  systemd.services.netbird-split-dns = {
+    description = "Route robo4you.at to netbird's DNS only while the netbird path is usable";
+    after = ["netbird.service" "systemd-resolved.service"];
     serviceConfig = {
       Type = "oneshot";
-      ExecStart = "${pkgs.dnsutils}/bin/dig @100.124.160.88 robo4you.at SOA +short +time=1 +tries=1";
+      ExecStart = "${netbirdSplitDns}";
     };
   };
-  systemd.timers.netbird-dns-keepalive = {
+  systemd.timers.netbird-split-dns = {
     wantedBy = ["timers.target"];
     timerConfig = {
       OnBootSec = "5s";
-      OnUnitActiveSec = "20s";
+      OnUnitActiveSec = "10s";
     };
   };
 }
