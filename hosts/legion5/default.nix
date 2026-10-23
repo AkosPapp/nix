@@ -97,6 +97,25 @@
       rm -f "$conf.new"
     fi
   '';
+
+  # The timer above is the backstop; this is the fast path. `ip monitor` streams the same
+  # netlink events udev sees, so a VPN interface, address or route landing (netbird's wt0,
+  # tailscale's routes flushed on down) wakes the updater within ~1s instead of up to a poll
+  # interval plus script runtime. One burst of events (a reconnect flaps several routes)
+  # collapses to a single updater run, and `systemctl start` waits for it, serialising runs.
+  splitDnsWatch = pkgs.writeShellScript "split-dns-watch" ''
+    export PATH="${lib.makeBinPath [
+      pkgs.iproute2
+      config.systemd.package
+      pkgs.coreutils
+    ]}"
+    while IFS= read -r _; do
+      # Give whoever changed the network a beat to finish, drain the rest of the burst, then trigger.
+      sleep 1
+      while IFS= read -r -t 1 _; do :; done
+      systemctl start split-dns.service || true
+    done < <(exec ip monitor link address route)
+  '';
 in {
   imports = [./hardware-configuration.nix];
 
@@ -387,6 +406,18 @@ in {
     timerConfig = {
       OnBootSec = "5s";
       OnUnitActiveSec = "10s";
+    };
+  };
+
+  systemd.services.split-dns-watch = {
+    description = "Trigger split-dns immediately on interface/address/route changes";
+    wantedBy = ["multi-user.target"];
+    # `ip monitor` can die on a netlink buffer overrun; never let the start-limit give up on it.
+    startLimitIntervalSec = 0;
+    serviceConfig = {
+      ExecStart = "${splitDnsWatch}";
+      Restart = "always";
+      RestartSec = "2s";
     };
   };
 
