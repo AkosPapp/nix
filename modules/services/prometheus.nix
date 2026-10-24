@@ -255,6 +255,27 @@ in {
       ];
     })
 
+    (mkIf (cfg.enable && config.services.cloudflared.enable) {
+      # cloudflared serves its own Prometheus metrics on every `tunnel run` (the --metrics flag
+      # default, 127.0.0.1:35555 - nixpkgs' module neither passes nor moves it), no separate
+      # exporter binary - same shape as the traefik/syncthing jobs above. It's the tunnel's own
+      # view of the public path: connection/streams up, reconnect counts, request and response
+      # bytes - i.e. "is the Cloudflare door actually open", which nothing else can see.
+      # (Zone-analytics style metrics would need prometheus-community's cloudflare-exporter,
+      # which this nixpkgs does not carry; the tunnel's own numbers are the ones that matter
+      # for uptime anyway.)
+      services.prometheus.scrapeConfigs = [
+        {
+          job_name = "cloudflared";
+          static_configs = [
+            {
+              targets = ["127.0.0.1:${toString config.PORTS.cloudflaredMetrics}"];
+            }
+          ];
+        }
+      ];
+    })
+
     (mkIf (cfg.enable && config.MODULES.services.immich.enable) {
       # Immich exposes its own OTel/Prometheus metrics natively (no separate exporter binary),
       # same as the traefik/syncthing jobs above - just needs telemetry collection switched on.

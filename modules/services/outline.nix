@@ -36,11 +36,11 @@ in {
 
     public.enable = mkEnableOption ''
       Outline on the internet, not just the tailnet. Unlike mdbook.nix's route, this isn't a path
-      on Traefik's shared public entry point: Outline has no base-path support (its
+      on Traefik's shared funnel entry point: Outline has no base-path support (its
       frontend fetches `/api/...`, `/ws` etc from the root unconditionally), so a path prefix
       there would break as soon as the browser's JS made its first same-origin request. Instead
       this claims the third of Tailscale Funnel's three allowed ports (8443 is
-      traefikPublicFunnel's) and funnels straight to Outline's own loopback port, so Outline sees
+      traefikFunnelPublic's) and funnels straight to Outline's own loopback port, so Outline sees
       itself at the root of its own origin either way.
     '';
 

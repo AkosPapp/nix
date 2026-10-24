@@ -9,6 +9,9 @@
   cfg = config.MODULES.services.matrix;
   matrix = config.MODULES.services.matrix;
   synapseUnit = config.services.matrix-synapse.serviceUnit;
+  # MAS (when the homeserver enables it) rejects m.login.application_service - so neither
+  # double-puppeting nor bridge-side E2EE can work. Every such setting below is gated on this.
+  masOn = matrix.mas.enable;
 
   # goolm is mautrix-go's pure-Go Olm. The default links libolm, which nixpkgs marks insecure -
   # and encryption is off on every bridge here anyway (see bridgeSettings), so nothing is lost.
@@ -90,7 +93,7 @@
     wantedBy = [synapseUnit];
   };
 
-  anyBridge = cfg.whatsapp.enable || cfg.signal.enable || cfg.slack.enable || cfg.discord.enable || cfg.mattermost.enable;
+  anyBridge = cfg.whatsapp.enable || cfg.signal.enable || cfg.slack.enable || cfg.discord.enable || cfg.mattermost.enable || cfg.jabber.enable;
 
   # Double puppeting: a second, bridge-less appservice whose only namespace is the admin's own
   # user ID (non-exclusive). Bridges given its as_token can act as that user - so portal rooms
@@ -107,7 +110,7 @@
   # Who may invite the admin into a room that then gets auto-joined: the bridge bots and the
   # ghosts they puppet, nobody else. (matterbridge is not a mautrix bridge, but its rooms land
   # in the same admin inbox, so it belongs in this list too.)
-  bridgeUsers = "^@(whatsappbot|signalbot|slackbot|discordbot|matterbridge|mattermostbot|whatsapp_.*|signal_.*|slack_.*|discord_.*|mattermost_.*):${lib.escapeRegex matrix.serverName}$";
+  bridgeUsers = "^@(whatsappbot|signalbot|slackbot|discordbot|matterbridge|mattermostbot|jabberbot|whatsapp_.*|signal_.*|slack_.*|discord_.*|mattermost_.*|jabber_.*):${lib.escapeRegex matrix.serverName}$";
 
   # --- mautrix-slack: packaged in nixpkgs, but without a NixOS module ------------------------
   # Same shape as nixpkgs' mautrix-whatsapp module, so it behaves like the other two.
@@ -278,12 +281,89 @@
     } (bridgeSettings config.PORTS.mautrixMattermost);
     settingsJson = (pkgs.formats.json {}).generate "mautrix-mattermost-config.json" settings;
   };
+
+  # --- mautrix-jabber: jmpchat-matrix-bridge, the maintained successor of mautrix-jabber ------
+  # Per-user XMPP puppeting bridge (same bridgev2 config generation as slack/mattermost; the
+  # package is hand-built because upstream is not in nixpkgs). There is deliberately no XMPP
+  # server setting: logins carry a JID (akos@akosp.app) and the bridge derives the server from
+  # its domain through the SRV/AAAA records MODULES.services.xmpp maintains, with Prosody on
+  # this host answering.
+  #
+  # The ONE bridge here with Matrix-side E2EE (end-to-bridge encryption) turned on - hence the
+  # reversed recursiveUpdate below, so the encryption block wins over bridgeSettings' off.
+  # --generate-registration bakes io.element.msc4190/org.matrix.msc3202/push_ephemeral into the
+  # registration when encryption is on; Synapse needs the two matching experimental flags
+  # (matrix.nix). The Olm pickle key is spliced from sops in preStart, like the AS tokens.
+  # OMEMO on the XMPP side is NOT supported by this bridge (upstream roadmap): messages
+  # encrypted on the phone arrive as "open an XMPP client" notices.
+  jabber = rec {
+    package = pkgs.callPackage ../../packages/jmpchat-matrix-bridge.nix {};
+    dataDir = "/var/lib/mautrix-jabber";
+    registrationFile = "${dataDir}/jabber-registration.yaml";
+    settingsFile = "${dataDir}/config.yaml";
+    pickleKeySecret = "matrix/jabber_pickle_key";
+    settings = lib.recursiveUpdate (bridgeSettings config.PORTS.mautrixJabber) {
+      database = {
+        type = "sqlite3-fk-wal";
+        uri = "file:${dataDir}/mautrix-jabber.db?_txlock=immediate";
+      };
+      appservice = {
+        id = "jabber";
+        bot = {
+          username = "jabberbot";
+          displayname = "Jabber Bridge Bot";
+        };
+        as_token = "";
+        hs_token = "";
+        username_template = "jabber_{{.}}";
+      };
+      bridge = {
+        command_prefix = "!jabber";
+        personal_filtering_spaces = true;
+        private_chat_portal_meta = true;
+      };
+      double_puppet = {
+        servers = {};
+        secrets = {};
+      };
+      public_media.signing_key = "";
+      direct_media.server_key = "";
+      # End-to-bridge encryption is this bridge's differentiator - but it needs an appservice
+      # device, and under MAS m.login.application_service is rejected (M_APPSERVICE_LOGIN_UNSUPPORTED),
+      # so MAS deployments must fall back to plaintext portal rooms (the XMPP side was always
+      # plaintext unless the sender used OMEMO, which no bridge reads anyway).
+      encryption =
+        if masOn
+        then {allow = false;}
+        else {
+          # Portal rooms are encrypted by default; the bot's to-device traffic goes through AS
+          # transactions (msc2409 + msc3202 transaction extensions) and its device is managed
+          # via MSC4190 - the mode Synapse 1.162 speaks natively.
+          allow = true;
+          default = true;
+          require = false;
+          appservice = true;
+          msc4190 = true;
+          # The Hermes matrix-reader device is not cross-signed, and the cross-signed-tofu
+          # default would silently deny its key-share requests - unverified keeps the portal
+          # rooms readable for the summaries.
+          allow_key_sharing = true;
+          verification_levels.share = "unverified";
+          # Empty rather than "generate" (would rotate on every restart, the config is rewritten
+          # from the store each time); preStart splices the sops value. Stored with its "hex:"
+          # PkKey scheme prefix so mautrix parses it as exactly 32 bytes.
+          pickle_key = "";
+        };
+    };
+    settingsJson = (pkgs.formats.json {}).generate "mautrix-jabber-config.json" settings;
+  };
 in {
   options.MODULES.services.matrix = {
     whatsapp.enable = mkEnableOption "the mautrix-whatsapp bridge";
     signal.enable = mkEnableOption "the mautrix-signal bridge";
     slack.enable = mkEnableOption "the mautrix-slack bridge";
     discord.enable = mkEnableOption "the mautrix-discord bridge";
+    jabber.enable = mkEnableOption "the mautrix-jabber (jmpchat-matrix-bridge) XMPP puppeting bridge";
 
     mattermost = {
       enable = mkEnableOption "the mautrix-mattermost puppeting bridge";
@@ -369,7 +449,12 @@ in {
         };
         serviceConfig = {
           Type = "oneshot";
-          ExecStart = "${acceptInvites}/bin/mautrix-accept-invites";
+          # "-" prefix + restartIfChanged=false: this unit races Synapse's own restart when a
+          # config change (new bridge user in INVITER_REGEX) pulls it into an activation, and a
+          # failed oneshot there rolls back the whole switch (2026-10-24, same class as the
+          # mattermost-bootstrap incident). It is a 2-minute timer anyway: the next tick retries
+          # with the same effect, so activation must never wait on or mind a run.
+          ExecStart = "-${acceptInvites}/bin/mautrix-accept-invites";
           LoadCredential = ["as_token:${config.sops.secrets.${doublePuppetToken}.path}"];
           DynamicUser = true;
           ProtectSystem = "strict";
@@ -384,6 +469,7 @@ in {
           SystemCallFilter = ["@system-service"];
           SystemCallArchitectures = "native";
         };
+        restartIfChanged = false;
       };
       systemd.timers.mautrix-accept-invites = {
         wantedBy = ["timers.target"];
@@ -394,15 +480,18 @@ in {
       };
 
       # Read by systemd (EnvironmentFile), so root-owned is fine. Each bridge's preStart writes
-      # the value into double_puppet.secrets for this homeserver's domain.
+      # the value into double_puppet.secrets for this homeserver's domain. Empty under MAS:
+      # double-puppeting logs in via m.login.application_service, which MAS rejects outright -
+      # without a secret every bridge leaves double_puppet.secrets = {} and never tries.
       sops.templates."mautrix-doublepuppet.env" = {
-        content = lib.concatMapStrings (b: "MAUTRIX_${b}_BRIDGE_LOGIN_SHARED_SECRET=as_token:${config.sops.placeholder.${doublePuppetToken}}\n") ["WHATSAPP" "SIGNAL" "SLACK" "DISCORD" "MATTERMOST"];
+        content = lib.concatMapStrings (b: "MAUTRIX_${b}_BRIDGE_LOGIN_SHARED_SECRET=as_token:${config.sops.placeholder.${doublePuppetToken}}\n") (lib.optionals (!masOn) ["WHATSAPP" "SIGNAL" "SLACK" "DISCORD" "MATTERMOST" "JABBER"]);
         restartUnits =
           lib.optional cfg.whatsapp.enable "mautrix-whatsapp.service"
           ++ lib.optional cfg.signal.enable "mautrix-signal.service"
           ++ lib.optional cfg.slack.enable "mautrix-slack.service"
           ++ lib.optional cfg.discord.enable "mautrix-discord.service"
-          ++ lib.optional cfg.mattermost.enable "mautrix-mattermost.service";
+          ++ lib.optional cfg.mattermost.enable "mautrix-mattermost.service"
+          ++ lib.optional cfg.jabber.enable "mautrix-jabber.service";
       };
     })
 
@@ -614,8 +703,14 @@ in {
         ordering
         // {
           description = "mautrix-mattermost, a Matrix-Mattermost puppeting bridge";
-          wants = ["network-online.target" "mautrix-mattermost-bootstrap.service"];
-          after = ["network-online.target" "mautrix-mattermost-bootstrap.service"];
+          # Deliberately NOT wants/after the bootstrap unit: a Wants pulls the (minutes-long)
+          # bootstrap oneshot into every start transaction of this service - including the
+          # one switch-to-configuration runs when either unit changes - which held the whole
+          # activation hostage (2026-10-24). The timer starts bootstrap at +1min; first boot
+          # runs the bridge without the PAT (EnvironmentFile is optional) and bootstrap
+          # restarts it once the token is minted.
+          wants = ["network-online.target"];
+          after = ["network-online.target"];
           preStart = ''
             # Same dance as slack's (it is the same config generation), plus the optional
             # auto-login EnvironmentFile: Mattermost credentials never live in the store.
@@ -684,7 +779,15 @@ in {
         description = "Mattermost credentials and channel autojoin for mautrix-mattermost";
         wants = ["network-online.target"];
         after = ["network-online.target"];
-        wantedBy = ["multi-user.target"];
+        # No wantedBy, and the bridge does not Wants it either: this long oneshot would
+        # otherwise land in the multi-user transaction on first boot and in every switch
+        # touching it (2026-10-24: three deploys rolled back on this one unit). The timer
+        # below drives it - including at boot - so nothing ever waits on a run.
+        # Also pinned content-stable: without this, NixOS stamps a per-generation
+        # X-Restart-Triggers hash into the unit file, every deploy "changes" it, and the
+        # activation restarts (and waits on) a full 5-20 minute run even though nothing
+        # in the script actually depends on the system config.
+        restartIfChanged = false;
         environment = {
           MM_URL = "https://${mmopts.server}";
           MM_USER = mmopts.user;
@@ -736,6 +839,94 @@ in {
           Persistent = true;
         };
       };
+    })
+
+    (mkIf cfg.jabber.enable {
+      sops.secrets.${jabber.pickleKeySecret} = {};
+
+      # The Olm pickle key as EnvironmentFile (root-readable is fine, systemd reads it);
+      # preStart splices it into encryption.pickle_key, like the AS tokens and the
+      # double-puppet secret.
+      sops.templates."mautrix-jabber.env" = {
+        content = lib.optionalString (!masOn) "MAUTRIX_JABBER_PICKLE_KEY=${config.sops.placeholder.${jabber.pickleKeySecret}}\n";
+        restartUnits = ["mautrix-jabber.service"];
+      };
+
+      users.users.mautrix-jabber = {
+        isSystemUser = true;
+        group = "mautrix-jabber";
+        home = jabber.dataDir;
+        description = "mautrix-jabber (jmpchat-matrix-bridge) user";
+      };
+      users.groups.mautrix-jabber = {};
+
+      services.matrix-synapse.settings.app_service_config_files = [jabber.registrationFile];
+      systemd.services.matrix-synapse.serviceConfig.SupplementaryGroups = ["mautrix-jabber"];
+
+      systemd.services.mautrix-jabber =
+        ordering
+        // {
+          description = "mautrix-jabber (jmpchat-matrix-bridge), a Matrix-XMPP puppeting bridge";
+          # No after=prosody: the bridge starts fine without the XMPP side - logins are
+          # user-driven later (!jabber in the bot DM), and a dead Prosody must not gate Synapse.
+          wants = ["network-online.target"];
+          after = ["network-online.target"];
+          preStart = ''
+            # Same dance as mattermost's (same config generation); the pickle key joins the
+            # splice because end-to-bridge encryption is ON for this bridge (see let-block).
+            umask 0177
+            install -m 0600 '${jabber.settingsJson}' '${jabber.settingsFile}'
+            if [ ! -f '${jabber.registrationFile}' ]; then
+              ${jabber.package}/bin/jmpchat-matrix-bridge \
+                --generate-registration \
+                --config='${jabber.settingsFile}' \
+                --registration='${jabber.registrationFile}'
+            fi
+            chmod 640 '${jabber.registrationFile}'
+            ${pkgs.yq}/bin/yq -s '.[0].appservice.as_token = .[1].as_token
+              | .[0].appservice.hs_token = .[1].hs_token
+              | if env.MAUTRIX_JABBER_PICKLE_KEY then .[0].encryption.pickle_key = env.MAUTRIX_JABBER_PICKLE_KEY else . end
+              | .[0]
+              | if env.MAUTRIX_JABBER_BRIDGE_LOGIN_SHARED_SECRET then .double_puppet.secrets.[.homeserver.domain] = env.MAUTRIX_JABBER_BRIDGE_LOGIN_SHARED_SECRET else . end' \
+              '${jabber.settingsFile}' '${jabber.registrationFile}' > '${jabber.settingsFile}.tmp'
+            mv '${jabber.settingsFile}.tmp' '${jabber.settingsFile}'
+          '';
+          serviceConfig =
+            hardening
+            // {
+              EnvironmentFile = [doublePuppetEnv config.sops.templates."mautrix-jabber.env".path];
+              User = "mautrix-jabber";
+              Group = "mautrix-jabber";
+              StateDirectory = baseNameOf jabber.dataDir;
+              StateDirectoryMode = "0750";
+              WorkingDirectory = jabber.dataDir;
+              ExecStart = "${jabber.package}/bin/jmpchat-matrix-bridge --config='${jabber.settingsFile}'";
+              Restart = "on-failure";
+              RestartSec = "30s";
+              Type = "simple";
+              UMask = "0027";
+
+              LockPersonality = true;
+              NoNewPrivileges = true;
+              PrivateDevices = true;
+              PrivateTmp = true;
+              PrivateUsers = true;
+              ProtectClock = true;
+              ProtectControlGroups = true;
+              ProtectHome = true;
+              ProtectHostname = true;
+              ProtectKernelLogs = true;
+              ProtectKernelModules = true;
+              ProtectKernelTunables = true;
+              ProtectSystem = "strict";
+              RestrictRealtime = true;
+              RestrictSUIDSGID = true;
+              SystemCallArchitectures = "native";
+              SystemCallErrorNumber = "EPERM";
+              SystemCallFilter = ["@system-service"];
+            };
+          restartTriggers = [jabber.settingsJson];
+        };
     })
   ];
 }

@@ -284,11 +284,11 @@ in {
     # <service>.<host> entry, so it doesn't get a tile from the catch-all block at the bottom.
     (mkIf (cfg.enable && config.MODULES.services.mdbook.enable) {
       MODULES.services.homepage.services.mdbook = {
-        href = traefik.public.urlOf "/mdbook/";
+        href = traefik.funnel.urlOf "/mdbook/";
         # The docs' own favicon (mdbook.nix symlinks this stable name next to the theme's
         # content-hashed ones). Behind the login gate, but tile icons load in the browser,
         # which carries the /mdbook session cookie.
-        icon = traefik.public.urlOf "/mdbook/favicon.svg";
+        icon = traefik.funnel.urlOf "/mdbook/favicon.svg";
         description = "Docs (public, robo4you login)";
       };
     })
@@ -296,7 +296,7 @@ in {
       # Outline is a <service>.<host> entry (traefik.services), so the catch-all block at the
       # bottom already gives it a tile with the tailnet URL as href - override both once it's
       # also on its own Funnel port (outline.nix: no path-prefix support, so it isn't a path on
-      # traefik.public like mdbook below).
+      # traefik.funnel like mdbook below).
       MODULES.services.homepage.services.outline = {
         href = "${config.MODULES.services.outline.url}/";
         icon = "outline.png";

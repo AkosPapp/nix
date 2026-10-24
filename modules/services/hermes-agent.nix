@@ -73,9 +73,21 @@
   dashboardHost = "127.0.0.2";
 
   # Loopback ports Hermes (and every command it runs) may connect to; everything else on this
-  # host, the tailnet and the LAN is refused - see the firewall block below. LiteLLM, Synapse,
-  # and the Matrix reader MCP server (matrix-reader.service, also on the hermes uid).
-  allowedLocalPorts = [config.PORTS.litellm config.PORTS.synapse config.PORTS.matrixReader] ++ cfg.extraAllowedLoopbackPorts;
+  # host, the tailnet and the LAN is refused - see the firewall block below. LiteLLM, Synapse
+  # (its compat splitter when MAS owns the auth, which is where matrix.clientUrl points and
+  # /login actually lives), and the Matrix reader MCP server (matrix-reader.service, also on
+  # the hermes uid).
+  allowedLocalPorts =
+    [
+      config.PORTS.litellm
+      (
+        if config.MODULES.services.matrix.mas.enable
+        then config.PORTS.matrixCompat
+        else config.PORTS.synapse
+      )
+      config.PORTS.matrixReader
+    ]
+    ++ cfg.extraAllowedLoopbackPorts;
   privateRanges = ["127.0.0.0/8" "10.0.0.0/8" "172.16.0.0/12" "192.168.0.0/16" "100.64.0.0/10" "169.254.0.0/16"];
 
   # Hermes >= the "restart-safe cron" build: every agent cron run is a worker that attaches to the

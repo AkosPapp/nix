@@ -312,6 +312,20 @@ in {
   # MODULES.networking.traefik.services.cups = "127.0.0.1:${toString config.PORTS.cups}";
 
   MODULES.networking.traefik.enable = true;
+  # The public face on akosp.app: a Cloudflare Tunnel whose single wildcard ingress lands on
+  # Traefik's loopback `cloudflare` entry point, plus a oneshot that keeps the zone's records
+  # pointed at the tunnel through the Cloudflare API (a name appears in DNS exactly when it has
+  # a route - matrix.nix is the first consumer, see the `public` options there). TLS is
+  # Cloudflare's Universal SSL at their edge; no public port opens here, and unlike the Funnel
+  # (RUNBOOK-public.md) this is the real domain, so clients like Matrix federation work.
+  # Secrets and the one-time tunnel creation: RUNBOOK-cloudflare.md / `nix run .#cloudflare-config`.
+  # Created 2026-10-24 with the setup app flow (tunnel `hp`, CNAMEs akosp.app + m.akosp.app
+  # routed, credentials + cert.pem in sops).
+  MODULES.networking.dns.cloudflare = {
+    enable = true;
+    domain = "akosp.app";
+    tunnel.uuid = "c5955163-d4b6-4f01-9d60-bb33a57910b8";
+  };
   MODULES.services.homepage.enable = true;
   MODULES.services.firefly-iii.enable = true;
   MODULES.services.grafana.enable = true;
@@ -450,10 +464,20 @@ in {
   };
 
   # Personal agent stack - see RUNBOOK-hermes.md next to this file for the manual steps (sops
-  # secrets, bridge logins, OAuth). A private Matrix server with federation off, reachable only
-  # over the tailnet (https://matrix.hp, Element at https://element.hp); the mautrix bridges put
-  # WhatsApp, Signal and Slack chats into it; Hermes talks to akos there and can read the bridged
-  # rooms it is invited to.
+  # secrets, bridge logins, OAuth). The mautrix bridges put WhatsApp, Signal and Slack chats into
+  # it; Hermes talks to akos there and can read the bridged rooms it is invited to.
+  # Identity is the public domain now: @akos:akosp.app, served at https://m.akosp.app through the
+  # Cloudflare Tunnel with federation ON (matrix.nix's `public` options: the m. + apex routes and
+  # the .well-known delegations), so other homeservers can reach it. https://matrix.hp stays up on
+  # the tailnet for Element and the bridges. Account creation stays closed to everyone: open
+  # registration is off, and the only accounts that exist are the ones matrix.nix provisions from
+  # sops (akos, hermes). Element stays tailnet-only.
+  # The matrix.hp -> akosp.app server_name migration ran as a rooms-wipe (accounts, Mattermost
+  # logins, channel attachments and ghost registrations kept; old Matrix-side message copies,
+  # which duplicate the networks' own history, were dropped - newer Synapse recomputes v11 event
+  # IDs from the event JSON, so a rewritten history can never load). Runbook: RUNBOOK-cloudflare.md.
+  MODULES.services.matrix.serverName = "akosp.app";
+  MODULES.services.matrix.public.enable = true;
   # One namespace for all Matrix bridges. whatsapp/signal/slack/discord are mautrix
   # appservices (see modules/services/mautrix.nix); Mattermost rides in via matterbridge
   # instead of a second appservice: relay style, one bot user, chats attached with `!mm
@@ -461,13 +485,22 @@ in {
   # (mattermost/password).
   MODULES.services.matrix = {
     enable = true;
+    # MAS delegation: browser/QR logins, per-device tokens, passwordless for humans. Legacy
+    # clients (bridges, Hermes) keep working through the compat splitter. Costs double-puppeting
+    # and bridge-side E2EE (appservice login is rejected by MAS) - see matrix.nix's mas option.
+    mas.enable = true;
     whatsapp.enable = true;
     signal.enable = true;
     slack.enable = true;
     discord.enable = true;
+    # XMPP puppeting bridge (jmpchat-matrix-bridge) against the local Prosody below - the one
+    # bridge here with Matrix-side E2EE on. Login: DM @jabberbot:akosp.app, "!jabber login".
+    jabber.enable = true;
     mattermost = {
       # puppeting bridge: messages appear from the real Mattermost users, and sends appear as me
-      enable = true;
+      # OFF for now: too many bridged channels made Element lag (2026-10-24). Flip back on after
+      # the MAS reset once the client can keep up.
+      enable = false;
       user = "AkosPapp";
       teams = ["fsinf" "w-inf-tuwien"];
     };
@@ -478,6 +511,15 @@ in {
       enable = false;
     };
   };
+
+  # Prosody XMPP server hosting akosp.app (same domain as Matrix; JIDs like akos@akosp.app).
+  # Reachability is IPv6-only (hp's IPv4 is NATed): the xmpp module maintains the AAAA at
+  # xmpp.akosp.app plus the _xmpp-client/_xmpp-server SRV records through the Cloudflare API
+  # token (cloudflare/dns_api_token) and a DNS-01 cert from Let's Encrypt. Accounts come from
+  # sops (xmpp/*_password), hashed into Prosody once at first boot. Matrix side: the jabber
+  # bridge above. Runbook: RUNBOOK-xmpp.md.
+  MODULES.services.xmpp.enable = true;
+
   MODULES.services.hermes-agent.enable = true;
 
   # Hermes' calendar, out to the world: a token-gated ICS feed at
@@ -504,7 +546,7 @@ in {
   # it comes back. mdbook (public docs) is unrelated and stays on.
   MODULES.services.outline.enable = false;
 
-  # Public (Tailscale Funnel -> Traefik's `public` entry point) at https://hp.tail546fb.ts.net:8443/mdbook,
+  # Public (Tailscale Funnel -> Traefik's `funnel` entry point) at https://hp.tail546fb.ts.net:8443/mdbook,
   # behind a git.robo4you.at login - see RUNBOOK-public.md. The docs follow the baumit-docs
   # package through a Forgejo webhook (same runbook).
   MODULES.services.mdbook = {

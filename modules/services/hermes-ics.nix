@@ -74,7 +74,7 @@ in {
   options.MODULES.services.hermes-ics = {
     enable = mkEnableOption ''
       a public (token-gated) ICS feed for Hermes' calendar file: a loopback file server on this
-      host plus one route on Traefik's public entry point, so the feed is reachable at
+      host plus one route on Traefik's funnel entry point, so the feed is reachable at
       `<funnel origin>/ics/<token>/hermes.ics` from anywhere - Google Calendar and friends
       included, which is exactly what the Tailscale `serve` command must NOT be used for (a serve
       entry on 443 steals the port from Traefik and takes down every <service>.<host> on the
@@ -111,8 +111,8 @@ in {
     baseUrl = mkOption {
       type = types.str;
       readOnly = true;
-      default = traefik.public.urlOf cfg.publicPath;
-      defaultText = lib.literalExpression ''MODULES.networking.traefik.public.urlOf "<public path>"'';
+      default = traefik.funnel.urlOf cfg.publicPath;
+      defaultText = lib.literalExpression ''MODULES.networking.traefik.funnel.urlOf "<public path>"'';
       description = ''
         Everything before the token: `<funnel origin>/ics`. The full feed URL is
         `<baseUrl>/<token>/hermes.ics`, with the token from `tokenSecret` (decrypt it with
@@ -158,7 +158,7 @@ in {
         };
     };
 
-    MODULES.networking.traefik.public = {
+    MODULES.networking.traefik.funnel = {
       enable = true;
       # No stripPrefix: the server matches the full path including the token, so a request to
       # /ics (or any wrong token) never even reaches a handler that could answer with the feed.

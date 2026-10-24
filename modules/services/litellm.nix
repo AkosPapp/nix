@@ -568,8 +568,8 @@ in {
 
     public = {
       enable = mkEnableOption ''
-        the gateway's API on the public entry point: one route on
-        MODULES.networking.traefik.public puts `<public path>/v1` behind Tailscale Funnel, so a
+        the gateway's API on the funnel entry point: one route on
+        MODULES.networking.traefik.funnel puts `<public path>/v1` behind Tailscale Funnel, so a
         machine with no Tailscale can use `public.baseUrl` as its OpenAI-compatible base URL over
         HTTPS (Funnel terminates TLS with a real Let's Encrypt certificate, which is why this is
         the way out and not a bare port).
@@ -594,7 +594,7 @@ in {
         default = "/litellm";
         description = ''
           Path prefix this gateway occupies on the shared Funnel origin
-          (MODULES.networking.traefik.public.baseUrl). The API hangs one level below it, at
+          (MODULES.networking.traefik.funnel.baseUrl). The API hangs one level below it, at
           `<path>/v1` - the prefix an OpenAI-compatible client appends to a base URL anyway, and
           the part the public route actually claims.
         '';
@@ -603,11 +603,11 @@ in {
       baseUrl = mkOption {
         type = types.str;
         readOnly = true;
-        default = traefik.public.urlOf "${cfg.public.path}/v1";
-        defaultText = lib.literalExpression ''MODULES.networking.traefik.public.urlOf "<public path>/v1"'';
+        default = traefik.funnel.urlOf "${cfg.public.path}/v1";
+        defaultText = lib.literalExpression ''MODULES.networking.traefik.funnel.urlOf "<public path>/v1"'';
         description = ''
           What goes in an off-tailnet client's `base_url`: `<funnel origin>/litellm/v1`. Answers
-          only when `enable` is set here and MODULES.networking.traefik.public is on; callers that
+          only when `enable` is set here and MODULES.networking.traefik.funnel is on; callers that
           are themselves on the tailnet should use the subdomain (https://litellm.<host>) instead,
           which is shorter, needs no port and never leaves the tailnet.
         '';
@@ -684,10 +684,10 @@ in {
         '';
       }
       {
-        assertion = !cfg.public.enable || traefik.public.enable;
+        assertion = !cfg.public.enable || traefik.funnel.enable;
         message = ''
           MODULES.services.litellm.public.enable is set but
-          MODULES.networking.traefik.public.enable is not - the public path is a route on Traefik's
+          MODULES.networking.traefik.funnel.enable is not - the public path is a route on Traefik's
           Funnel-backed entry point, and with no such entry point nothing would ever answer on it.
         '';
       }
@@ -834,7 +834,7 @@ in {
     # The public side of the same proxy: one route, and it claims only the OpenAI-compatible
     # prefix. See the `public` options for why nothing else is reachable this way and for what the
     # Funnel's TLS story is.
-    MODULES.networking.traefik.public = lib.mkIf cfg.public.enable {
+    MODULES.networking.traefik.funnel = lib.mkIf cfg.public.enable {
       enable = true;
       routes.litellm = {
         pathPrefix = "${cfg.public.path}/v1";

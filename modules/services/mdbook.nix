@@ -276,7 +276,7 @@ in {
       # Everything oauth2-proxy serves itself (sign-in, callback) under /mdbook too, so the
       # one public route covers it.
       proxyPrefix = "${path}/oauth2";
-      redirectURL = traefik.public.urlOf "${path}/oauth2/callback";
+      redirectURL = traefik.funnel.urlOf "${path}/oauth2/callback";
       # Trailing slash matters: without it oauth2-proxy matches the path exactly, so only the
       # bare /mdbook reached nginx and everything under it was oauth2-proxy's own 404.
       upstream = ["${nginxUrl}${path}/"];
@@ -308,9 +308,9 @@ in {
     };
     sops.secrets."mdbook/oauth2_cookie_secret" = mkIf idp.enabled {};
 
-    MODULES.security.idp.redirectUris = [(traefik.public.urlOf "${path}/oauth2/callback")];
+    MODULES.security.idp.redirectUris = [(traefik.funnel.urlOf "${path}/oauth2/callback")];
 
-    MODULES.networking.traefik.public = {
+    MODULES.networking.traefik.funnel = {
       enable = true;
       routes.mdbook = {
         pathPrefix = path;

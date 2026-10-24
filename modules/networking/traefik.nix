@@ -75,12 +75,12 @@ in {
       description = "Function: service name -> its public URL (`firefly` -> `https://firefly.hp`).";
     };
 
-    public = {
+    funnel = {
       enable = mkEnableOption ''
         a second, internet-facing entry point behind Tailscale Funnel. tailscaled terminates TLS
         for the node's own ts.net name (a real Let's Encrypt certificate, so any browser trusts
-        it) and hands plain HTTP to Traefik's `public` entry point on loopback. Only the routes in
-        `public.routes` exist there - none of the `<service>.<domain>` routers do, so nothing on
+        it) and hands plain HTTP to Traefik's `funnel` entry point on loopback. Only the routes in
+        `funnel.routes` exist there - none of the `<service>.<domain>` routers do, so nothing on
         the tailnet side becomes reachable through the Funnel, whatever Host header is sent
       '';
 
@@ -109,7 +109,7 @@ in {
               description = ''
                 What `stripPrefix` removes; `pathPrefix` itself when null. Set it *shorter* than
                 `pathPrefix` to claim a deeper path than the backend serves from its own root:
-                litellm.nix registers the public route at `/litellm/v1` - so nothing else the proxy
+                litellm.nix registers the funnel route at `/litellm/v1` - so nothing else the proxy
                 serves is reachable from the Funnel at all - while the backend still has to receive
                 its own `/v1/...`, which means stripping only `/litellm`. It has to be a prefix of
                 `pathPrefix` (asserted), otherwise the backend would be handed a path it never
@@ -128,15 +128,15 @@ in {
           };
         });
         default = {};
-        description = "name -> route on the public entry point.";
+        description = "name -> route on the funnel entry point.";
       };
 
       baseUrl = mkOption {
         type = types.str;
         readOnly = true;
-        default = "https://${config.networking.fqdn}:${toString config.PORTS.traefikPublicFunnel}";
+        default = "https://${config.networking.fqdn}:${toString config.PORTS.traefikFunnelPublic}";
         description = ''
-          Where the public entry point is reachable from anywhere. Not port 443: on the tailscale
+          Where the funnel entry point is reachable from anywhere. Not port 443: on the tailscale
           address that is Traefik's own `websecure` listener for every `<service>.<domain>`, and
           a Funnel there would take it over.
         '';
@@ -145,8 +145,48 @@ in {
       urlOf = mkOption {
         type = types.raw;
         readOnly = true;
-        default = path: cfg.public.baseUrl + path;
+        default = path: cfg.funnel.baseUrl + path;
         description = "Function: path -> its public URL (`/bookstack` -> `https://hp.<tailnet>.ts.net:8443/bookstack`).";
+      };
+    };
+
+    cloudflare = {
+      services = mkOption {
+        type = types.attrsOf types.str;
+        default = {};
+        example = literalExpression ''
+          {
+            m = "127.0.0.1:8008";
+            "@" = "127.0.0.1:8008";
+          }
+        '';
+        description = ''
+          service name -> backend, published on the internet under Cloudflare. The name becomes
+          the label below `MODULES.networking.dns.cloudflare.domain` ("@" being the zone itself),
+          so `m` answers at https://m.akosp.app; the value is `host:port` or a full URL, same as
+          in `services`. Requests arrive through the Cloudflare Tunnel
+          (modules/networking/dns/cloudflare.nix), which terminates TLS at Cloudflare's edge and
+          forwards plain HTTP here - so these routers carry no TLS and no step-ca certificate,
+          and creating a record for each name is that module's job. This is the only internet
+          door that exists: nothing here listens on a public port.
+        '';
+      };
+
+      hostOf = mkOption {
+        type = types.raw;
+        readOnly = true;
+        default = name:
+          if name == "@"
+          then config.MODULES.networking.dns.cloudflare.domain
+          else "${name}.${config.MODULES.networking.dns.cloudflare.domain}";
+        description = "Function: service name -> its public hostname (`m` -> `m.akosp.app`, `@` -> `akosp.app`).";
+      };
+
+      urlOf = mkOption {
+        type = types.raw;
+        readOnly = true;
+        default = name: "https://${cfg.cloudflare.hostOf name}";
+        description = "Function: service name -> its public URL (`m` -> `https://m.akosp.app`).";
       };
     };
   };
@@ -258,31 +298,31 @@ in {
       ];
     }
 
-    (mkIf cfg.public.enable {
+    (mkIf cfg.funnel.enable {
       assertions =
         mapAttrsToList (name: r: {
           assertion = r.stripPrefixPath == null || (r.pathPrefix != null && hasPrefix r.stripPrefixPath r.pathPrefix);
           message = ''
-            MODULES.networking.traefik.public.routes.${name}: stripPrefixPath is
+            MODULES.networking.traefik.funnel.routes.${name}: stripPrefixPath is
             "${toString r.stripPrefixPath}", which does not start the route's own pathPrefix
             "${toString r.pathPrefix}" - stripping it would forward a path the backend never serves.
             Leave it null to strip pathPrefix itself.
           '';
         })
-        cfg.public.routes;
+        cfg.funnel.routes;
 
       MODULES.networking.tailscale.serve = {
-        traefik-public = {
+        traefik = {
           type = "funnel";
-          target = "http://127.0.0.1:${toString config.PORTS.traefikPublic}";
-          httpsPort = config.PORTS.traefikPublicFunnel;
+          target = "http://127.0.0.1:${toString config.PORTS.traefikFunnel}";
+          httpsPort = config.PORTS.traefikFunnelPublic;
         };
       };
 
-      services.traefik.staticConfigOptions.entryPoints.public = {
+      services.traefik.staticConfigOptions.entryPoints.funnel = {
         # Loopback only; the sole client is tailscaled's Funnel proxy, whose X-Forwarded-* headers
         # (the real client address among them) are trusted for that reason.
-        address = "127.0.0.1:${toString config.PORTS.traefikPublic}";
+        address = "127.0.0.1:${toString config.PORTS.traefikFunnel}";
         forwardedHeaders.trustedIPs = ["127.0.0.1/32"];
       };
 
@@ -290,14 +330,14 @@ in {
         middlewares =
           {
             # TLS ended in tailscaled; tell the backends the client was on HTTPS.
-            public-https.headers.customRequestHeaders.X-Forwarded-Proto = "https";
+            funnel-https.headers.customRequestHeaders.X-Forwarded-Proto = "https";
           }
-          // mapAttrs' (name: r: nameValuePair "public-${name}-strip" {stripPrefix.prefixes = [(stripOf r)];})
-          (filterAttrs (_: r: r.stripPrefix && r.pathPrefix != null) cfg.public.routes);
+          // mapAttrs' (name: r: nameValuePair "funnel-${name}-strip" {stripPrefix.prefixes = [(stripOf r)];})
+          (filterAttrs (_: r: r.stripPrefix && r.pathPrefix != null) cfg.funnel.routes);
 
         routers =
           mapAttrs' (name: r:
-            nameValuePair "public-${name}" ({
+            nameValuePair "funnel-${name}" ({
                 rule =
                   (
                     if r.pathPrefix == null
@@ -305,30 +345,77 @@ in {
                     else "PathPrefix(`${r.pathPrefix}`)"
                   )
                   + optionalString r.tailnetOnly " && !HeaderRegexp(`Tailscale-Funnel-Request`, `.+`)";
-                entryPoints = ["public"];
-                service = "public-${name}";
-                middlewares = ["public-https"] ++ optional (r.stripPrefix && r.pathPrefix != null) "public-${name}-strip";
+                entryPoints = ["funnel"];
+                service = "funnel-${name}";
+                middlewares = ["funnel-https"] ++ optional (r.stripPrefix && r.pathPrefix != null) "funnel-${name}-strip";
               }
               # Below every path route (their default priority is their rule's length).
               // optionalAttrs (r.pathPrefix == null) {priority = 1;}))
-          cfg.public.routes
+          cfg.funnel.routes
           # A Funnel request to a tailnet-only path fails that route's rule, and would otherwise
           # fall through to the catch-all; this catches it first and answers with nothing.
           // mapAttrs' (name: r:
-            nameValuePair "public-${name}-funnel-denied" {
+            nameValuePair "funnel-${name}-funnel-denied" {
               rule = "PathPrefix(`${r.pathPrefix}`)";
-              entryPoints = ["public"];
+              entryPoints = ["funnel"];
               service = "noop@internal";
               priority = 2;
             })
-          (filterAttrs (_: r: r.tailnetOnly && r.pathPrefix != null) cfg.public.routes);
+          (filterAttrs (_: r: r.tailnetOnly && r.pathPrefix != null) cfg.funnel.routes);
 
         services = mapAttrs' (name: r:
-          nameValuePair "public-${name}" {
+          nameValuePair "funnel-${name}" {
             loadBalancer.servers = [{url = toUrl r.target;}];
           })
-        cfg.public.routes;
+        cfg.funnel.routes;
       };
     })
+
+    # The internet-facing door that isn't the Funnel: everything arrives from cloudflared over
+    # loopback (one ingress rule per routed hostname lands here), Cloudflare's edge has
+    # already terminated TLS with its own Universal SSL certificate, and Host decides what
+    # answers. No certResolver anywhere - there is no TLS on this entry point to resolve for.
+    (mkIf (cfg.cloudflare.services != {}) (let
+      # Traefik reserves "@" in object names (name@provider) - a router literally named
+      # "cloudflare-@" is rejected as "not fully qualified" and never matches (2026-10-24).
+      # The zone apex key "@" therefore gets a safe component name instead.
+      cfName = name:
+        if name == "@"
+        then "cloudflare-apex"
+        else "cloudflare-${name}";
+    in {
+      assertions = [
+        {
+          assertion = config.MODULES.networking.dns.cloudflare.enable;
+          message = "MODULES.networking.traefik.cloudflare.services needs MODULES.networking.dns.cloudflare - without the tunnel there is nothing to reach this entry point.";
+        }
+      ];
+
+      services.traefik.staticConfigOptions.entryPoints.cloudflare = {
+        # Loopback only; the sole client is cloudflared on this machine, whose X-Forwarded-For
+        # carries the real client IP (Cloudflare sets it at the edge).
+        address = "127.0.0.1:${toString config.PORTS.traefikCloudflare}";
+        forwardedHeaders.trustedIPs = ["127.0.0.1/32"];
+      };
+
+      services.traefik.dynamicConfigOptions.http = {
+        middlewares.cloudflare-https.headers.customRequestHeaders.X-Forwarded-Proto = "https";
+
+        routers = mapAttrs' (name: _:
+          nameValuePair (cfName name) {
+            rule = "Host(`${cfg.cloudflare.hostOf name}`)";
+            entryPoints = ["cloudflare"];
+            service = cfName name;
+            middlewares = ["cloudflare-https"];
+          })
+        cfg.cloudflare.services;
+
+        services = mapAttrs' (name: target:
+          nameValuePair (cfName name) {
+            loadBalancer.servers = [{url = toUrl target;}];
+          })
+        cfg.cloudflare.services;
+      };
+    }))
   ]);
 }

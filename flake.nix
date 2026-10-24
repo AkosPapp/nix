@@ -66,6 +66,26 @@
   in {
     formatter.${system} = nixpkgs.legacyPackages.${system}.alejandra;
 
+    # `nix run .#cloudflare-config` - the whole Cloudflare one-time setup (login, tunnel,
+    # sops secrets, UUID into the host config, DNS routes) in one rerunnable command;
+    # rerunning it is also how the secrets are refreshed. packages/cloudflare-config.sh.
+    apps.${system}.cloudflare-config = {
+      type = "app";
+      program = let
+        pkgs = nixpkgs.legacyPackages.${system};
+      in "${pkgs.writeShellApplication {
+        name = "cloudflare-config";
+        runtimeInputs = [
+          pkgs.git
+          pkgs.cloudflared
+          pkgs.jq
+          pkgs.nix
+          pkgs.sops
+        ];
+        text = builtins.readFile ./packages/cloudflare-config.sh;
+      }}/bin/cloudflare-config";
+    };
+
     nixosConfigurations =
       builtins.mapAttrs (host: _: (nixpkgs.lib.nixosSystem {
         specialArgs =

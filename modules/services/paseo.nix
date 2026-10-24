@@ -1531,8 +1531,8 @@ in {
         message = "MODULES.services.paseo needs MODULES.security.sops.enable: daemon password, enrollment token, model key and relay cookie all come from sops.";
       }
       {
-        assertion = config.MODULES.networking.traefik.enable && config.MODULES.networking.traefik.public.enable;
-        message = "MODULES.services.paseo needs MODULES.networking.traefik (with public.enable) for the cockpit/installer routes.";
+        assertion = config.MODULES.networking.traefik.enable && config.MODULES.networking.traefik.funnel.enable;
+        message = "MODULES.services.paseo needs MODULES.networking.traefik (with funnel.enable) for the cockpit/installer routes.";
       }
       {
         assertion = config.MODULES.networking.tailscale.enable;
@@ -1950,7 +1950,7 @@ in {
     # the step-ca cert isn't trusted externally.
     MODULES.networking.traefik.services.paseo-c = "127.0.0.1:${toString config.PORTS.paseoWeb}";
 
-    MODULES.networking.traefik.public = {
+    MODULES.networking.traefik.funnel = {
       enable = true;
       routes = {
         # Tailnet-only (existing !HeaderRegexp(Tailscale-Funnel-Request) mechanism; Funnel
