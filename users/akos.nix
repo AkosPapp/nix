@@ -237,7 +237,12 @@
       discord
       obs-studio
       signal-desktop
-      element-desktop
+      # Electron 42 probes the xdg-desktop-portal Secret API first; portal-gnome only registers
+      # it under a GNOME session, so under niri the probe fails and Element refuses to open its
+      # keyring-encrypted config ("unsupported keyring"). gnome-keyring's plain Secret Service
+      # works here - point Element straight at it. Same fix applies to any other Electron app
+      # that shows the dialog: override with commandLineArgs "--password-store=gnome-libsecret".
+      (element-desktop.override {commandLineArgs = "--password-store=gnome-libsecret";})
       logseq
       obsidian
       onlyoffice-desktopeditors

@@ -390,10 +390,20 @@ in {
           # Inert for every other bridge (E2EE off => no AS declares these).
           # Off under MAS: bridge E2EE cannot work there at all (appservice login is rejected),
           # so the jabber config's encryption section is switched off too and these would be dead.
-          experimental_features = lib.mkIf (cfg.jabber.enable && !masOn) {
-            msc2409_to_device_messages_enabled = true;
-            msc3202_transaction_extensions = true;
-          };
+          experimental_features =
+            lib.optionalAttrs (cfg.jabber.enable && !masOn) {
+              msc2409_to_device_messages_enabled = true;
+              msc3202_transaction_extensions = true;
+            }
+            // lib.optionalAttrs masOn {
+              # "Sign in with QR code" (Element's Sessions -> Show QR code): Synapse implements
+              # the MSC4108 channel and login-token exchange itself and advertises
+              # org.matrix.msc4108 in /versions once this is on - a flag it only accepts while
+              # authentication is delegated to MAS (ConfigError otherwise), the new-device login
+              # completing through MAS compat's m.login.token flow. Without it Element answers
+              # "QR code not supported - your account provider doesn't support" even on MAS.
+              msc4108_enabled = true;
+            };
           # The bridges ask this endpoint for the upload limit and refuse larger attachments
           # ("media too large"), so this is effectively also the bridge attachment cap. 50M default.
           max_upload_size = "200M";

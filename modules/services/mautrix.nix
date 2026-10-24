@@ -107,6 +107,9 @@
   acceptInvites =
     pkgs.writers.writePython3Bin "mautrix-accept-invites" {flakeIgnore = ["E501"];}
     (builtins.readFile ./mautrix/accept-invites.py);
+  registerBots =
+    pkgs.writers.writePython3Bin "mautrix-register-bots" {flakeIgnore = ["E501"];}
+    (builtins.readFile ./mautrix/register-bots.py);
   # Who may invite the admin into a room that then gets auto-joined: the bridge bots and the
   # ghosts they puppet, nobody else. (matterbridge is not a mautrix bridge, but its rooms land
   # in the same admin inbox, so it belongs in this list too.)
@@ -357,6 +360,16 @@
     };
     settingsJson = (pkgs.formats.json {}).generate "mautrix-jabber-config.json" settings;
   };
+  # Full bot MXIDs of every enabled bridge - accept-invites opens the management DM with each
+  # one that has never existed, so a wiped homeserver database rebuilds the whole bridge fleet
+  # (rooms, is_direct invites, space filing) without anyone clicking through Element.
+  bridgeBotIds =
+    lib.optionals cfg.whatsapp.enable ["@${config.services.mautrix-whatsapp.settings.appservice.bot.username}:${matrix.serverName}"]
+    ++ lib.optionals cfg.signal.enable ["@${config.services.mautrix-signal.settings.appservice.bot.username}:${matrix.serverName}"]
+    ++ lib.optionals cfg.slack.enable ["@${slack.settings.appservice.bot.username}:${matrix.serverName}"]
+    ++ lib.optionals cfg.discord.enable ["@${discord.settings.appservice.bot.username}:${matrix.serverName}"]
+    ++ lib.optionals cfg.jabber.enable ["@${jabber.settings.appservice.bot.username}:${matrix.serverName}"]
+    ++ lib.optionals cfg.mattermost.enable ["@${mattermost.settings.appservice.bot.username}:${matrix.serverName}"];
 in {
   options.MODULES.services.matrix = {
     whatsapp.enable = mkEnableOption "the mautrix-whatsapp bridge";
@@ -437,7 +450,10 @@ in {
 
       # Double puppeting only covers rooms a bridge creates or touches after it was set up, so
       # chats bridged before then (and any join a bridge misses) would stay as invites. This
-      # accepts them, as the admin, through the same double-puppet token.
+      # accepts them, as the admin, with a short-lived password login (login, join, logout -
+      # see accept-invites.py): under MAS no appservice may act for a real user, so the old
+      # double-puppet-token impersonation is a dead path (Synapse answers "Application service
+      # has not registered this user").
       systemd.services.mautrix-accept-invites = {
         description = "Accept bridge invites for ${matrix.adminId}";
         after = [synapseUnit];
@@ -446,6 +462,7 @@ in {
           MATRIX_HOMESERVER = matrix.clientUrl;
           MATRIX_USER_ID = matrix.adminId;
           INVITER_REGEX = bridgeUsers;
+          BRIDGE_BOTS = lib.concatStringsSep " " bridgeBotIds;
         };
         serviceConfig = {
           Type = "oneshot";
@@ -455,7 +472,7 @@ in {
           # mattermost-bootstrap incident). It is a 2-minute timer anyway: the next tick retries
           # with the same effect, so activation must never wait on or mind a run.
           ExecStart = "-${acceptInvites}/bin/mautrix-accept-invites";
-          LoadCredential = ["as_token:${config.sops.secrets.${doublePuppetToken}.path}"];
+          LoadCredential = ["admin_password:${config.sops.secrets.${matrix.adminPasswordSecret}.path}"];
           DynamicUser = true;
           ProtectSystem = "strict";
           ProtectHome = true;
@@ -477,6 +494,58 @@ in {
           OnBootSec = "2min";
           OnUnitActiveSec = "2min";
         };
+      };
+
+      # Synapse >=1.162 authenticates "AS acts as user X" against the database, not just the
+      # namespace, so a bot user that vanished with a reprovisioned database deadlocks its
+      # bridge forever: the startup connection check runs as the bot, gets 403, and never
+      # reaches the /register call that would create it. This registers every enabled bridge's
+      # bot once per boot (idempotent - existing users answer M_USER_IN_USE); MAS-era Synapse
+      # leaves exactly the m.login.application_service + inhibit_login flow open for it.
+      # Runs as root because the registration files are 0640 bridge-owned.
+      systemd.services.mautrix-register-bots = {
+        description = "Register mautrix bridge bot users on the homeserver";
+        after = [synapseUnit];
+        requires = [synapseUnit];
+        wantedBy = ["multi-user.target"];
+        environment = {
+          MATRIX_HOMESERVER = matrix.clientUrl;
+          ADMIN_ID = matrix.adminId;
+          BRIDGES = lib.concatStringsSep " " (
+            lib.optionals cfg.whatsapp.enable [
+              # The nixpkgs modules hardcode the registration path into the unit's
+              # --registration (no option); these strings must match them.
+              "${config.services.mautrix-whatsapp.settings.appservice.bot.username}:/var/lib/mautrix-whatsapp/whatsapp-registration.yaml"
+            ]
+            ++ lib.optionals cfg.signal.enable [
+              "${config.services.mautrix-signal.settings.appservice.bot.username}:/var/lib/mautrix-signal/signal-registration.yaml"
+            ]
+            ++ lib.optionals cfg.slack.enable [
+              "${slack.settings.appservice.bot.username}:${slack.registrationFile}"
+            ]
+            ++ lib.optionals cfg.discord.enable [
+              "${discord.settings.appservice.bot.username}:${discord.registrationFile}"
+            ]
+            ++ lib.optionals cfg.jabber.enable [
+              "${jabber.settings.appservice.bot.username}:${jabber.registrationFile}"
+            ]
+            ++ lib.optionals cfg.mattermost.enable [
+              "${mattermost.settings.appservice.bot.username}:${mattermost.registrationFile}"
+            ]
+          );
+        };
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          ExecStart = "${registerBots}/bin/mautrix-register-bots";
+          ProtectSystem = "strict";
+          ProtectHome = true;
+          PrivateTmp = true;
+          NoNewPrivileges = true;
+          RestrictAddressFamilies = ["AF_INET" "AF_INET6"];
+          SystemCallArchitectures = "native";
+        };
+        restartIfChanged = false;
       };
 
       # Read by systemd (EnvironmentFile), so root-owned is fine. Each bridge's preStart writes

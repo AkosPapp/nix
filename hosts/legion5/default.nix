@@ -46,6 +46,7 @@
     export PATH="${lib.makeBinPath [
       config.systemd.package
       config.services.tailscale.package
+      config.services.netbird.package
       pkgs.coreutils
       pkgs.jq
       pkgs.iproute2
@@ -68,14 +69,30 @@
       fi
     fi
 
+    # wt0 having an address proves nothing: the daemon can sit disconnected for hours with the
+    # interface left in place, and every query dnsmasq forwards into it blackholes - including
+    # netbird's own lookup of its management host, which turns one dropout into a permanent
+    # lockout. Ask the daemon instead: connected to Signal AND at least one relay available or
+    # one peer connected (peers legitimately sit Idle on a lazy mesh, so relays carry most of
+    # the "data plane alive" vote). Only then the zone probe still has to answer.
     netbird_up=0
     if ip link show dev wt0 up >/dev/null 2>&1; then
-      route=$(ip route get "$netbird_dns" 2>/dev/null) || route=
-      case " $route " in
-        *" dev wt0 "*)
-          if [ -n "$(dig +time=1 +tries=3 +short "@$netbird_dns" "$netbird_zone" SOA 2>/dev/null)" ]; then
-            netbird_up=1
-          fi
+      nb=$(timeout 3 netbird status --json 2>/dev/null | jq -r \
+        '[.signal.connected // false, (.relays.available // 0), (.peers.connected // 0)] | @tsv') || nb=
+      case "$nb" in
+        true*)
+          route=$(ip route get "$netbird_dns" 2>/dev/null) || route=
+          case " $route " in
+            *" dev wt0 "*)
+              relays=$(cut -f2 <<<"$nb")
+              peers=$(cut -f3 <<<"$nb")
+              if [ "$relays" -gt 0 ] 2>/dev/null || [ "$peers" -gt 0 ] 2>/dev/null; then
+                if [ -n "$(dig +time=1 +tries=3 +short "@$netbird_dns" "$netbird_zone" SOA 2>/dev/null)" ]; then
+                  netbird_up=1
+                fi
+              fi
+              ;;
+          esac
           ;;
       esac
     fi
@@ -88,6 +105,12 @@
       if [ "$netbird_up" = 1 ]; then
         echo "server=/$netbird_zone/$netbird_dns"
       fi
+      # The tunnel must never have to resolve its own front door: robo4you.at routes into
+      # netbird, so netbird.robo4you.at gets a permanent longest-match exception to the public
+      # resolvers - emitted whether or not the zone line is present, so netbird's bootstrap
+      # lookup can never depend on the connection it needs that lookup to establish.
+      echo "server=/netbird.$netbird_zone/9.9.9.9"
+      echo "server=/netbird.$netbird_zone/1.1.1.1"
     } > "$conf.new"
 
     if ! cmp -s "$conf.new" "$conf"; then
