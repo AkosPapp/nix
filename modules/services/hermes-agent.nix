@@ -480,7 +480,12 @@ in {
       # the REJECTs below; empty chain = no-op). The sub-chain survives the -F above, so a
       # firewall restart keeps the live port without needing a gateway restart.
       ${gatewayApiEgressJump}
-      ${lib.concatMapStringsSep "\n" (r: "iptables -w -A hermes-egress -d ${r} -j REJECT") privateRanges}
+      # PLAN §3.4: every blocked lateral move is one LOGged journald line (rate-limited) ->
+      # Loki -> Grafana before the REJECTs below. Each LOG carries the SAME -d match as its
+      # REJECT: this jail is publicDefault=allow, so public flows fall off the chain end
+      # ACCEPTed - an unscoped LOG would label them egress-deny and page the audit alert
+      # on normal traffic (the bug class jail.nix documents at its own deny block).
+      ${lib.concatMapStringsSep "\n" (r: "iptables -w -A hermes-egress -d ${r} -m limit --limit 6/min -j LOG --log-prefix \"egress-deny-hermes: \"\n      iptables -w -A hermes-egress -d ${r} -j REJECT") privateRanges}
     '';
     networking.firewall.extraStopCommands = ''
       iptables -w -D OUTPUT -m owner --uid-owner ${hermes.user} -j hermes-egress 2>/dev/null || true

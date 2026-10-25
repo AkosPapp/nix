@@ -580,6 +580,10 @@ in {
     # indexes), and ensureDatabases can only create one with the cluster's default locale. Done
     # by hand instead, once; both statements are no-ops on every later boot.
     services.postgresql.enable = true;
+    # Synapse reaches its database over the unix socket as the same-named OS user, with no
+    # password - explicit peer line under the hardened pg_hba (PLAN.md §2.1).
+    MODULES.services.postgres.enable = true;
+    MODULES.services.postgres.socketPeerRoles = [dbName];
     systemd.services.matrix-synapse-db-init = {
       description = "Create the Synapse database with C collation";
       after = ["postgresql.target"];

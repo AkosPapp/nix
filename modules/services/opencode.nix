@@ -40,6 +40,23 @@
         description = "opencode's `modalities` for this model - what it may be sent and returns.";
       };
 
+      cost = mkOption {
+        type = types.nullOr (types.attrsOf types.float);
+        default = null;
+        example = {
+          input = 0.15;
+          output = 0.47;
+          cache_read = 0.016;
+          cache_write = 0.04;
+        };
+        description = ''
+          opencode's `cost` object, passed through as-is (its own keys: input, output,
+          cache_read, cache_write - USD per million tokens). Null omits it, which makes
+          opencode fall back to a models.dev price - usually wrong for a private gateway's
+          model id, so internal/zero-billed models should state all-zero costs instead.
+        '';
+      };
+
       options = mkOption {
         type = types.attrsOf types.anything;
         default = {};
@@ -217,6 +234,7 @@ in {
                 };
               }
               // lib.optionalAttrs (m.modalities != null) {inherit (m) modalities;}
+              // lib.optionalAttrs (m.cost != null) {inherit (m) cost;}
               // lib.optionalAttrs (m.options != {}) {inherit (m) options;}
               // lib.optionalAttrs (m.variants != {}) {inherit (m) variants;})
             p.models;

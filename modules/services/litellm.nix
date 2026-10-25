@@ -2,6 +2,7 @@
   config,
   lib,
   pkgs,
+  pkgs-unstable,
   nixosConfigurations,
   configName,
   ...
@@ -16,27 +17,23 @@
   dbName = "litellm";
 
   # Same auto-discovery pattern as immich.nix: every host in the flake is inspected, and the
-  # ones running vLLM or Ollama contribute their catalogues here. Adding a model to a host's
+  # ones running Ollama contribute their catalogues here. Adding a model to a host's
   # catalogue is therefore the only edit needed - the gateway's routing table follows from it,
-  # and there is no second list of endpoints to keep in step. The two runtimes are otherwise
-  # independent; this gateway is the one place they meet, and a name served by both - on one host
-  # or several - simply becomes more replicas of that model.
+  # and there is no second list of endpoints to keep in step. A name served by several hosts
+  # simply becomes more replicas of that model.
   allHostNames = builtins.attrNames nixosConfigurations;
   hostConfig = host: nixosConfigurations.${host}.config;
-  hostVllm = host: (hostConfig host).MODULES.services.vllm;
   hostOllama = host: (hostConfig host).MODULES.services.ollama;
 
-  vllmHosts = builtins.filter (host: (hostVllm host).enable) allHostNames;
+  # The vLLM runtime was dropped from the fleet on 2026-10-24 (PLAN.md §1.5) - Ollama is the
+  # only backend these hosts serve; the wildcards below cover everything else.
   ollamaHosts = builtins.filter (host: (hostOllama host).enable) allHostNames;
-  backendHosts = lib.unique (vllmHosts ++ ollamaHosts);
+  backendHosts = ollamaHosts;
 
   # Whether any backend is started on demand rather than held resident. Decides whether probing
   # deployments on a timer is harmless monitoring or an alarm clock - see general_settings.
   # Ollama always is: keep_alive unloads idle models, and a health probe would load them again.
-  anyLazyBackend =
-    ollamaHosts
-    != []
-    || lib.any (host: (hostVllm host).idleTimeout != null) vllmHosts;
+  anyLazyBackend = ollamaHosts != [];
 
   # The local host's own servers are on loopback; everyone else's are reached over Tailscale,
   # which is the only network these machines share.
@@ -45,69 +42,16 @@
     then "127.0.0.1"
     else (hostConfig host).MODULES.networking.tailscale.hostIP;
 
-  # One LiteLLM deployment per (host, model), under the "local/" prefix - which also distinguishes
-  # them from the "openrouter/*", "omniroute/*" and "futurelab/*" wildcards below, none of which
-  # is a name this flake's own hosts could ever collide with. Two hosts serving the same catalogue
+  # One pair of deployments per (host, Ollama model), each name twice: an aggregate
+  # "local/<name>" - which distinguishes it from the "openrouter/*", "omniroute/*" and
+  # "futurelab/*" wildcards below, none of which is a name this flake's own hosts could ever
+  # collide with - and a host-pinned "local/<host>/<name>". Two hosts serving the same catalogue
   # entry produce two deployments under one `model_name`, which is exactly what the router wants:
   # it treats them as interchangeable replicas and moves traffic to the survivor when one stops
-  # answering. Each instance also gets a second, host-pinned deployment under its own unique
-  # `model_name` ("local/<host>/<name>") - the escape hatch for when a caller wants that specific
+  # answering; the host-pinned name is the escape hatch for when a caller wants that specific
   # host rather than whichever replica the router picks, e.g. to test one host in isolation
-  # without touching the other.
-  deploymentsFor = host:
-    lib.concatLists (lib.mapAttrsToList (name: instance: let
-        litellm_params = {
-          # `hosted_vllm/` is LiteLLM's provider prefix for a vLLM OpenAI-compatible server; the
-          # part after it is the name vLLM itself serves the model under (--served-model-name).
-          model = "hosted_vllm/${instance.model.servedName}";
-          api_base = "http://${hostAddress host}:${toString instance.port}/v1";
-          # vLLM checks no key - its ports are reachable only from the host and the tailnet - but
-          # the OpenAI client library refuses to send a request without something in the field.
-          api_key = "unused";
-
-          # Long, because the request that wakes a sleeping instance blocks for the whole model
-          # load - see MODULES.services.vllm.idleTimeout. This is also the reason a host being
-          # down cannot simply be inferred from slowness: the two look identical for the first
-          # minute, which is what the cooldowns below are for.
-          timeout = cfg.requestTimeout;
-
-          # Relative share of the traffic for this model_name. Only has an effect where more
-          # than one host serves the entry, which is the case worth configuring: the router
-          # dispatches concurrent requests to both, and without a weight it would send as many
-          # to the CPU host as to the GPU one. Irrelevant on the host-pinned deployment below,
-          # since it is always the sole entry under its model_name.
-          # No per-deployment num_retries, deliberately. LiteLLM's router replaces the request's
-          # retry count with a failing deployment's own value, so num_retries = 0 on a remote host
-          # did not mean "don't retry this host" - it cancelled the router-level retry that moves
-          # the request to another host's replica, and a legion5 that refused the connection
-          # became a 500 even though hp serves the same model. A dead host is taken out of
-          # rotation after one failure instead (allowedFails), so the retry lands elsewhere.
-          weight = (hostVllm host).weight;
-        };
-      in [
-        {
-          model_name = "local/${name}";
-          inherit litellm_params;
-          model_info = {
-            # Stable, unique per deployment so cooldowns are applied to the one host that failed
-            # rather than to the model name as a whole.
-            id = "${host}-${name}";
-            inherit host;
-          };
-        }
-        {
-          model_name = "local/${host}/${name}";
-          inherit litellm_params;
-          model_info = {
-            id = "${host}-${name}-direct";
-            inherit host;
-          };
-        }
-      ])
-      (hostVllm host).instances);
-
-  # One pair of deployments per (host, Ollama model), same "local/<name>" + "local/<host>/<name>"
-  # shape as vLLM's above. `ollama_chat/` is LiteLLM's native Ollama provider, which speaks
+  # without touching the other. (vLLM deployments of the same shape were dropped 2026-10-24.)
+  # `ollama_chat/` is LiteLLM's native Ollama provider, which speaks
   # /api/chat and passes tools and images through; api_base is the server root, not /v1. The model
   # is the catalogue name, which ollama.nix creates from its Modelfile with the entry's context
   # baked in - so nothing per request (num_ctx) has to be sent from here.
@@ -118,8 +62,9 @@
         litellm_params = {
           model = "ollama_chat/${name}";
           api_base = "http://${hostAddress host}:${toString (hostConfig host).PORTS.ollama}";
-          # Long for the same reason as vLLM's: the request that finds the model unloaded waits
-          # for it to load, and on a CPU host for a long prefill besides.
+          # Long because the request that finds the model unloaded waits for it to load, and on a
+          # CPU host for a long prefill besides. A down host and a loading one look identical for
+          # the first minute - which is what the router cooldowns are for.
           timeout = cfg.requestTimeout;
           inherit (ollama) weight;
         };
@@ -128,8 +73,8 @@
           model_name = "local/${name}";
           inherit litellm_params;
           model_info = {
-            # Distinct from a vLLM deployment of the same name on the same host, so cooldowns hit
-            # the runtime that failed.
+            # Stable, unique per deployment so cooldowns are applied to the one host that failed
+            # rather than to the model name as a whole.
             id = "${host}-ollama-${name}";
             inherit host;
           };
@@ -149,7 +94,7 @@
   # forwards any request whose model matches "openrouter/*" straight to OpenRouter with the
   # "openrouter/" prefix stripped, so a caller can ask for "openrouter/anthropic/claude-sonnet-4.5"
   # or any other vendor/model OpenRouter serves (https://openrouter.ai/models) with nothing added
-  # here first - unlike vLLM/Ollama there's no fixed catalogue to enumerate, no host to route to,
+  # here first - unlike Ollama there's no fixed catalogue to enumerate, no host to route to,
   # and no weight to split.
   openrouterDeployments = lib.optional cfg.openrouterEnable {
     model_name = "openrouter/*";
@@ -168,10 +113,11 @@
   # Same wildcard trick, pointed the other way from the note in omniroute.nix: that module's own
   # doc comment has OmniRoute pointed at LiteLLM as an upstream, so its dashboard-managed
   # providers/combos can be reached through LiteLLM's one endpoint too. OmniRoute speaks the same
-  # OpenAI-compatible /v1 that vLLM does, on loopback since it's always the same host (see
-  # PORTS.omniroute) - the only difference from a vLLM deployment is the api_key, since OmniRoute
-  # actually checks it. Do not also configure an OmniRoute combo that forwards to a name under
-  # this "omniroute/" prefix - that would loop the request back into OmniRoute forever.
+  # OpenAI-compatible /v1 on loopback since it's always the same host (see PORTS.omniroute) - and
+  # unlike the Ollama deployments above it actually checks the api_key, since it is reachable
+  # from the whole tailnet via Traefik, not just this host. Do not also configure an OmniRoute
+  # combo that forwards to a name under this "omniroute/" prefix - that would loop the request
+  # back into OmniRoute forever.
   # What /v1/models lists under "omniroute/" comes from OmniRoute's own /v1/models - see
   # check_provider_endpoint in litellm_settings.
   omnirouteDeployments = lib.optional cfg.omnirouteEnable {
@@ -180,8 +126,7 @@
       model = "openai/*";
       api_base = "http://127.0.0.1:${toString config.PORTS.omniroute}/v1";
       # Resolved from the container's environment at startup - see the omnirouteApiKeySecret
-      # option below. Unlike vLLM's api_key this one is checked, since OmniRoute is reachable
-      # from the whole tailnet via Traefik, not just this host.
+      # option below.
       api_key = "os.environ/OMNIROUTE_API_KEY";
     };
     model_info = {
@@ -216,8 +161,7 @@
   };
 
   deployments =
-    lib.concatMap deploymentsFor vllmHosts
-    ++ lib.concatMap ollamaDeploymentsFor ollamaHosts
+    lib.concatMap ollamaDeploymentsFor ollamaHosts
     ++ openrouterDeployments
     ++ omnirouteDeployments
     ++ futurelabDeployments;
@@ -226,8 +170,7 @@
   # "local/<host>/<name>" deployments above, which are meant to bypass fallback/replica
   # resolution, not participate in it.
   modelNamesOn = host:
-    lib.optionals (hostVllm host).enable (map (name: "local/${name}") (lib.attrNames (hostVllm host).instances))
-    ++ lib.optionals (hostOllama host).enable (map (name: "local/${name}") (lib.attrNames (hostOllama host).models));
+    lib.optionals (hostOllama host).enable (map (name: "local/${name}") (lib.attrNames (hostOllama host).models));
 
   localModels =
     if builtins.elem configName backendHosts
@@ -300,10 +243,15 @@
         # using its static list there.
         check_provider_endpoint = true;
       }
-      // lib.optionalAttrs cfg.metrics {
-        # Mounting /metrics is a side effect of registering the callback - there is no
-        # separate switch for the endpoint.
-        callbacks = ["prometheus"];
+      // lib.optionalAttrs (cfg.metrics || (config.MODULES.services.coroot.enable or false)) {
+        # Mounting /metrics is a side effect of registering the prometheus callback - there is
+        # no separate switch for the endpoint. The "otel" callback (added when this host runs
+        # its own Coroot server) exports request traces over OTLP/HTTP to it: the env block
+        # below points the SDK at coroot:8080 and the SDK appends /v1/traces itself. Coroot's
+        # Tracing tab is the only span store in the fleet; grafana OSS cannot store OTLP.
+        callbacks =
+          (lib.optionals cfg.metrics ["prometheus"])
+          ++ lib.optionals (config.MODULES.services.coroot.enable or false) ["otel"];
       };
 
     general_settings =
@@ -329,14 +277,14 @@
 in {
   options.MODULES.services.litellm = {
     enable = mkEnableOption ''
-      the LiteLLM proxy, a single OpenAI-compatible endpoint in front of every vLLM instance in
-      the flake. It auto-discovers them: any host with MODULES.services.vllm.enable contributes
+      the LiteLLM proxy, a single OpenAI-compatible endpoint in front of every Ollama model in
+      the flake. It auto-discovers them: any host with MODULES.services.ollama.enable contributes
       its whole catalogue, local ones over loopback and remote ones over Tailscale.
 
       Where two hosts serve the same catalogue entry, their instances become replicas of one
       model name and the router spreads concurrent requests across both machines in the
-      proportions set by each host's MODULES.services.vllm.weight - so parallel load really does
-      run on several GPUs at once, and one host going down costs throughput rather than
+      proportions set by each host's MODULES.services.ollama.weight - so parallel load really does
+      run on several machines at once, and one host going down costs throughput rather than
       availability. Entries only one host serves have no replica to spread onto and rely on
       `fallbackModel` instead
     '';
@@ -345,7 +293,7 @@ in {
       type = types.int;
       default = 900;
       description = ''
-        Seconds LiteLLM waits for a vLLM instance before giving up on it. Deliberately large:
+        Seconds LiteLLM waits for a backend before giving up on it. Deliberately large:
         with on-demand loading the first request to an idle instance pays the model's entire
         load time, and a timeout tuned for a warm server would abort exactly the requests that
         are supposed to be slow. The cost of the generous value is that a genuinely wedged
@@ -389,7 +337,7 @@ in {
         only legion5 has goes to legion5 whatever this says.
 
         "simple-shuffle" picks at random in the proportions set by each host's
-        MODULES.services.vllm.weight, and is the default for two reasons. It is the only
+        MODULES.services.ollama.weight, and is the default for two reasons. It is the only
         strategy that reads `weight` at all - LiteLLM honours that key in simple_shuffle and
         nowhere else, so under any other setting the weights silently stop applying and a CPU
         host gets the same share as a GPU one. And it is the only one that does not
@@ -398,10 +346,10 @@ in {
         profile "least-busy" and "latency-based-routing" chase - they would steer traffic
         towards whichever replica is asleep and pay a full model load to do it.
 
-        The load-aware strategies become the better choice if idleTimeout is ever set to null,
-        where every instance is always resident and those signals mean what they claim to.
+        The load-aware strategies become the better choice if keep_alive is ever pinned high
+        enough that every instance is always resident and those signals mean what they claim to.
 
-        Note this is only the outer layer of parallelism. vLLM batches concurrent requests
+        Note this is only the outer layer of parallelism. A runtime batches concurrent requests
         inside a single instance continuously, so one instance already serves many at once -
         spreading across hosts adds throughput on top of that rather than being what makes
         concurrency possible.
@@ -429,7 +377,7 @@ in {
         Proxy OpenRouter through this gateway as a wildcard deployment: a client requests any
         model at "openrouter/<vendor>/<model>" (see https://openrouter.ai/models for the ids
         OpenRouter itself expects after that prefix) and LiteLLM forwards it verbatim, with no
-        need to list models here first - unlike vLLM/Ollama there's no fixed catalogue to
+        need to list models here first - unlike Ollama there's no fixed catalogue to
         enumerate. This has no replica/weight/fallback behaviour: it's one external API reached
         over the internet rather than the tailnet, picked only when a request's model name
         starts with "openrouter/".
@@ -616,13 +564,19 @@ in {
 
     image = mkOption {
       type = types.str;
-      default = "ghcr.io/berriai/litellm-database:v1.86.0";
+      default = "ghcr.io/berriai/litellm-database:v${pkgs-unstable.litellm.version}";
+      defaultText = lib.literalExpression ''
+        "ghcr.io/berriai/litellm-database:v''${pkgs-unstable.litellm.version}"
+      '';
       description = ''
         Container image the gateway runs. The "-database" flavour, because it is the one that
         bundles the Prisma client and engines LiteLLM needs to reach Postgres - which the admin
-        UI requires just to log in. Pinned to the same release nixpkgs 26.05 packaged, so moving
-        off the native service changed where LiteLLM runs, not which LiteLLM runs. Bumping the
-        tag is the upgrade path; LiteLLM applies any new schema migrations itself on start.
+        UI requires just to log in. The tag follows the release packaged in this flake's
+        nixpkgs-unstable input (26.05's own 1.86.0 is stale the way immich's was), so
+        `nix flake update nixpkgs-unstable` upgrades the gateway; LiteLLM applies any new schema
+        migrations itself on start. Upstream publishes a -database tag per release, so the two
+        only drift if nixpkgs ever carries a version it did not release (a .postN suffix would
+        name a tag ghcr does not have - set `image` explicitly if that ever bites).
       '';
     };
   };
@@ -646,7 +600,7 @@ in {
         assertion = backendHosts != [] || cfg.openrouterEnable || cfg.omnirouteEnable || cfg.futurelabEnable;
         message = ''
           MODULES.services.litellm.enable is set but no host in the flake has
-          MODULES.services.vllm.enable or MODULES.services.ollama.enable, and none of
+          MODULES.services.ollama.enable, and none of
           openrouterEnable, omnirouteEnable and futurelabEnable is set - the proxy would start
           with an empty model list and answer 400 to everything.
         '';
@@ -709,7 +663,10 @@ in {
     # through cannot run on NixOS: prisma-client-py 0.15 is pinned to Prisma 5.17 while nixpkgs
     # ships only 6.x and 7.x, Prisma publishes no engine binaries for NixOS, and
     # litellm-proxy-extras (the schema migrations) is not packaged. The image carries all of it
-    # and applies the migrations itself on start.
+    # and applies the migrations itself on start. Re-checked against the flake's nixpkgs-unstable
+    # pin on 2026-10-24 (the switch to tracking its version for the image tag): unchanged - the
+    # python client is still 0.15, prisma is still 6/7 only, litellm-proxy-extras is still a
+    # FIXME in its derivation. Worth a re-check whenever that pin moves.
     virtualisation.docker.enable = true;
     virtualisation.oci-containers.backend = "docker";
 
@@ -735,30 +692,40 @@ in {
         "/run/postgresql:/run/postgresql"
       ];
 
-      environment = {
-        SCARF_NO_ANALYTICS = "True";
-        DO_NOT_TRACK = "True";
-        ANONYMIZED_TELEMETRY = "False";
+      environment =
+        {
+          SCARF_NO_ANALYTICS = "True";
+          DO_NOT_TRACK = "True";
+          ANONYMIZED_TELEMETRY = "False";
 
-        UI_USERNAME = cfg.uiUsername;
+          UI_USERNAME = cfg.uiUsername;
 
-        # Prisma's unix-socket form: the host part is ignored in favour of `host=`. LiteLLM
-        # appends its own pool parameters to this with the existing query string preserved.
-        DATABASE_URL = "postgresql://${dbName}@localhost/${dbName}?host=/run/postgresql";
+          # Prisma's unix-socket form: the host part is ignored in favour of `host=`. LiteLLM
+          # appends its own pool parameters to this with the existing query string preserved.
+          DATABASE_URL = "postgresql://${dbName}@localhost/${dbName}?host=/run/postgresql";
 
-        # Lets the admin UI's "Add Model" add a deployment to the DB at runtime, on top of the
-        # ones generated into model_list above (the proxy merges both). Unlike the native
-        # nixpkgs package this image bundles its own working Prisma client/engines - see the doc
-        # comment on the "-database" image choice below - so the migration this needs actually
-        # runs here, unlike when litellm ran without a container.
-        STORE_MODEL_IN_DB = "True";
-      };
+          # Lets the admin UI's "Add Model" add a deployment to the DB at runtime, on top of the
+          # ones generated into model_list above (the proxy merges both). Unlike the native
+          # nixpkgs package this image bundles its own working Prisma client/engines - see the doc
+          # comment on the "-database" image choice below - so the migration this needs actually
+          # runs here, unlike when litellm ran without a container.
+          STORE_MODEL_IN_DB = "True";
+        }
+        // lib.optionalAttrs (config.MODULES.services.coroot.enable or false) {
+          # The "otel" success-callback above reads these: OTLP/HTTP to this host's own Coroot
+          # (which serves /v1/traces and appends nothing - the OTel SDK derives the signal path
+          # from the base endpoint under http/protobuf). Env names per liteLLM docs; aliases
+          # (OTEL_EXPORTER/OTEL_ENDPOINT) unused to stay canonical.
+          OTEL_EXPORTER_OTLP_PROTOCOL = "http/protobuf";
+          OTEL_EXPORTER_OTLP_ENDPOINT = "http://127.0.0.1:${toString config.PORTS.coroot}";
+          OTEL_SERVICE_NAME = "litellm";
+        };
 
       environmentFiles =
         lib.optional (cfg.masterKeySecret != null || cfg.openrouterApiKeySecret != null || cfg.omnirouteApiKeySecret != null || cfg.futurelabApiKeySecret != null) config.sops.templates."litellm.env".path
         ++ lib.optional (cfg.environmentFile != null) cfg.environmentFile;
 
-      # Host networking: the vLLM backends are on this host's loopback and on other hosts'
+      # Host networking: the Ollama backends are on this host's loopback and on other hosts'
       # Tailscale addresses, and Traefik, tailscale serve and Prometheus all expect the gateway
       # on 127.0.0.1 - exactly as the native service was.
       extraOptions = ["--network=host"];
@@ -781,16 +748,21 @@ in {
           ensureDBOwnership = true;
         }
       ];
-      # The container runs as root and shares the host's uid namespace, so the socket's peer
-      # credentials say "root". Map that to the litellm role for this one database only, rather
-      # than handing root a way into every database.
-      identMap = ''
-        litellm root ${dbName}
-      '';
-      authentication = ''
-        local ${dbName} ${dbName} peer map=litellm
-      '';
     };
+
+    # The container runs as root and shares the host's uid namespace, so the socket's peer
+    # credentials say "root". Map that to the litellm role for this one database only, rather
+    # than handing root a way into every database - this map entry, plus the scram-only catch-all
+    # around it, is what modules/services/postgresql.nix (PLAN.md §2.1) provides.
+    MODULES.services.postgres.enable = true;
+    MODULES.services.postgres.identMaps = [
+      {
+        name = "litellm";
+        systemUser = "root";
+        database = dbName;
+        role = dbName;
+      }
+    ];
 
     sops.secrets = lib.mkMerge [
       (lib.mkIf (cfg.masterKeySecret != null) {

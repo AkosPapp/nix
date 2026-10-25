@@ -37,7 +37,9 @@
       createHome = true;
       home = "/var/builder";
       isNormalUser = true;
-      extraGroups = ["nixbld" "wheel"];
+      # No wheel: the account exists to run builds, not to administer the host
+      # (2026-10-24 audit #6).
+      extraGroups = ["nixbld"];
       openssh.authorizedKeys.keys = [
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAuOKEh8UO6InEyDHU+bZAR+WwPoy/NM5sX6RpEmDOXp root@legion5"
       ];
@@ -46,7 +48,12 @@
 
     nix = {
       settings = {
-        trusted-users = ["builder" "@nixbld" "root" "@root" "@wheel"];
+        # nix trusted-users is root in disguise (arbitrary derivations, arbitrary store
+        # paths -> trivial privesc), so it stays reserved for identities that are already
+        # root here. builder - reachable with just a leaked laptop key - and @wheel are not
+        # (2026-10-24 audit #6); @nixbld is the nixbld group the build users themselves run
+        # under and only needed for local multi-user builds.
+        trusted-users = ["root" "@root" "@nixbld"];
       };
     };
 

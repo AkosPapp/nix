@@ -115,12 +115,139 @@
       systemctl start split-dns.service || true
     done < <(exec ip monitor link address route)
   '';
+  # PLAN §4: the forced command hp's znapzend ssh key is locked to. sshd confines this
+  # key to `zfs` sub-commands and nothing else (no shell, no pty, no forwarding) - but
+  # the old form accepted ANY zfs arguments, i.e. `zfs destroy -r zroot/<anything>` and
+  # `zfs recv -F` outside the replica were in the stolen-hp blast radius. Now: only the
+  # subcommand set znapzend's ssh protocol uses, and every dataset-shaped argument
+  # (containing / or @) must live under the replica dataset - L2's real blast radius.
+  # znapzend prunes received snapshots from the SOURCE, so `destroy`/`-F` here stay
+  # within the same prefix (autoCreation + rollback cleanup); no other host needs it.
+  # NOTE on the input path: with a forced command, sshd's do_exec() REPLACES the client
+  # command line with the forced one and delivers the client's original command ONLY in
+  # $SSH_ORIGINAL_COMMAND (session.c) - reading $@ would reject every legitimate
+  # invocation. Parse that env var; argv stays supported so root can exercise the
+  # filters locally (`znapzend-shell zfs list ...`).
+  znapzendShell = pkgs.writeShellScriptBin "znapzend-shell" ''
+    ds_prefix="zroot/persist/hp"
+    die() { echo "znapzend-shell: disallowed: $*" >&2; exit 1; }
+
+    if [ "$#" -eq 0 ]; then
+      cmd=''${SSH_ORIGINAL_COMMAND:-}
+      [ -n "$cmd" ] || die "no command"
+      # Honor the single quotes znapzend wraps around tokens containing characters
+      # outside [-/@=_0-9a-z] (snapshot timestamps carry ':') by letting bash
+      # re-parse the line - but only after pinning the WHOLE line to that charset:
+      # no ; | & $ " backslash ( ) < > { } [ ] * ? ! ~ # % ^ ,tab ,newline survive the
+      # gate, so the eval can do nothing but word-split and remove quotes. `=` is IN
+      # the charset so the whitelisted `set` verb's property=value operands can reach
+      # eval at all (2026-10-25 review nit); a bare `a=b` token after `set --` is
+      # inert - it is a positional arg, never an assignment. An
+      # unbalanced quote then just fails to parse and $1 stays empty -> die below.
+      # The class lives in a variable because a bare ' inside a case-pattern
+      # bracket (or a //pattern/ expansion) would open a quote in bash's lexer.
+      bad_re="[^-A-Za-z0-9_=/.:,'@ ]"
+      if [[ "$cmd" =~ $bad_re ]]; then die "charset"; fi
+      eval set -- $cmd
+    fi
+    if [ "$1" = "zfs" ]; then shift; fi
+    case "$1" in
+      version)
+        [ "$#" -eq 1 ] || die "$*"
+        exec ${pkgs.zfs}/sbin/zfs version ;;
+      recv|create|destroy|list|get|set|mount|umount) ;;
+      *)
+        die "$*" ;;
+    esac
+    # Operand scoping. A bare pool name (zroot, rpool) contains no "/" so a slash test
+    # alone would let `zfs destroy zroot` through - pool-level operands must be pinned
+    # positively, per verb:
+    #   recv/create/mount/umount: every non-option operand IS a dataset
+    #     (znapzend remote ops never pass -o key=value through these) -> must be under
+    #     the prefix; `zfs set a=b <ds>`'s property argument would also fail this, which
+    #     is correct here (set belongs to the next rule).
+    #   destroy: same, modulo the comma grammar documented at destroy_operand.
+    #   set: operands are `property=value` pairs plus datasets - pairs pass, everything
+    #     else must be under the prefix (blocks `zfs set x=y zroot`).
+    #   list/get: read-only; slash-bearing operands (datasets/snapshots) still pinned,
+    #     bare names only ever leak inventory.
+    # And per COMMA ELEMENT, not per token: znapzend's combinedDestroy (ZFS.pm) prunes
+    # every expired snapshot as ONE comma-joined argument in ZFS grammar
+    # `fs@snapA,snapB` - only the FIRST element carries the dataset, and ZFS parses a
+    # later element as a snapshot OF THAT SAME dataset, never as another target. So
+    # destroy_operand pins the first element under the replica prefix and accepts bare
+    # continuation names; `zroot/persist/hp@a,zroot/root@b` still dies on the second
+    # element's "/". (The old every-element rule rejected znapzend's own legitimate
+    # multi-snapshot prune - 2026-10-25 review #2, destination snapshots piled up.)
+    under_prefix() {
+      case "$1" in
+        "$ds_prefix"|"$ds_prefix"/*|"$ds_prefix"@*) return 0 ;;
+        *) return 1 ;;
+      esac
+    }
+    # check $2 against every comma element of $1 (empty elements die: `a,` / `,a` /
+    # `a,,b` are exactly where a foreign name hides).
+    every_element() {
+      local elem IFS=,
+      case "$1" in ,*|*,|*,,*) return 1 ;; esac
+      for elem in $1; do "$2" "$elem" || return 1; done
+      return 0
+    }
+    pinned_operand() { under_prefix "$1"; }
+    # zfs-destroy comma grammar (see above): first element fully pinned, continuation
+    # elements snapshot names of the SAME dataset - any / or @ in them means someone
+    # is trying to point the destroy elsewhere.
+    destroy_operand() {
+      local first=1 elem IFS=,
+      case "$1" in ,*|*,|*,,*) return 1 ;; esac
+      for elem in $1; do
+        if [ "$first" = 1 ]; then
+          under_prefix "$elem" || return 1
+          first=0
+        else
+          case "$elem" in */*|*@*) return 1 ;; esac
+        fi
+      done
+      return 0
+    }
+    # list/get only pin elements that look like datasets (contain / or @); the -t
+    # type list ("filesystem,volume") and property names pass untouched.
+    read_operand() {
+      case "$1" in
+        */*|*@*) under_prefix "$1" ;;
+        *) true ;;
+      esac
+    }
+    sub="$1"
+    for a in ''${@:2}; do
+      case "$a" in -*) continue ;; esac
+      case "$sub" in
+        destroy)
+          destroy_operand "$a" || die "$*" ;;
+        recv|create|mount|umount)
+          every_element "$a" pinned_operand || die "$*" ;;
+        set)
+          case "$a" in
+            *=*) ;;
+            *) every_element "$a" pinned_operand || die "$*" ;;
+          esac ;;
+        list|get)
+          every_element "$a" read_operand || die "$*" ;;
+      esac
+    done
+    exec ${pkgs.zfs}/sbin/zfs "$@"
+  '';
 in {
   config = {
     PROFILES.qemu-vm.enable = true;
     MODULES.nix.builders.airlab = true;
     MODULES.security.sops.enable = true;
+    # No X11 / ssh-agent auth on a server (2026-10-24 audit #8).
+    MODULES.networking.sshd.x11Forwarding = false;
+    MODULES.networking.sshd.agentAuth = false;
     MODULES.networking.tailscale.hostIP = "100.83.255.5";
+    # Nightly: pull the fastdds discovery-server image (docker-images-update.nix).
+    MODULES.virtualisation.docker-images-update.enable = true;
     MODULES.services.syncthing.deviceID = "ZNMNOF4-NH6MXMO-VCFTEPL-4CUQ2DC-Y7VR6WI-NHFOUKS-OK2GXAR-A7SVWQ2";
     MODULES.networking.traefik.enable = true;
     MODULES.services.vaultwarden.enable = true;
@@ -128,8 +255,64 @@ in {
     MODULES.services.homepage.enable = true;
     MODULES.services.prometheus.enable = true;
     MODULES.services.loki.enable = true;
+    # Coroot server on this host too (2026-10-25): each fleet host now has its OWN Coroot
+    # server + web UI - this one visualises only akos01. Its UI publishes through Traefik
+    # on this host (coroot.<this host's domain>); the local eBPF agent pushes to it over
+    # loopback. Data stays local - this is NOT a replacement for hp's hub, which keeps
+    # visualising hp (and any agentEnable-only host still points there).
+    MODULES.services.coroot.enable = true;
+    # PLAN §2 Tier A + §3.4 egress LOG (see modules/security/jail.nix; hp carries the full
+    # data-tier set). postgresql here serves the Immich stack over the unix socket; the deny
+    # chain only stops NEW outbound flows, replies ride conntrack.
+    MODULES.security.jails.postgresql.enable = true;
+    MODULES.security.jails.homepage.enable = true;
+    MODULES.security.jails.searx.enable = true;
+    MODULES.security.jails.prometheus.enable = true;
+    MODULES.security.jails.loki.enable = true;
+    MODULES.security.jails.grafana.enable = true;
+    MODULES.security.jails.syncthing.enable = true;
+    MODULES.security.jails.vaultwarden.enable = true;
+    # PLAN §3 (see hp for the rationale; here only the Immich-stack DB user earns an execve
+    # key - no code-running agents live on this box).
+    # PLAN §7: graph in observe mode here too; `enforce` stays off until a week of
+    # explainable sg-seen / suricata logs (same gate as hp). 2026-10-25: Suricata IDS tap
+    # ALSO enabled on this host on request - previously hp-only ("one tap is enough", the
+    # tailnet aggregation point; this second tap now covers the grafana/loki/prometheus/
+    # vaultwarden half of the fleet directly). allow = [] = observe mode: every undeclared
+    # tailnet edge is logged, edges become explicit as sg-seen logs make the case.
+    MODULES.security.serviceGraph = {
+      enable = true;
+      suricata.enable = true;
+      allow = [];
+    };
+    MODULES.security.audit.enable = true;
+    # One-way replication trust, scoped (see znapzendShell above; hp's keypair lives in
+    # sops znapzend/ssh_key_b64, decoded to /etc/ssh/znapzend/id_ed25519 by its module).
+    users.users.root.openssh.authorizedKeys.keys = [
+      ("command=\"${znapzendShell}/bin/znapzend-shell\","
+        + "no-agent-forwarding,no-port-forwarding,no-pty,no-user-rc,no-X11-forwarding "
+        + "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGc2CcdIPHVHIjd9anoANccvB9kL56guCP+vPCfBpboG znapzend-hp-to-akos01")
+    ];
+    MODULES.security.audit.execUsers = ["postgres"];
+    # PLAN §4: L1 on this box; the hp replica (L2) arrives pushed - no local schedule
+    # needed for zroot/persist/hp, znapzend prunes received snapshots at the source.
+    MODULES.system.znapzend = {
+      enable = true;
+      # no dataset of its own - the dir lives on zroot/root and is covered by L1
+      pgDumpDir = "/var/lib/pgdump";
+      jobs = [
+        {
+          dataset = "zroot/root";
+          plan = "1d=>1h,2w=>1d,8w=>1w";
+        }
+      ];
+    };
+
     MODULES.services.fastdds.enable = true;
-    MODULES.services.mosquitto.enable = true;
+    # Off per the 2026-10-24 security audit (#2): the broker was anonymous with a
+    # readwrite-on-everything ACL, open on every interface. If MQTT comes back, it goes
+    # behind a password file (sops) and a tailscale-scoped firewall before akos01 reboots.
+    MODULES.services.mosquitto.enable = false;
     MODULES.services.searx.enable = true;
     MODULES.services.immich.enable = true;
     MODULES.nix.substituters.airlab-attic.enable = true;

@@ -90,6 +90,34 @@ in {
         default = null;
         description = "The Tailscale IP address of this node.";
       };
+      watchdog = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = ''
+            Restart tailscaled when it has been continuously offline for
+            `failures` consecutive checks. Guards against the wedged-session
+            failure mode seen on hp (2026-10-25): tailscaled keeps running but
+            never recovers its NAT mapping / control connection, so the node
+            vanishes from the tailnet for hours with no unit failure anywhere.
+          '';
+        };
+        intervalSec = lib.mkOption {
+          type = lib.types.int;
+          default = 90;
+          description = "How often the watchdog probe runs.";
+        };
+        failures = lib.mkOption {
+          type = lib.types.int;
+          default = 4;
+          description = "Consecutive offline probes before a restart is attempted.";
+        };
+        cooldownSec = lib.mkOption {
+          type = lib.types.int;
+          default = 1800;
+          description = "Minimum spacing between automatic tailscaled restarts.";
+        };
+      };
       tailnetDnsName = lib.mkOption {
         type = lib.types.str;
         default = "tail546fb.ts.net";
@@ -155,6 +183,63 @@ in {
   config = lib.mkIf config.MODULES.networking.tailscale.enable (
     let
       serveAttrs = config.MODULES.networking.tailscale.serve;
+      cfgWatchdog = config.MODULES.networking.tailscale.watchdog;
+
+      # One probe = one tailscale status call. "Offline" NetInfo over N
+      # consecutive runs restarts tailscaled; any non-offline probe resets the
+      # counter, and a cooldown stops pathological flapping.
+      watchdogScript = pkgs.writeShellScript "tailscale-watchdog-check" ''
+        set -euo pipefail
+        TS="${pkgs-unstable.tailscale}/bin/tailscale"
+        JQ="${pkgs.jq}/bin/jq"
+        DATE="${pkgs.coreutils}/bin/date"
+        LOGGER="${pkgs.util-linux}/bin/logger"
+        STATE_DIR="/var/lib/tailscale-watchdog"
+        COUNT_FILE="$STATE_DIR/offline-count"
+        RESTART_FILE="$STATE_DIR/last-restart"
+        THRESHOLD="${toString cfgWatchdog.failures}"
+        COOLDOWN="${toString cfgWatchdog.cooldownSec}"
+        mkdir -p "$STATE_DIR"
+
+        STATUS="$("$TS" status --json 2>/dev/null)" || true
+        if [ -z "$STATUS" ]; then
+          echo "status call failed; not counting"
+          exit 0
+        fi
+        STATE="$(printf '%s' "$STATUS" | "$JQ" -r '.BackendState // "Unknown"')"
+        OFFLINE="$(printf '%s' "$STATUS" | "$JQ" -r '.NetInfo.Offline // "unknown"')"
+
+        if [ "$STATE" != "Running" ]; then
+          echo "backend state '$STATE'; not auto-recoverable without creds, not restarting"
+          exit 0
+        fi
+        if [ "$OFFLINE" != "true" ]; then
+          # online, or NetInfo not populated yet (fresh start) - reset the counter
+          ${pkgs.coreutils}/bin/rm -f "$COUNT_FILE"
+          exit 0
+        fi
+
+        N="$(cat "$COUNT_FILE" 2>/dev/null || true)"; N="''${N:-0}"
+        N=$((N + 1))
+        echo "$N" > "$COUNT_FILE"
+        echo "offline $N/$THRESHOLD consecutive probes"
+        if [ "$N" -lt "$THRESHOLD" ]; then
+          exit 0
+        fi
+
+        NOW="$("$DATE" +%s)"
+        LAST="$(cat "$RESTART_FILE" 2>/dev/null || true)"; LAST="''${LAST:-0}"
+        SINCE=$((NOW - LAST))
+        if [ "$SINCE" -lt "$COOLDOWN" ]; then
+          echo "cooldown active ($SINCE s < $COOLDOWN s); skipping restart"
+          exit 0
+        fi
+
+        ${pkgs.coreutils}/bin/rm -f "$COUNT_FILE"
+        echo "$NOW" > "$RESTART_FILE"
+        "$LOGGER" -t tailscale-watchdog "offline for $THRESHOLD probes; restarting tailscaled"
+        "${pkgs.systemd}/bin/systemctl" restart tailscaled.service
+      '';
 
       buildServeFlags = s: let
         httpFlag =
@@ -218,6 +303,18 @@ in {
             lib.nameValuePair "tailscale-${serviceType}-${name}" svc
         )
         serveAttrs;
+
+      watchdogService = {
+        description = "Stuck-tailnet watchdog: restart tailscaled after continuous offline";
+        after = ["tailscaled.service" "network-online.target"];
+        serviceConfig = {
+          Type = "oneshot";
+          ExecStart = "${watchdogScript}";
+          User = "root";
+        };
+        # never let a probe failure blackhole the timer
+        unitConfig.StartLimitIntervalSec = 0;
+      };
     in {
       services.tailscale = {
         enable = true;
@@ -246,7 +343,23 @@ in {
             };
           };
         }
-        // servicesAttrset;
+        // servicesAttrset
+        // lib.optionalAttrs cfgWatchdog.enable {
+          tailscale-watchdog = watchdogService;
+        };
+
+      systemd.timers = lib.optionalAttrs cfgWatchdog.enable {
+        tailscale-watchdog = {
+          description = "Periodic tailscale offline watchdog";
+          wantedBy = ["timers.target"];
+          timerConfig = {
+            Unit = "tailscale-watchdog.service";
+            OnBootSec = "5min";
+            OnUnitActiveSec = "${toString cfgWatchdog.intervalSec}s";
+            AccuracySec = "30s";
+          };
+        };
+      };
     }
   );
 }

@@ -42,8 +42,11 @@ ssh root@${IP} "mkdir -p /mnt/etc/ssh/"
 rsync -avzv tmp/ssh_host_ed25519_key tmp/ssh_host_ed25519_key.pub root@${IP}:/mnt/etc/ssh/
 
 # nixos-install
+# --no-root-passwd only (2026-10-24 audit hygiene): the second, bare call used to re-run the
+# install and prompt-set a root password, which users.mutableUsers = false then overwrote on
+# the next switch anyway. Root auth on installed hosts is the ssh key plus the sops-held
+# console password (passwords/root), never an interactively typed one.
 ssh root@${IP} "nixos-install  --flake /tmp/nix#${CONFIGURATION} --no-root-passwd"
-ssh root@${IP} "nixos-install  --flake /tmp/nix#${CONFIGURATION}"
 
 
 exit 1

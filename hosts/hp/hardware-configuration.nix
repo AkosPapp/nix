@@ -39,5 +39,15 @@
   ];
 
   powerManagement.cpuFreqGovernor = "performance";
-  users.users.root.hashedPassword = "$y$j9T$gEhP/0Jlrlwb4ndmLs06L1$7qkdPdgqjCrEH8bAQvJqRn/Mj4m5X9GCRAyM33z0mdA";
+
+  # The console-root password (2026-10-24 audit #1: the old hash was committed and identical
+  # to legion5's root AND the akos account). sops-held, rotated, neededForUsers so it exists
+  # when users-activation reads it. Rotate with:
+  #   sops set sops/secrets.yaml '["passwords","root"]' '"$(mkpasswd -m yescrypt)"'
+  # then re-deploy. SSH stays key-only; this guards the physical console only.
+  sops.secrets."passwords/root" = {
+    neededForUsers = true;
+    mode = "0400";
+  };
+  users.users.root.hashedPasswordFile = config.sops.secrets."passwords/root".path;
 }

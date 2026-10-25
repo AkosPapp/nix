@@ -73,6 +73,32 @@ in {
       ];
     };
 
+    # Roundcube talks TCP to localhost with its passwordFile - the one client here whose path
+    # §2.1 changes under it: nixpkgs' default pg_hba says md5 on the host lines, and the hardened
+    # module says scram-sha-256. An md5-stored role hash would simply stop authenticating, so
+    # the role is re-hashed from the same sops secret on every boot (idempotent; with
+    # password_encryption=scram-sha-256 the ALTER stores a scram verifier from then on).
+    MODULES.services.postgres.enable = true;
+    systemd.services.roundcube-db-password = {
+      description = "Re-hash the roundcube role password for scram-sha-256";
+      after = ["postgresql.service"];
+      requires = ["postgresql.service"];
+      before = [
+        "roundcube-setup.service"
+        "phpfpm-roundcube.service"
+      ];
+      requiredBy = ["roundcube-setup.service"];
+      serviceConfig = {
+        Type = "oneshot";
+        User = "postgres";
+        LoadCredential = "db_password:${config.sops.secrets.roundcube-db-password.path}";
+      };
+      script = ''
+        ${config.services.postgresql.package}/bin/psql -v pw="$(tr -d '\n' < "$CREDENTIALS_DIRECTORY/db_password")" \
+          -c "ALTER ROLE \"roundcube\" PASSWORD :'pw'" >/dev/null
+      '';
+    };
+
     services.nginx.enable = true;
     services.nginx.virtualHosts.${cfg.hostName} = {
       listen = [

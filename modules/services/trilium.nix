@@ -81,7 +81,7 @@ in {
       example = "trilium/etapi_token";
       description = ''
         sops secret holding an ETAPI token for Hermes. Manual one-time step (nothing can mint one
-        before a human has logged in, same shape as n8n.nix's `apiKeySecret`): open
+        before a human has logged in): open
         https://trilium.<host>, set the login password, then Settings -> ETAPI -> "New token"
         (sync=false is enough for loopback use) and store it with
 

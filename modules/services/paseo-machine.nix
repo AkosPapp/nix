@@ -83,6 +83,97 @@
     modelThinkingLevels = {"${cfg.modelProvider}/${cfg.modelId}" = cfg.modelThinkingDefault;};
   });
 
+  # The model's own body, spelled per harness but shared between the primary model and the
+  # optional backup provider - the backup reuses them because its point is serving the same
+  # model from another endpoint (see the backupProvider description). Zero costs throughout:
+  # nothing behind these gateways is billed, and pi/opencode would otherwise guess a models.dev
+  # price for ids they do not know.
+  piModelAttrs =
+    lib.optionalAttrs (modelLimitContext != null) {
+      contextWindow = modelLimitContext;
+    }
+    // lib.optionalAttrs (modelLimitOutput != null) {
+      maxTokens = modelLimitOutput;
+    }
+    // {
+      cost = {
+        input = 0;
+        output = 0;
+        cacheRead = 0;
+        cacheWrite = 0;
+      };
+    }
+    // lib.optionalAttrs hasModelThinking {
+      reasoning = true;
+      thinkingLevelMap = piThinkingLevelMap;
+      compat = {
+        thinkingFormat = "chat-template";
+        chatTemplateKwargs = {
+          thinking = {"$var" = "thinking.enabled";};
+          # Resolved through thinkingLevelMap, hence the map above is not decoration:
+          # it is what turns pi's level into the gateway's reasoning_effort string.
+          reasoning_effort = {"$var" = "thinking.effort";};
+        };
+      };
+    };
+  ocModelAttrs =
+    lib.optionalAttrs hasModelLimits {
+      limit =
+        {}
+        // lib.optionalAttrs (modelLimitContext != null) {
+          context = modelLimitContext;
+        }
+        // lib.optionalAttrs (modelLimitOutput != null) {
+          output = modelLimitOutput;
+        };
+    }
+    // {
+      cost = {
+        input = 0.0;
+        output = 0.0;
+        cache_read = 0.0;
+        cache_write = 0.0;
+      };
+    }
+    // lib.optionalAttrs hasModelThinking {
+      # The base options are what a session sends with no variant chosen: thinking on, at
+      # the default level. Variants then merge over them.
+      options = thinkingKwargs cfg.modelThinkingDefault;
+      variants = opencodeVariants;
+    };
+
+  # The backup provider's harness-config fragments, empty when backupProvider is unset. Same
+  # model body as the primary under the backup's own provider id, endpoint and key placeholder.
+  # Extra entries under the harness config's provider MAP (the map itself is assembled in
+  # harnessDefs): a plain top-level `{providers = {backup};} // ...` would replace the whole map
+  # and drop the primary provider.
+  backupPiProviders = lib.optionalAttrs (cfg.backupProvider != null) {
+    "${cfg.backupProvider.id}" = {
+      baseUrl = cfg.backupProvider.baseUrl;
+      api = "openai-completions";
+      apiKey = "$PASEO_BACKUP_API_KEY";
+      models = [
+        ({id = cfg.backupProvider.modelId;} // piModelAttrs)
+      ];
+    };
+  };
+  backupOcProviders = lib.optionalAttrs (cfg.backupProvider != null) {
+    "${cfg.backupProvider.id}" = {
+      npm = "@ai-sdk/openai-compatible";
+      name = cfg.backupProvider.label;
+      options = {
+        baseURL = cfg.backupProvider.baseUrl;
+        apiKey = "$PASEO_BACKUP_API_KEY";
+      };
+      models."${cfg.backupProvider.modelId}" = {name = cfg.backupProvider.modelId;} // ocModelAttrs;
+    };
+  };
+  # The placeholder names the prepare script runs envsubst over - only ones present in the
+  # templates, so an unset backup simply never appears in the variable list.
+  modelSubstVars =
+    "$PASEO_MODEL_API_KEY"
+    + lib.optionalString (cfg.backupProvider != null) " $PASEO_BACKUP_API_KEY";
+
   # One entry per harness the daemon can drive: its CLI lands on the daemon's PATH, and its
   # model config (a store template with a $PASEO_MODEL_API_KEY placeholder - the key itself is
   # substituted into the user's 0600 config at service start, never into the store) points it
@@ -98,76 +189,53 @@
         path = ".pi/agent/settings.json";
         file = piSettings;
       };
-      config = pkgs.writeText "paseo-machine-pi-models.json" (builtins.toJSON {
-        "$schema" = "https://pi.dev/schemas/models.schema.json";
-        providers."${cfg.modelProvider}" = {
-          baseUrl = cfg.modelBaseUrl;
-          api = "openai-completions";
-          apiKey = "$PASEO_MODEL_API_KEY";
-          models = [
-            (
-              {id = cfg.modelId;}
-              // lib.optionalAttrs (modelLimitContext != null) {
-                contextWindow = modelLimitContext;
-              }
-              // lib.optionalAttrs (modelLimitOutput != null) {
-                maxTokens = modelLimitOutput;
-              }
-              // lib.optionalAttrs hasModelThinking {
-                reasoning = true;
-                thinkingLevelMap = piThinkingLevelMap;
-                compat = {
-                  thinkingFormat = "chat-template";
-                  chatTemplateKwargs = {
-                    thinking = {"$var" = "thinking.enabled";};
-                    # Resolved through thinkingLevelMap, hence the map above is not decoration:
-                    # it is what turns pi's level into the gateway's reasoning_effort string.
-                    reasoning_effort = {"$var" = "thinking.effort";};
-                  };
-                };
-              }
-            )
-          ];
-        };
-      });
+      config = let
+        # Primary + optional backup under one map (backup entries merge at the provider level).
+        piProviders =
+          {
+            "${cfg.modelProvider}" = {
+              baseUrl = cfg.modelBaseUrl;
+              api = "openai-completions";
+              apiKey = "$PASEO_MODEL_API_KEY";
+              models = [
+                ({id = cfg.modelId;} // piModelAttrs)
+              ];
+            };
+          }
+          // backupPiProviders;
+      in
+        pkgs.writeText "paseo-machine-pi-models.json" (builtins.toJSON {
+          "$schema" = "https://pi.dev/schemas/models.schema.json";
+          providers = piProviders;
+        });
     };
     opencode = {
       package = pkgs-unstable.opencode;
       configPath = ".config/opencode/opencode.json";
       settings = {};
-      config = pkgs.writeText "paseo-machine-opencode.json" (builtins.toJSON {
-        "$schema" = "https://opencode.ai/config.json";
-        provider."${cfg.modelProvider}" = {
-          npm = "@ai-sdk/openai-compatible";
-          name = cfg.modelProviderLabel;
-          options = {
-            baseURL = cfg.modelBaseUrl;
-            apiKey = "$PASEO_MODEL_API_KEY";
-          };
-          models."${cfg.modelId}" =
-            {name = cfg.modelId;}
-            // lib.optionalAttrs hasModelLimits {
-              limit =
-                {}
-                // lib.optionalAttrs (modelLimitContext != null) {
-                  context = modelLimitContext;
-                }
-                // lib.optionalAttrs (modelLimitOutput != null) {
-                  output = modelLimitOutput;
-                };
-            }
-            // lib.optionalAttrs hasModelThinking {
-              # The base options are what a session sends with no variant chosen: thinking on, at
-              # the default level. Variants then merge over them.
-              options = thinkingKwargs cfg.modelThinkingDefault;
-              variants = opencodeVariants;
+      config = let
+        # Primary + optional backup under one map (backup entries merge at the provider level).
+        ocProviders =
+          {
+            "${cfg.modelProvider}" = {
+              npm = "@ai-sdk/openai-compatible";
+              name = cfg.modelProviderLabel;
+              options = {
+                baseURL = cfg.modelBaseUrl;
+                apiKey = "$PASEO_MODEL_API_KEY";
+              };
+              models."${cfg.modelId}" = {name = cfg.modelId;} // ocModelAttrs;
             };
-        };
-        model = "${cfg.modelProvider}/${cfg.modelId}";
-      });
+          }
+          // backupOcProviders;
+      in
+        pkgs.writeText "paseo-machine-opencode.json" (builtins.toJSON {
+          "$schema" = "https://opencode.ai/config.json";
+          provider = ocProviders;
+          model = "${cfg.modelProvider}/${cfg.modelId}";
+        });
     };
   };
-
   enabledUsers = lib.filterAttrs (_: u: u.enable) cfg.users;
   machineNames = lib.attrNames enabledUsers;
 
@@ -205,12 +273,14 @@
         openssl rand -hex 24 >"${credDir}/daemon_password"
       fi
       export PASEO_MODEL_API_KEY="$(cat "$CREDENTIALS_DIRECTORY/model_api_key")"
+      ${lib.optionalString (cfg.backupProvider != null) ''
+          export PASEO_BACKUP_API_KEY="$(cat "$CREDENTIALS_DIRECTORY/backup_api_key")"''}
       ${lib.concatMapStrings (h: let
           d = harnessDefs.${h};
           s = d.settings;
         in ''
           mkdir -p "$(dirname "${userCfg.home}/${d.configPath}")"
-          envsubst '$PASEO_MODEL_API_KEY' <${d.config} >"${userCfg.home}/${d.configPath}.tmp"
+          envsubst '${modelSubstVars}' <${d.config} >"${userCfg.home}/${d.configPath}.tmp"
           if ! cmp -s "${userCfg.home}/${d.configPath}.tmp" "${userCfg.home}/${d.configPath}" 2>/dev/null; then
             mv -f "${userCfg.home}/${d.configPath}.tmp" "${userCfg.home}/${d.configPath}"
           else
@@ -254,6 +324,10 @@
       if [ -f "$CREDENTIALS_DIRECTORY/model_api_key" ]; then
         export PASEO_MODEL_API_KEY="$(cat "$CREDENTIALS_DIRECTORY/model_api_key")"
       fi
+      ${lib.optionalString (cfg.backupProvider != null) ''
+        if [ -f "$CREDENTIALS_DIRECTORY/backup_api_key" ]; then
+          export PASEO_BACKUP_API_KEY="$(cat "$CREDENTIALS_DIRECTORY/backup_api_key")"
+        fi''}
       exec ${paseoCli}/bin/paseo daemon run
     '';
 
@@ -340,7 +414,11 @@
         Group = userCfg.group;
         Restart = "always";
         RestartSec = 5;
-        LoadCredential = ["model_api_key:${config.sops.secrets.${cfg.modelApiKeySecret}.path}"];
+        LoadCredential =
+          ["model_api_key:${config.sops.secrets.${cfg.modelApiKeySecret}.path}"]
+          ++ lib.optional
+          (cfg.backupProvider != null)
+          "backup_api_key:${config.sops.secrets.${cfg.backupProvider.apiKeySecret}.path}";
         NoNewPrivileges = true;
         PrivateTmp = true;
         # Deliberately NOT ProtectSystem=strict / ProtectHome: the daemon writes ~/.paseo and
@@ -506,6 +584,68 @@ in {
       '';
     };
 
+    backupProvider = mkOption {
+      type = types.nullOr (types.submodule {
+        options = {
+          id = mkOption {
+            type = types.str;
+            default = "futurelab";
+            description = "Provider id the backup registers under in the harness configs.";
+          };
+
+          label = mkOption {
+            type = types.str;
+            default = "FutureLab (Aqueduct)";
+            description = "Display name for the backup provider (opencode's picker).";
+          };
+
+          baseUrl = mkOption {
+            type = types.str;
+            example = "https://futurelab.robo4you.at/v1";
+            description = "OpenAI-compatible endpoint the backup provider talks to.";
+          };
+
+          apiKeySecret = mkOption {
+            type = types.str;
+            example = "futurelab_api_key";
+            description = ''
+              sops secret holding the backup key, handed to the daemon through LoadCredential as
+              PASEO_BACKUP_API_KEY and baked into the harness configs next to the primary key.
+            '';
+          };
+
+          modelId = mkOption {
+            type = types.str;
+            default = "qwen3.8-flash-next";
+            description = ''
+              Model id on the backup gateway, spelled the way THAT gateway wants it (the futurelab
+              Aqueduct one takes the bare name - "futurelab/..." is only LiteLLM's wildcard
+              spelling on hp).
+            '';
+          };
+        };
+      });
+      default = null;
+      example = lib.literalExpression ''
+        {
+          baseUrl = "https://futurelab.robo4you.at/v1";
+          apiKeySecret = "futurelab_api_key";
+        }
+      '';
+      description = ''
+        Optional second provider registered next to the primary one in every harness config: a
+        fallback to switch to by hand when the primary (the hub's LiteLLM gateway) is down.
+        Nothing in pi or opencode fails over automatically - the user picks the backup in the
+        model selector.
+
+        The backup's model entry reuses the primary's settings (modelContextLength,
+        modelOutputLength, modelThinkingLevels, modelThinkingDefault, zero cost), which is only
+        correct when the backup serves the same model the primary does - the intended shape: the
+        same qwen3.8-flash-next that litellm.nix's futurelabEnable wildcard proxies on hp, dialled
+        straight to the Aqueduct gateway instead while hp is unreachable.
+      '';
+    };
+
     users = mkOption {
       type = types.attrsOf (types.submodule (_: {
         options = {
@@ -579,10 +719,14 @@ in {
       # follows cfg.modelApiKeySecret (e.g. opencode/litellm_api_key on hosts where the
       # opencode module already declares it with a user owner - LoadCredential reads it as
       # PID1, so any owner works).
-      sops.secrets = {
-        "paseo/enrollment_token" = {};
-        "${cfg.modelApiKeySecret}" = {};
-      };
+      sops.secrets =
+        {
+          "paseo/enrollment_token" = {};
+          "${cfg.modelApiKeySecret}" = {};
+        }
+        // lib.optionalAttrs (cfg.backupProvider != null) {
+          "${cfg.backupProvider.apiKeySecret}" = {};
+        };
 
       # Base of the derived per-user loopback daemon ports (see machinePort).
       PORTS.paseoMachine = 8117;

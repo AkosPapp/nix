@@ -19,12 +19,8 @@ in {
     homepage = 8082;
     i2pdWebui = 8070;
     immich = 2283;
-    librechat = 8100;
-    librechatMongo = 8101;
     litellm = 8095;
     loki = 8031;
-    n8n = 8097;
-    n8nSandbox = 8098;
     nextcloud = 8088;
     nixAutobuild = 8085;
     nginxStatus = 8087;
@@ -57,6 +53,13 @@ in {
     hermesIcs = 8130;
     # Trilium Notes (modules/services/trilium.nix) - loopback only, behind Traefik.
     trilium = 8131;
+    # Coroot (modules/services/coroot.nix) - server UI/API, loopback + tailscale0 only.
+    coroot = 8080;
+    # coroot-node-agent's own /metrics listener - loopback only; nothing connects to it.
+    corootNodeAgent = 8141;
+    # ClickHouse for Coroot - loopback only; 9000/8123 are unavailable here (PORTS.stepCa).
+    corootClickhouseNative = 8142;
+    corootClickhouseHttp = 8143;
     # Traefik's Cloudflare-facing entry point (modules/networking/traefik.nix's `cloudflare`
     # options) - loopback only; cloudflared is its sole client, TLS ends at Cloudflare's edge.
     traefikCloudflare = 8140;

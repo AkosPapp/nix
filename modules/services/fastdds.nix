@@ -44,10 +44,17 @@
       };
     };
 
-    networking.firewall.allowedUDPPorts = [config.PORTS.fastddsDiscovery];
-    networking.firewall.allowedTCPPorts = [
-      config.PORTS.fastddsDiscovery
-      config.PORTS.fastddsData
-    ];
+    # Scoped to tailscale0 per the 2026-10-24 audit (#2): FastDDS discovery is
+    # unauthenticated by design, so it must not answer on any other interface. Caveat:
+    # clients that reach this host over a plain LAN instead of the tailnet lose access -
+    # if that turns out to matter, add that interface explicitly here rather than
+    # reverting to all-interfaces.
+    networking.firewall.interfaces.tailscale0 = {
+      allowedUDPPorts = [config.PORTS.fastddsDiscovery];
+      allowedTCPPorts = [
+        config.PORTS.fastddsDiscovery
+        config.PORTS.fastddsData
+      ];
+    };
   };
 }

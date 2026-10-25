@@ -22,6 +22,23 @@ in {
 
   config = lib.mkMerge [
     (mkIf cfg.enable {
+      # A static service user instead of the nixpkgs module's DynamicUser. The random per-boot
+      # uid is why the widget secrets below used to be 0444 world-readable (an unguessable
+      # owner cannot be named as a sops owner) - with a fixed uid they are 0400, this user
+      # only (2026-10-24 audit #5). The unit keeps PrivateUsers, which maps this uid to root
+      # inside the namespace, so the *owner* bits still apply to a 0400 secret on the host.
+      users.users.homepage-dashboard = {
+        isSystemUser = true;
+        group = "homepage-dashboard";
+      };
+      users.groups.homepage-dashboard = {};
+
+      systemd.services.homepage-dashboard.serviceConfig = {
+        DynamicUser = lib.mkForce false;
+        User = "homepage-dashboard";
+        Group = "homepage-dashboard";
+      };
+
       services.homepage-dashboard = {
         enable = true;
         listenPort = config.PORTS.homepage;
@@ -95,14 +112,13 @@ in {
       MODULES.services.homepage.services.homepage.icon = "${traefik.urlOf "homepage"}/homepage.ico";
     })
     (mkIf (cfg.enable && config.MODULES.services.grafana.enable) {
-      # homepage-dashboard runs with systemd's DynamicUser (a random per-boot uid), so it can't
-      # be granted read access to grafana.nix's own admin_password secret (owner = "grafana",
-      # mode 0400) the same way grafana itself is. This is a second sops.secrets declaration
-      # pointing at the *same* underlying value (via `key`) but world-readable, since the
-      # dynamic uid can't be predicted ahead of time to target it more narrowly.
+      # A second sops.secrets declaration pointing at the *same* underlying value (via `key`)
+      # as grafana.nix's own, because that one is owned by the grafana uid. Readable by the
+      # homepage-dashboard uid alone - static since the DynamicUser switch above.
       sops.secrets."homepage/grafana_admin_password" = {
         key = "grafana/admin_password";
-        mode = "0444";
+        owner = "homepage-dashboard";
+        mode = "0400";
       };
 
       systemd.services.homepage-dashboard.environment.HOMEPAGE_FILE_GRAFANA_PASSWORD =
@@ -182,13 +198,14 @@ in {
       MODULES.services.homepage.services.firefly.icon = "firefly-iii.png";
     })
     (mkIf (cfg.enable && config.MODULES.services.firefly-iii.homepageWidget.enable) {
-      # Same trick as the grafana block above: a second, world-readable sops declaration pointing
-      # at the one underlying token, because homepage-dashboard's DynamicUser can't be named as an
-      # owner ahead of time. The token itself has to be minted from inside Firefly III, so this
-      # whole block is gated behind an option that is off until someone has done that.
+      # Same pattern as the grafana block above: a second declaration pointing at the one
+      # underlying token, owned by the homepage-dashboard uid. The token itself has to be
+      # minted from inside Firefly III, so this whole block is gated behind an option that is
+      # off until someone has done that.
       sops.secrets."homepage/firefly_api_token" = {
         key = "firefly-iii/homepage-api-token";
-        mode = "0444";
+        owner = "homepage-dashboard";
+        mode = "0400";
       };
 
       systemd.services.homepage-dashboard.environment.HOMEPAGE_FILE_FIREFLY_API_TOKEN =
@@ -201,14 +218,15 @@ in {
       };
     })
     (mkIf (cfg.enable && config.MODULES.services.litellm.enable && config.MODULES.services.litellm.masterKeySecret != null) {
-      # /v1/models needs the gateway's master key. Same trick as grafana above: a second,
-      # world-readable declaration of the same sops value, since homepage's DynamicUser uid
-      # can't be targeted. That makes the gateway's admin key readable by any local user on this
-      # host - acceptable on a single-user server, and the reason to swap it for a read-only
-      # virtual key minted in the LiteLLM UI if that ever stops being true.
+      # /v1/models needs the gateway's master key. Same pattern as grafana above: a second
+      # declaration of the same sops value, now readable by the homepage-dashboard uid alone -
+      # the 0444 version made every local user a gateway admin (2026-10-24 audit #5). Minting
+      # a read-only virtual key for the widget remains the cheap next step if hp ever gains
+      # other local users.
       sops.secrets."homepage/litellm_master_key" = {
         key = config.MODULES.services.litellm.masterKeySecret;
-        mode = "0444";
+        owner = "homepage-dashboard";
+        mode = "0400";
       };
 
       systemd.services.homepage-dashboard.environment.HOMEPAGE_FILE_LITELLM_MASTER_KEY =
@@ -222,8 +240,8 @@ in {
       # Homepage has no LiteLLM widget, but /v1/models is a plain JSON endpoint (authenticated
       # with the master key set up in the block above), so customapi can report how many models
       # the gateway is currently routing. That count is the whole catalogue across every host in
-      # the flake, not what happens to be loaded: the vLLM instances behind it are
-      # socket-activated, so "available" and "resident in memory" are deliberately different
+      # the flake, not what happens to be loaded: the Ollama instances behind it are
+      # on-demand, so "available" and "resident in memory" are deliberately different
       # things here and only the former is observable from outside.
       MODULES.services.homepage.services.litellm = {
         icon = "${traefik.urlOf "litellm"}/ui/favicon.ico";
@@ -255,16 +273,13 @@ in {
         description = "AI gateway";
       };
     })
-    (mkIf (cfg.enable && config.MODULES.services.librechat.enable) {
-      MODULES.services.homepage.services.librechat = {
-        icon = "librechat.png";
-        description = "MCP-tool chat UI";
-      };
-    })
-    (mkIf (cfg.enable && config.MODULES.services.n8n.enable) {
-      MODULES.services.homepage.services.n8n = {
-        icon = "n8n.png";
-        description = "Agent workflow builder";
+    (mkIf (cfg.enable && config.MODULES.services.coroot.enable) {
+      MODULES.services.homepage.services.coroot = {
+        description = "Full-stack observability";
+        # Coroot's own vhost serves it unauthenticated at /static; the generic
+        # per-service <name>/favicon.ico guess below lands on coroot's HTML 404 page, so
+        # pin the real file (surfaces when the tile hits COROOT's UI for the first time).
+        icon = "${traefik.urlOf "coroot"}/static/favicon.ico";
       };
     })
     (mkIf (cfg.enable && config.MODULES.services.matrix.enable) {

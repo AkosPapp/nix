@@ -45,7 +45,7 @@
 
   # One Modelfile per catalogue entry: the pulled base plus this entry's context and parameters,
   # created under the catalogue name. Clients - LiteLLM included - then ask for "coder" rather
-  # than the upstream tag, the same names the vLLM catalogue uses.
+  # than the upstream tag.
   modelfile = name: m:
     pkgs.writeText "ollama-${name}.Modelfile" (
       ''
@@ -93,9 +93,8 @@ in {
         }
       '';
       description = ''
-        The models this host serves, keyed by the name clients request. Independent of
-        MODULES.services.vllm.models: a host can run both runtimes, and LiteLLM treats a name both
-        serve - on this host or another - as replicas of one model.
+        The models this host serves, keyed by the name clients request. LiteLLM treats a name served
+        on more than one host as replicas of one model.
       '';
     };
 
@@ -105,7 +104,7 @@ in {
       example = "30m";
       description = ''
         OLLAMA_KEEP_ALIVE: how long an idle model stays loaded before Ollama unloads it. This is
-        the whole on-demand lifecycle - no sockets or proxies in front, unlike the vLLM module.
+        the whole on-demand lifecycle - no sockets or proxies in front.
         The next request after an unload waits for the model to load again, seconds for a GGUF of
         this size.
       '';
@@ -115,10 +114,9 @@ in {
       type = types.int;
       default = 1;
       description = ''
-        OLLAMA_MAX_LOADED_MODELS: models resident at once. 1 is the equivalent of the vLLM module's
-        `exclusive` - asking for another model unloads the current one - which is what an 8 GiB
-        card beside a desktop, or a small CPU host, can afford. 0 lets Ollama decide from free
-        memory.
+        OLLAMA_MAX_LOADED_MODELS: models resident at once. 1 means asking for another model unloads
+        the current one, which is what an 8 GiB card beside a desktop, or a small CPU host, can
+        afford. 0 lets Ollama decide from free memory.
       '';
     };
 
@@ -162,7 +160,7 @@ in {
       default = 1;
       description = ''
         This host's share of traffic for model names another host also serves, as LiteLLM's
-        simple-shuffle weight - the Ollama counterpart of MODULES.services.vllm.weight.
+        simple-shuffle weight.
       '';
     };
   };
@@ -196,7 +194,7 @@ in {
     # Pull each base and create the catalogue names from their Modelfiles. The upstream module's
     # loadModels only pulls, so it cannot give a model its own context or name. Type = exec:
     # the unit counts as started once the script runs, so boot and nixos-rebuild never wait on a
-    # multi-gigabyte download (the trap the vLLM prefetch unit fell into). The script changes
+    # multi-gigabyte download. The script changes
     # whenever the catalogue does, so a rebuild re-runs it; pulls of unchanged models are no-ops.
     systemd.services.ollama-models = mkIf (cfg.models != {}) {
       description = "Pull and create the Ollama model catalogue";

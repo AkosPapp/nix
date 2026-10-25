@@ -95,7 +95,12 @@ in {
     # Laravel's application key: it encrypts session cookies and every field Firefly III stores
     # encrypted, so it has to stay stable for the lifetime of the data - rotating it after the
     # first transaction is entered makes the existing rows undecryptable.
+    # Deliberately NOT under /run/secrets: the firefly jail (modules/security/jail.nix) keeps
+    # the blanket /run/secrets mask - its php-fpm master is a root process - and the pool
+    # workers must still open this file via APP_KEY_FILE. sops-nix creates the parent dirs;
+    # auditd read-watches this exact file via secretReadRules (modules/security/audit.nix).
     sops.secrets."firefly-iii/app-key" = {
+      path = "/run/jail-secrets/firefly-iii/app-key";
       owner = config.services.firefly-iii.user;
       mode = "0400";
     };
@@ -158,14 +163,38 @@ in {
       ];
     };
 
+    # php-fpm reaches the socket as the firefly-iii OS user; role of the same name over an
+    # explicit peer line (PLAN.md §2.1), still no password to manage.
+    MODULES.services.postgres.enable = true;
+    MODULES.services.postgres.socketPeerRoles = [dbName];
+
     # The nixpkgs module's vhost has no listener of its own; pin it to localhost on our port so
     # nginx doesn't fall back to 0.0.0.0:80 and collide with Traefik.
-    services.nginx.virtualHosts.${config.services.firefly-iii.virtualHost}.listen = [
-      {
-        addr = "127.0.0.1";
-        port = config.PORTS.fireflyIii;
-      }
-    ];
+    services.nginx.virtualHosts.${config.services.firefly-iii.virtualHost} = {
+      listen = [
+        {
+          addr = "127.0.0.1";
+          port = config.PORTS.fireflyIii;
+        }
+      ];
+
+      # Registration kill-switch (2026-10-24 audit #10). Firefly III 6.x dropped the old
+      # DISABLE_REGISTRATION environment variable - the knob lives in the database now
+      # (config/firefly.php is auto-generated, "change it in the UI"), which nothing
+      # declarative can assert. So the routes themselves die at the web server instead:
+      # both are prefix matches ahead of the module's `location /`, so neither the tailnet
+      # URL nor the public Funnel path (the 2026-09-02 /firefly/register visit in the
+      # removed HAR) can reach them at all, whatever the database setting says. The 4-04
+      # keeps the denial indistinguishable from a missing page.
+      extraConfig = ''
+        location ^~ /register {
+          return 404;
+        }
+        location ^~ /auth/register {
+          return 404;
+        }
+      '';
+    };
 
     MODULES.networking.traefik.enable = true;
     MODULES.networking.traefik.services.firefly = "127.0.0.1:${toString config.PORTS.fireflyIii}";

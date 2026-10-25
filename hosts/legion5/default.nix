@@ -250,6 +250,14 @@ in {
     modelContextLength = 262144;
     modelOutputLength = 32768;
     modelThinkingLevels = ["low" "medium" "xhigh"];
+    # Same model, dialled around hp when litellm.hp is unreachable: the futurelab Aqueduct
+    # gateway takes the bare model id (only LiteLLM spells it "futurelab/..."). Picked by hand
+    # in pi/opencode's model selector - nothing here fails over automatically. Key comes from
+    # the futurelab_api_key sops secret (same one hp's litellm wildcard reads).
+    backupProvider = {
+      baseUrl = "https://futurelab.robo4you.at/v1";
+      apiKeySecret = "futurelab_api_key";
+    };
     users.akos.harnesses = {
       pi.enable = true;
       opencode.enable = true;
@@ -317,40 +325,28 @@ in {
     HandlePowerKey = "sleep";
   };
 
-  services.znapzend = {
+  # PLAN §4: L1 snapshots + push of the persist dataset to hp (L2 side - this laptop is
+  # the only box with state that hp does not already hold; hp schedules its own retention
+  # of the received zroot/persist/legion5). §4.2's laptop row is 12/7/4: lighter than the
+  # servers because the laptop is often off, and the finer 1h=>1min tier of the old hand
+  # config only produced noise across suspend gaps.
+  MODULES.system.znapzend = {
     enable = true;
-    pure = true;
-    autoCreation = true;
-    logLevel = "debug";
-    logTo = "/var/log/znapzend.log";
-    features = {
-      # compressed = true;
-      lowmemRecurse = true;
-      # skipIntermediates = true;
-    };
-    zetup."zroot/persist/legion5" = {
-      recursive = true;
-      # plan = "1h=>1min,1d=>1h,1w=>1d,5m=>1w";
-      plan = "1h=>1min,1d=>1h,1w=>1d";
-      enable = true;
-      destinations = {
-        hp = {
+    jobs = [
+      {
+        dataset = "zroot/root";
+        plan = "12h=>1h,7d=>1d,4w=>1w";
+      }
+      {
+        dataset = "zroot/persist/legion5";
+        plan = "12h=>1h,7d=>1d,4w=>1w";
+        destinations.hp = {
           host = "root@hp";
           dataset = "zroot/persist/legion5";
-          plan = "1h=>1min,1d=>1h,1w=>1d";
         };
-      };
-    };
+      }
+    ];
   };
-  # systemd.services.znapzend.serviceConfig.ExecStart = let
-  #   args = lib.concatStringsSep " " [
-  #     "--logto=${config.services.znapzend.logTo}"
-  #     "--loglevel=${config.services.znapzend.logLevel}"
-  #     "--autoCreation"
-  #     "--debug"
-  #   ];
-  # in
-  #   lib.mkForce "${pkgs.znapzend}/bin/znapzend ${args}";
 
   services.power-profiles-daemon.enable = true;
 

@@ -16,7 +16,7 @@ in {
       OmniRoute, an OpenAI-compatible AI gateway with a dashboard: providers, combos (fallback
       chains across them), API keys and usage tracking. A sibling of the LiteLLM gateway
       (litellm.nix) rather than a replacement - LiteLLM stays the declarative router over this
-      flake's own Ollama/vLLM hosts, and OmniRoute is where hosted subscriptions and free tiers
+      flake's own Ollama hosts, and OmniRoute is where hosted subscriptions and free tiers
       are managed from its UI. Point it at LiteLLM (http://127.0.0.1:${toString config.PORTS.litellm}/v1)
       as a custom OpenAI-compatible provider to reach the local models through it
     '';
@@ -27,7 +27,7 @@ in {
       description = ''
         Container image. Not pinned, because no release tag has been verified against this
         config: once the instance is known good, replace it with the tag (or digest) that
-        `docker image inspect` reports, the way litellm.nix and librechat.nix pin theirs.
+        `docker image inspect` reports, the way litellm.nix pins its image.
       '';
     };
   };
@@ -44,19 +44,33 @@ in {
     # provider credentials it stores) to be stable across restarts, plus an initial dashboard
     # password. None of them come from anywhere else, so they are generated once into the data
     # directory instead of asking for sops entries - they only need to survive, not be known.
-    # The initial password is readable in the file, root only, for the first login.
+    # The initial password is readable in the file (root only) for the first login, and dropped
+    # from it once the installation is a week old (2026-10-24 audit #9): by then the password has
+    # been consumed into the app's own database, and a plaintext copy surviving indefinitely on
+    # disk was the leak. The week is the first-login window; if it is ever missed, `openssl rand
+    # -hex 12` a replacement line back into this file and restart omniroute.service only while
+    # its database is being rebuilt too - against an initialized database the env var is ignored.
     systemd.services.omniroute-secrets = {
       description = "Generate OmniRoute's persistent secrets";
       before = ["omniroute.service"];
       requiredBy = ["omniroute.service"];
-      path = [pkgs.openssl];
+      path = [
+        pkgs.openssl
+        pkgs.coreutils
+        pkgs.gnused
+      ];
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
         UMask = "0077";
       };
       script = ''
-        if [ ! -s ${secretsFile} ]; then
+        if [ -s ${secretsFile} ]; then
+          if grep -q '^INITIAL_PASSWORD=' ${secretsFile} \
+             && [ "$(( $(date +%s) - $(stat -c %Y ${secretsFile}) ))" -gt 604800 ]; then
+            sed -i '/^INITIAL_PASSWORD=/d' ${secretsFile}
+          fi
+        else
           {
             echo "JWT_SECRET=$(openssl rand -hex 32)"
             echo "API_KEY_SECRET=$(openssl rand -hex 32)"
@@ -89,7 +103,7 @@ in {
       # Host networking for the same reason as litellm.nix: LiteLLM, Ollama and the tailnet are
       # all reached on this host's own addresses.
       # --user=0:0: the image runs as uid 1000 and cannot write the root-owned 0700 bind mount
-      # (EACCES on server.env), the same call librechat.nix makes.
+      # (EACCES on server.env).
       extraOptions = ["--network=host" "--user=0:0"];
     };
 

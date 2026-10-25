@@ -25,6 +25,12 @@
     };
     # Upstream tracks nixos-unstable and builds its Python env with uv2nix against it, so it
     # follows this flake's unstable pin rather than the 26.05 one the hosts run on.
+    # PLAN.md §6: firecracker microVMs. Follows this flake's nixpkgs so VM guests and the
+    # host share one package set (microvm's modules are overlays on stock NixOS options).
+    microvm = {
+      url = "github:microvm-nix/microvm.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     hermes-agent = {
       url = "github:NousResearch/hermes-agent";
       inputs.nixpkgs.follows = "nixpkgs-unstable";
@@ -34,6 +40,7 @@
   outputs = {
     deploy-rs,
     disko,
+    microvm,
     nix_autobuild,
     nixpkgs,
     nixpkgs-unstable,
@@ -45,15 +52,22 @@
 
     system = "x86_64-linux";
 
+    # No allowBroken (2026-10-24 audit #7): a package nixpkgs marks broken has a build that
+    # is known to fail, and permitting it globally pins the flake silently to those failures.
+    # immich.nix keeps its own scoped import for the CUDA worker.
     pkgs-unstable = import nixpkgs-unstable {
       inherit system;
       config = {
         allowUnfree = true;
-        allowBroken = true;
       };
     };
 
-    hosts = builtins.readDir ./hosts;
+    # Hosts are directories with a default.nix; hosts/vms/ (guest configs, no
+    # default.nix) is the only non-machine directory.
+    hosts =
+      nixpkgs.lib.filterAttrs
+      (name: type: type == "directory" && nixpkgs.lib.pathExists ./hosts/${name}/default.nix)
+      (builtins.readDir ./hosts);
 
     module_files =
       builtins.filter
@@ -97,6 +111,9 @@
               inputs
               ;
             nixosConfigurations = self.nixosConfigurations;
+            # PLAN.md §6: microVM configs for modules/vm/microvm-host.nix (self-reference,
+            # lazy - hosts that disable the microvm host never force it).
+            microvmConfigurations = self.microvmConfigurations;
             configName = host;
           }
           // inputs;
@@ -111,6 +128,24 @@
           ++ module_files;
       }))
       hosts;
+
+    # PLAN.md §6: firecracker guests live here, NOT in nixosConfigurations - deploy-rs
+    # iterates nixosConfigurations and must never try to ssh-activate a VM from the host
+    # list; the microvm host module starts them from its side.
+    microvmConfigurations = {
+      vm-agents = nixpkgs.lib.nixosSystem {
+        inherit system;
+        specialArgs = {
+          inherit system inputs;
+          pkgs-unstable = null; # guests never reference the unstable set
+          nixos-version = nixos-version;
+          nixosConfigurations = {};
+          microvmConfigurations = {};
+          configName = "vm-agents";
+        };
+        modules = [./hosts/vms/vm-agents.nix];
+      };
+    };
 
     deploy.nodes =
       builtins.mapAttrs (host: config: {

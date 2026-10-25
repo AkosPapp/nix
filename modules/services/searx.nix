@@ -70,7 +70,7 @@
             limiter = false;
           };
 
-          # Enable JSON format for API calls like n8n
+          # Enable JSON format for API calls from scripts and agents
           search = {
             formats = [
               "html"

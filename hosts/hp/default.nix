@@ -132,6 +132,12 @@ in {
   imports = [./hardware-configuration.nix];
 
   MODULES.networking.tailscale.hostIP = "100.92.36.52";
+  # hp runs unattended (no physical access path except tailscale): restart tailscaled
+  # when it hangs offline (4 probes * 90 s), so a wedged session can't orphan it again.
+  MODULES.networking.tailscale.watchdog.enable = true;
+  # Nightly: pull litellm/omniroute/trilium images, recreate a container only when its
+  # image actually changed (docker-images-update.nix).
+  MODULES.virtualisation.docker-images-update.enable = true;
   MODULES.services.syncthing.deviceID = "ST66PS2-5LYQY5J-LNI3FR4-3VLG7W3-F4ZHRS2-72NZMBG-QVWV2QD-6SB2DQF";
   # The notes graph, down here so the Hermes agent can read it. `path` stays legion5's path on
   # purpose: that string is the Syncthing folder ID *and* the peer-matching key (see
@@ -240,6 +246,16 @@ in {
     hermes-backend.serviceConfig.BindPaths = [notes-bind];
     matrix-reader.serviceConfig.BindReadOnlyPaths = [notes-bind];
 
+    # /var/lib/pgdump should be the zfs dataset zroot/persist/hp/dump (that is what makes
+    # the logical dump ride the L2 push to akos01). PLAN's manual `zfs create` before the
+    # first 00:05 timer becomes this idempotent pre-start instead: tmpfiles creates the
+    # mountpoint empty at boot, the dataset lands on the empty dir at first use, later
+    # runs no-op. The leading "-" is systemd's ignore-failure marker (dataset exists /
+    # dir busy), so no shell is needed; if the dir ever holds files before the dataset
+    # exists, create fails soft and dumps keep writing to the plain dir - same as before,
+    # just visible via `zfs list` when checked.
+    znapzend-pg-dump.serviceConfig.ExecStartPre = "-${pkgs.zfs}/sbin/zfs create -o mountpoint=/var/lib/pgdump zroot/persist/hp/dump";
+
     split-dns = {
       description = "Regenerate dnsmasq's VPN-dependent split-DNS include";
       # A transient dnsmasq restart failure must not stop the timer from retrying.
@@ -325,6 +341,10 @@ in {
   PROFILES.zroot.enable = true;
   PROFILES.server.enable = true;
   MODULES.security.sops.enable = true;
+  # No X11 / ssh-agent auth on a server (2026-10-24 audit #8): nobody graphs onto hp, and a
+  # forwarded agent is every key it holds. The laptop (legion5) keeps both.
+  MODULES.networking.sshd.x11Forwarding = false;
+  MODULES.networking.sshd.agentAuth = false;
   # MODULES.system.printing.enable = true;
   # services.printing.openFirewall = true;
   # services.printing.listenAddresses = [
@@ -411,21 +431,107 @@ in {
   # litellm.nix.
   MODULES.services.litellm.public.enable = true;
   MODULES.services.prometheus.enable = true;
+  # 21 GiB box; eval fails if the LIMITS table's MemoryHigh lines stop fitting (PLAN.md §1.2).
+  MODULES.system.limits.memoryBudget = "18G";
+  # Author the §1.7 PSI-pressure alert rules here; Syncthing ships them to every Prometheus.
+  MODULES.system.limits.managePressureRules = true;
+  # PLAN.md §2 Tier A + §3.4: per-service containment specs live in modules/security/jail.nix
+  # (fleet table, enable=false default); flipped on here only for units that exist on this
+  # host with a resolvable jail user (phpfpm/trilium/omniroute run as root today - they need a
+  # User= before they can ride the uid-based egress chains). Every deny is LOGged
+  # "egress-deny-<jail>: " into journald -> Loki. Flip `backend = "microvm"` per row when §6
+  # lands; the spec carries over unchanged.
+  MODULES.security.jails.postgresql.enable = true;
+  MODULES.security.jails.matrixSynapse.enable = true;
+  MODULES.security.jails.matrixMas.enable = true;
+  MODULES.security.jails.mautrix-whatsapp.enable = true;
+  MODULES.security.jails.mautrix-signal.enable = true;
+  MODULES.security.jails.mautrix-slack.enable = true;
+  MODULES.security.jails.mautrix-discord.enable = true;
+  MODULES.security.jails.mautrix-jabber.enable = true;
+  MODULES.security.jails.homepage.enable = true;
+  MODULES.security.jails.searx.enable = true;
+  MODULES.security.jails.prometheus.enable = true;
+  MODULES.security.jails.loki.enable = true;
+  MODULES.security.jails.grafana.enable = true;
+  MODULES.security.jails.syncthing.enable = true;
+  MODULES.security.jails.firefly.enable = true;
+  # PLAN §3: auditd + execve keys for the code-running class (hermes IS the agent uid -
+  # paseo-hermes shares it; matrix-synapse's tree is static so execve is near-silent) + the
+  # journald forwarder + Grafana paging rules. Container workloads run as root's uid and are
+  # covered by their jails' egress LOGs, not execve keys.
+  MODULES.security.audit.enable = true;
+  # PLAN §4: znapzend L1 snapshots + the §4.2 fleet schedule; persist/hp replicates to
+  # akos01 (L2) - daemon on the source, destination pruned as part of replication.
+  MODULES.system.znapzend = {
+    enable = true;
+    sshKeySecret = "znapzend/ssh_key_b64";
+    # lands on zroot/persist/hp/dump -> rides the recursive push to akos01
+    pgDumpDir = "/var/lib/pgdump";
+    jobs = [
+      {
+        dataset = "zroot/root";
+        plan = "1d=>1h,2w=>1d,8w=>1w";
+      }
+      {
+        dataset = "zroot/persist/hp";
+        plan = "1d=>1h,2w=>1d,8w=>1w";
+        destinations.akos01 = {
+          host = "root@akos01";
+          dataset = "zroot/persist/hp";
+        };
+      }
+      # The laptop replica this box receives: local snapshots only (§4.2 row 3).
+      {
+        dataset = "zroot/persist/legion5";
+        plan = "1d=>1h,2w=>1d,8w=>1w";
+      }
+    ];
+  };
+  # PLAN §6: microVM host - prototype guest proves the pipeline before any jail flips
+  # backend = "microvm" (jail.nix refuses the flip until the name is in this list).
+  MODULES.system.microvmHost = {
+    enable = true;
+    vms = ["vm-agents"];
+  };
 
-  # Agent-building UI: LLM calls go through the gateway above (n8n.nix). apiKeySecret stays unset until the one-time manual step
-  # n8n.nix's `apiKeySecret` option documents (create a Public API key from n8n's own UI, since
-  # nothing can mint one before a human has logged in once) - until then it comes up with no
-  # pre-created credentials, which is still a fully usable instance.
-  MODULES.services.n8n.enable = true;
-  MODULES.services.n8n.ownerEmail = "it.akos.papp@gmail.com";
-  MODULES.services.n8n.sandbox.enable = true;
-  # AI Assistant/Agent code-execution sandbox (privileged Docker-in-Docker runner) - see
-  # n8n-sandbox.nix's enable option before running this alongside anything else on this host.
-  MODULES.services.n8n-sandbox.enable = true;
+  # PLAN §7: east-west service graph in observe mode (log-only) + the passive Suricata
+  # tap (hp is the tailnet aggregation point - one tap is enough); flip
+  # MODULES.security.serviceGraph.enforce after a week of explainable sg-seen logs
+  # (query {unit="kernel"} |= "sg-seen" / {job=~".*suricata.*"} in Loki).
+  MODULES.security.serviceGraph = {
+    enable = true;
+    suricata.enable = true;
+    allow = [
+      # step-ca issuance arrives over the tailnet from every enrollment (incl. VMs later).
+      {
+        name = "step-ca";
+        ports = [config.PORTS.stepCa];
+        from = ["100.64.0.0/10"];
+      }
+      # znapzend push target is ssh (covered); the laptop replica arrives over tailscale
+      # too - nothing extra needed yet, this list is where host-local edges will land.
+    ];
+  };
 
-  # Second chat UI, alongside Open WebUI - see librechat.nix. (The mcp-switchboard hub that used
-  # to feed both this and n8n's MCP nodes was removed entirely; see git history.)
-  MODULES.services.librechat.enable = true;
+  MODULES.security.audit.execUsers = [
+    "postgres"
+    "hermes"
+    "paseo"
+    "matrix-synapse"
+  ];
+
+  # Coroot observability hub: ClickHouse + Coroot + node-agent (see modules/services/coroot.nix).
+  # UI at https://coroot.hp over Tailscale. 2026-10-25: every fleet host gets its own Coroot
+  # server; this one visualises hp. akos01 no longer pushes here - it runs its own server
+  # (coroot.<akos01's domain>); any future agentEnable-only host would still point HERE.
+  # After first start: log in as admin with the one-time password
+  # `sudo grep AUTH_BOOTSTRAP_ADMIN_PASSWORD /var/lib/coroot/secrets.env` (root-only, self-deletes
+  # after a week), then set the Coroot cluster's logs source to Loki in Settings.
+  MODULES.services.coroot.enable = true;
+
+  # n8n, the n8n-sandbox runner and LibreChat were removed from the fleet on 2026-10-24
+  # (PLAN.md §1.5) - the chat UIs that remain are Open WebUI and Omniroute's own.
 
   # Paseo control plane - see hosts/hp/RUNBOOK/RUNBOOK-paseo.md + modules/services/paseo.nix. The hub
   # daemon serves https://paseo.hp (tailnet), the relay is the one public piece (Funnel port
@@ -480,6 +586,67 @@ in {
             low = effort "low";
             medium = effort "medium";
             xhigh = effort "xhigh";
+          };
+          cost = {
+            input = 0.0;
+            output = 0.0;
+            cache_read = 0.0;
+            cache_write = 0.0;
+          };
+        };
+      };
+    };
+    # Backup for when this host's litellm is down (from another machine's point of view): the
+    # same model straight from the futurelab Aqueduct gateway, restated verbatim from
+    # users/akos.nix. Bare model id on purpose - "futurelab/..." is the LiteLLM wildcard
+    # spelling, the Aqueduct gateway lists the name without a prefix.
+    providers.futurelab = {
+      displayName = "FutureLab (Aqueduct)";
+      baseURL = "https://futurelab.robo4you.at/v1";
+      apiKeySecret = "futurelab_api_key";
+      models = {
+        "qwen3.8-flash-next" = {
+          contextLength = 262144;
+          outputLength = 32768;
+          modalities = {
+            input = ["text" "image" "video"];
+            output = ["text"];
+          };
+          options = {
+            chat_template_kwargs = {
+              thinking = true;
+              reasoning_effort = "xhigh";
+            };
+          };
+          variants = {
+            off = {
+              enable_thinking = false;
+              chat_template_kwargs.thinking = false;
+            };
+            low = {
+              chat_template_kwargs = {
+                thinking = true;
+                reasoning_effort = "low";
+              };
+            };
+            medium = {
+              chat_template_kwargs = {
+                thinking = true;
+                reasoning_effort = "medium";
+              };
+            };
+            xhigh = {
+              chat_template_kwargs = {
+                thinking = true;
+                reasoning_effort = "xhigh";
+              };
+            };
+          };
+          cost = {
+            input = 0.0;
+            output = 0.0;
+            cache_read = 0.0;
+            cache_write = 0.0;
           };
         };
       };

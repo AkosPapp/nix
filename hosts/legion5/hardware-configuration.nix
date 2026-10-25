@@ -105,6 +105,14 @@
       };
     };
 
-    users.users.root.hashedPassword = "$y$j9T$gEhP/0Jlrlwb4ndmLs06L1$7qkdPdgqjCrEH8bAQvJqRn/Mj4m5X9GCRAyM33z0mdA";
+    # Console-root password from sops, distinct from the akos account's (2026-10-24 audit #1;
+    # the old hash was committed and shared with hp's root and akos). Rotate:
+    #   sops set sops/secrets.yaml '["passwords","root"]' '"$(mkpasswd -m yescrypt)"'
+    # and re-deploy. neededForUsers: users-activation runs before sops' normal phase.
+    sops.secrets."passwords/root" = {
+      neededForUsers = true;
+      mode = "0400";
+    };
+    users.users.root.hashedPasswordFile = config.sops.secrets."passwords/root".path;
   };
 }

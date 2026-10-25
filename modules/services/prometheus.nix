@@ -58,6 +58,7 @@ in {
               "meminfo"
               "netdev"
               "netstat"
+              "pressure"
               "stat"
               "time"
               "uname"
@@ -347,8 +348,8 @@ in {
       # Worth having beyond the usual request rates and latencies: the gateway is the only
       # component that can see a backend host being cooled out of rotation after a failure,
       # and litellm_deployment_state carries that. It is also the only place token counts
-      # exist at all, since nothing scrapes the vLLM instances directly - they are
-      # socket-activated, and scraping them on a timer would defeat the idle unload exactly
+      # exist at all, since nothing scrapes the backend instances directly - they are
+      # on-demand, and scraping them on a timer would defeat the idle unload exactly
       # the way LiteLLM's own background health checks did.
       #
       # The path stays /metrics even with SERVER_ROOT_PATH set: FastAPI's root_path changes
@@ -401,60 +402,27 @@ in {
 
       services.open-webui.environment = {
         ENABLE_OTEL = "True";
-        # Metrics only. Traces are gated separately and would need somewhere to put spans;
-        # Prometheus isn't that, and nothing here runs Tempo/Jaeger.
+        # Metrics to Prometheus (which is the OTLP receiver), traces to Coroot - coroot's
+        # Tracing page is the only span store in the fleet (it runs ClickHouse; grafana OSS
+        # cannot store OTLP). Both export verbatim per-signal: the full path is part of the
+        # endpoint, so signal-specific env vars do the split.
         ENABLE_OTEL_METRICS = "True";
+        ENABLE_OTEL_TRACES =
+          if config.MODULES.services.coroot.enable
+          then "True"
+          else "False";
         # Open WebUI defaults to the OTLP/gRPC exporter, which Prometheus's receiver doesn't
         # speak - it accepts OTLP over HTTP only.
         OTEL_METRICS_OTLP_SPAN_EXPORTER = "http";
-        # Passed to the exporter verbatim (no /v1/metrics is appended for us). Samples arrive
+        OTEL_OTLP_SPAN_EXPORTER = "http";
+        # Passed to the exporters verbatim (no path is appended for us). Samples arrive
         # tagged job="open-webui" from OTEL_SERVICE_NAME's default.
         OTEL_METRICS_EXPORTER_OTLP_ENDPOINT = "http://127.0.0.1:${toString config.PORTS.prometheus}/api/v1/otlp/v1/metrics";
+        OTEL_EXPORTER_OTLP_ENDPOINT = "http://127.0.0.1:${toString config.PORTS.coroot}/v1/traces";
         # Match globalConfig.scrape_interval above rather than the 10s OTel default, so pushed
         # series have the same resolution as every scraped one.
         OTEL_METRICS_EXPORT_INTERVAL_MILLIS = "5000";
       };
-    })
-
-    (mkIf (cfg.enable && config.MODULES.services.n8n.enable && config.MODULES.services.n8n.metrics) {
-      # n8n serves its own /metrics natively (N8N_METRICS=true in n8n.nix) with no auth of its
-      # own - same shape as the traefik/syncthing/immich jobs above.
-      services.prometheus.scrapeConfigs = [
-        {
-          job_name = "n8n";
-          static_configs = [
-            {
-              targets = ["127.0.0.1:${toString config.PORTS.n8n}"];
-            }
-          ];
-        }
-      ];
-    })
-
-    (mkIf (cfg.enable && config.MODULES.services.librechat.enable && config.MODULES.services.librechat.metrics) {
-      # Own endpoint (bearer JWT via METRICS_SECRET, same shape mcp-context-forge's
-      # /metrics/prometheus used to have) - see librechat.nix's sops.templates."librechat.env".
-      #
-      # librechat.nix's own "librechat/metrics_secret" is owned root:root 0400 for its env
-      # template - unreadable by the prometheus user that scrapes this. Declare it again under
-      # its own key, owned by prometheus, same pattern as "prometheus/litellm_master_key" above.
-      sops.secrets."prometheus/librechat_metrics_secret" = {
-        key = "librechat/metrics_secret";
-        owner = "prometheus";
-        mode = "0400";
-      };
-
-      services.prometheus.scrapeConfigs = [
-        {
-          job_name = "librechat";
-          static_configs = [
-            {
-              targets = ["127.0.0.1:${toString config.PORTS.librechat}"];
-            }
-          ];
-          authorization.credentials_file = config.sops.secrets."prometheus/librechat_metrics_secret".path;
-        }
-      ];
     })
 
     (mkIf (cfg.enable && config.MODULES.services.matrix.enable) {

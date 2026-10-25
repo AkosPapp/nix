@@ -107,8 +107,8 @@ in {
     # Ordering only, not a dependency: the UI starts fine without the gateway and retries, but
     # if both come up at boot it would otherwise render an empty model list until the first
     # manual refresh. `wants` is deliberately absent - litellm.service is already wantedBy
-    # multi-user. This orders against the gateway, not against vLLM: the servers behind it are
-    # socket-activated and deliberately not running until someone asks for a model.
+    # multi-user. This orders against the gateway, not against the backends: the servers behind it
+    # are on-demand and deliberately not running until someone asks for a model.
     systemd.services.open-webui.after = lib.optional config.MODULES.services.litellm.enable "litellm.service";
   };
 }

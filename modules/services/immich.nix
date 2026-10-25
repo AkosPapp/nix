@@ -26,7 +26,6 @@
     inherit system;
     config = {
       allowUnfree = true;
-      allowBroken = true;
       cudaSupport = true;
     };
   };
@@ -135,6 +134,10 @@ in {
 
       services.immich.settings.server.externalDomain = config.MODULES.networking.traefik.urlOf "immich";
 
+      # Pinned off (2026-10-24 audit #10): the default allows anyone who can load the URL to
+      # create an account, and the tailnet/Funnel scoping was the only thing preventing it.
+      services.immich.settings.server.signUpDisabled = true;
+
       # Point the server at every AI host discovered above, not just its own local worker.
       services.immich.settings.machineLearning.urls = aiHostUrls;
 
@@ -155,6 +158,13 @@ in {
 
       MODULES.networking.traefik.enable = true;
       MODULES.networking.traefik.services.immich = "127.0.0.1:${toString config.PORTS.immich}";
+
+      # The nixpkgs immich module runs its own Postgres here (with pgvector) and connects over
+      # the unix socket as the same-named OS user - an explicit peer line under the hardened
+      # pg_hba (PLAN.md §2.1) keeps that working while closing the default catch-alls. Only the
+      # full-server gate needs it: the ML-only path (below) strips database/redis out.
+      MODULES.services.postgres.enable = true;
+      MODULES.services.postgres.socketPeerRoles = [config.services.immich.database.user];
     })
 
     (mkIf cfg.machineLearning.enable {
@@ -177,7 +187,12 @@ in {
         "/dev/nvidia-modeset"
       ];
 
-      networking.firewall.allowedTCPPorts = [config.PORTS.immichMachineLearning];
+      # The worker listens on 0.0.0.0 above - it has to: this host's own server reaches it on
+      # localhost, other hosts' servers on the tailscale IP, and Immich gives the worker only a
+      # single bind address. The auth story is the firewall instead (2026-10-24 audit #3): the
+      # worker has no authentication of its own, so the port opens on tailscale0 only, matching
+      # ollama/traefik. LAN or internet peers can neither feed it jobs nor read its outputs.
+      networking.firewall.interfaces.tailscale0.allowedTCPPorts = [config.PORTS.immichMachineLearning];
 
       # A machine-learning-only host has no database/redis/server of its own - strip them out so
       # immich-server doesn't spin up and crash-loop hunting for a database that isn't there.
