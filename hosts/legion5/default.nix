@@ -250,6 +250,11 @@ in {
     modelContextLength = 262144;
     modelOutputLength = 32768;
     modelThinkingLevels = ["low" "medium" "xhigh"];
+    # Let pi discover every model the LiteLLM gateway serves (pi-models-discovery extension,
+    # fetched from npm) instead of only the hand-curated one: new gateway models show up in
+    # /model without an edit here. The futurelab backup below stays static - Aqueduct is a
+    # one-model endpoint. opencode has no equivalent (custom providers are catalog-only).
+    modelDiscoverModels = true;
     # Same model, dialled around hp when litellm.hp is unreachable: the futurelab Aqueduct
     # gateway takes the bare model id (only LiteLLM spells it "futurelab/..."). Picked by hand
     # in pi/opencode's model selector - nothing here fails over automatically. Key comes from

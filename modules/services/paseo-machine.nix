@@ -79,9 +79,33 @@
   # exact "provider/modelId" so it is a default for THIS model and changes nothing about any other
   # model pi might drive. pi writes this same file when the user saves a level with Ctrl+S, which
   # is why the prepare script merges this fragment instead of replacing the file.
+  #
+  # packages: when model discovery is on, this is what pulls the official pi-models-discovery
+  # extension - pi reads package declarations from settings.json and installs them (from npm)
+  # itself at the first startup or /reload.
   piSettings = pkgs.writeText "paseo-machine-pi-settings.json" (builtins.toJSON {
+    packages =
+      lib.optionals cfg.modelDiscoverModels [{source = "npm:pi-models-discovery";}];
     modelThinkingLevels = {"${cfg.modelProvider}/${cfg.modelId}" = cfg.modelThinkingDefault;};
   });
+
+  # Where model discovery is enabled, the discovered litellm inventory replaces the static
+  # entries by id - including cfg.modelId, whose advertised metadata carries no thinking info.
+  # The override re-asserts exactly what the hand-curated entry says for this model, so the
+  # wildcard-discovered "futurelab/qwen3.8-flash-next" still thinks the way LiteLLM's gateway
+  # wants: vLLM-style chat-template kwargs, with the level map in compat (pi lifts compat
+  # reasoning/thinkingLevelMap to the model's top level, the other keys through as-is).
+  qwenDiscoveryOverride = lib.optionalAttrs (hasModelThinking && cfg.modelDiscoverModels) {
+    compat = {
+      reasoning = true;
+      thinkingFormat = "chat-template";
+      chatTemplateKwargs = {
+        thinking = {"$var" = "thinking.enabled";};
+        reasoning_effort = {"$var" = "thinking.effort";};
+      };
+      thinkingLevelMap = piThinkingLevelMap;
+    };
+  };
 
   # The model's own body, spelled per harness but shared between the primary model and the
   # optional backup provider - the backup reuses them because its point is serving the same
@@ -193,14 +217,22 @@
         # Primary + optional backup under one map (backup entries merge at the provider level).
         piProviders =
           {
-            "${cfg.modelProvider}" = {
-              baseUrl = cfg.modelBaseUrl;
-              api = "openai-completions";
-              apiKey = "$PASEO_MODEL_API_KEY";
-              models = [
-                ({id = cfg.modelId;} // piModelAttrs)
-              ];
-            };
+            "${cfg.modelProvider}" =
+              {
+                baseUrl = cfg.modelBaseUrl;
+                api = "openai-completions";
+                apiKey = "$PASEO_MODEL_API_KEY";
+                models = [
+                  ({id = cfg.modelId;} // piModelAttrs)
+                ];
+                # When on, the pi-models-discovery extension lists every model the gateway's
+                # /v1/models serves (litellm grows this without config edits here); the static
+                # entry above stays as the offline fallback. Discovered defaults are zero cost.
+              }
+              // lib.optionalAttrs cfg.modelDiscoverModels {
+                discoverModels = true;
+                modelOverrides."${cfg.modelId}" = qwenDiscoveryOverride;
+              };
           }
           // backupPiProviders;
       in
@@ -291,6 +323,9 @@
             # user's own keys survive, the ones we name are asserted, and pi re-asserts them on
             # every daemon start (so a level saved with Ctrl+S lasts until the next restart). An
             # unparseable file is set aside rather than eaten.
+            #
+            # packages gets list-appended rather than deep-merged - jq's * operator replaces
+            # arrays wholesale, which would eat packages the user installs with `pi install`.
             s_target="${userCfg.home}/${s.path}"
             s_dir="$(dirname "$s_target")"
             mkdir -p "$s_dir"
@@ -299,7 +334,7 @@
             if [ -s "$s_target" ] && ! ${pkgs.jq}/bin/jq -e . "$s_target" >/dev/null 2>&1; then
               cp -f "$s_target" "$s_target.paseo-backup"
               cp ${s.file} "$s_tmp"
-            elif [ -s "$s_target" ] && ${pkgs.jq}/bin/jq -s '.[0] * .[1]' "$s_target" ${s.file} >"$s_tmp"; then
+            elif [ -s "$s_target" ] && ${pkgs.jq}/bin/jq -s '((.[0] * .[1]) + (if ((.[0].packages // []) | length) == 0 and ((.[1].packages // []) | length) == 0 then {} else {packages: ((.[0].packages // []) + (.[1].packages // []) | unique_by(if type == "object" then .source else . end))} end))' "$s_target" ${s.file} >"$s_tmp"; then
               :
             else
               cp ${s.file} "$s_tmp"
@@ -581,6 +616,25 @@ in {
         Both harnesses still let the user change it per session (/thinking, opencode's variant
         picker); pi re-asserts this level on every daemon start, so a level saved there with Ctrl+S
         lasts until then. Must be one of modelThinkingLevels.
+      '';
+    };
+
+    modelDiscoverModels = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Fetch the pi model list from the gateway instead of the static catalog: adds
+        "discoverModels": true to the pi provider entry, which makes the official
+        pi-models-discovery extension (pulled from npm via the settings.json packages fragment)
+        GET {baseUrl}/models and register every model it serves. The gateway's model list then
+        grows without editing this module; litellm.nix's dashboard-only model additions pick up
+        automatically.
+
+        Defaults of the discovered entries: zero cost, reasoning on with pi's standard levels
+        (xhigh/max pinned off), 1M context. modelOverrides re-asserts the curated thinking
+        configuration for cfg.modelId, and the static catalog entry stays as the offline
+        fallback for when the gateway is unreachable. opencode has no such feature for custom
+        OpenAI-compatible providers, so this is pi-only.
       '';
     };
 
