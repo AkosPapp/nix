@@ -752,6 +752,21 @@ in {
   MODULES.services.sftpgo.enable = true;
   MODULES.services.i2pd.enable = false;
   MODULES.services.immich.machineLearning.enable = true;
+  # The immich SERVER moved to akos01, but the pre-migration immich database stayed
+  # on this box's shared postgres, and the L3 dumpall (MODULES.system.znapzend's
+  # pgDumpDir) reads every database on this cluster. That DB carries a REGISTERED
+  # vchord extension (immich 3.x created it while the server was still here), so on
+  # a bare package pg_dumpall dies at pg_get_indexdef on every vchord index:
+  # 'could not access file "vchord"'. Re-added exactly what the nixpkgs immich module
+  # shipped while services.immich.database.enable was still set here - same package
+  # version, same preload. Retire together with the leftover DB itself.
+  services.postgresql = {
+    extensions = ps: [
+      ps.pgvector
+      ps.vectorchord
+    ];
+    settings.shared_preload_libraries = ["vchord.so"];
+  };
   # MODULES.services.transmission.enable = true;
   MODULES.services.searx.enable = true;
   MODULES.nix.substituters.airlab-attic.enable = true;

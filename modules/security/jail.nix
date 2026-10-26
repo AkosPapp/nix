@@ -549,7 +549,19 @@
       RestrictSUIDSGID = lib.mkForce h.restrictSuidSgid;
       ProtectKernelModules = lib.mkForce h.protectKernelModules;
       ProtectKernelTunables = lib.mkForce h.protectKernelTunables;
-      ReadWritePaths = j.readWritePaths;
+      # The syncthing jail must own every folder it syncs: an unprivileged daemon
+      # writes .stfolder markers, incoming files and .stignore INTO the folder, and
+      # strict mode turns anything not named here read-only. The first hp activation
+      # with this jail proved the cost of missing a folder: the notes share went
+      # read-only, the .stignore POST of syncthing-init 500'd forever under curl
+      # --retry 1000, and activation timed out into magic-rollback. Folders are
+      # derived from the host's shares instead of the table row so no per-host path
+      # can drift out of sync with MODULES.services.syncthing.shares.
+      ReadWritePaths =
+        j.readWritePaths
+        ++ lib.optionals (name == "syncthing") (
+          map (f: f.path) (builtins.attrValues (config.services.syncthing.folders or {}))
+        );
       BindPaths = j.bindPaths;
       BindReadOnlyPaths = j.bindReadOnlyPaths;
       InaccessiblePaths = map (x: "-${x}") j.inaccessiblePaths;

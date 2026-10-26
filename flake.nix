@@ -150,6 +150,11 @@
     deploy.nodes =
       builtins.mapAttrs (host: config: {
         hostname = host;
+        # The magic-rollback waiter starts counting when activation begins, and hp's
+        # unit-start phase (postgres, docker-coroot, ollama, the microVMs, ...) runs
+        # well past deploy-rs' 30s default - a healthy 2026-10-26 switch was rolled
+        # back for taking ~2min. 10min keeps the safety net without eating itself.
+        confirmTimeout = 600;
         profiles.system = {
           sshUser = "root";
           user = "root";

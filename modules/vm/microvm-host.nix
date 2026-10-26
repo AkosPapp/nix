@@ -99,6 +99,14 @@ in {
       );
     };
 
+    # The API socket lives in /run/microvm (microvm.socket in the guest config),
+    # which nothing creates - upstream cannot, the path is a downstream choice:
+    # the first hp run of the unit crash-looped on 'Failed to bind and run the
+    # HTTP server: No such file or directory' (2026-10-26). RuntimeDirectory=
+    # gives the directory to the unit that needs it, before ExecStart, with the
+    # unit's own User/Group (microvm:kvm) on it.
+    systemd.services."microvm@".serviceConfig.RuntimeDirectory = "microvm";
+
     # The bridge below is systemd-networkd configuration. Hosts that use useNetworkd as
     # their backend get it for free; NetworkManager hosts (hp) must opt in explicitly -
     # the systemd.network module only renders units and starts networkd when
@@ -107,6 +115,13 @@ in {
     # ever sees what it is configured for, and the unmanaged-devices keys below stop NM
     # from racing over the bridge and the guests' taps.
     systemd.network.enable = true;
+    # wait-online must not gate activation on NM/dhcpcd hosts: networkd's whole
+    # link set here is the bridge and the guest taps, and mvbr0 sits in
+    # 'configuring' (no carrier until the first tap enslaves) - the unit burned
+    # its 120s timeout and then failed the 2026-10-26 activation for it. Nothing
+    # downstream loses: the VM runners order against network.target, not 'online',
+    # and a NAT bridge has no upstream to be online to.
+    systemd.network.wait-online.enable = false;
     networking.networkmanager.unmanaged =
       lib.optionals
       config.networking.networkmanager.enable

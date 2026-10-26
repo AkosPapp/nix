@@ -178,6 +178,10 @@ in {
       ];
       # Runs as postgres via su: pg_dumpall must speak to the socket as the superuser
       # role, while the output dir and the retention prune stay root-owned.
+      # Every binary is absolute-pathed: writeShellScript's service PATH is only
+      # coreutils/findutils/grep/sed/systemd (no gzip), and su no longer lives in
+      # pkgs.shadow on this nixpkgs - it is the separate setuid pkgs.su derivation
+      # (both bites made the first 2026-10-26 run of this service die at exit 127).
       systemd.services.znapzend-pg-dump = {
         description = "Daily pg_dumpall into ${cfg.pgDumpDir} (PLAN §4.1 L3)";
         serviceConfig.Type = "oneshot";
@@ -185,9 +189,9 @@ in {
           set -euo pipefail
           mkdir -p ${cfg.pgDumpDir}
           out="${cfg.pgDumpDir}/${config.networking.hostName}-$(date +%F).sql.gz"
-          ${pkgs.shadow}/bin/su -s ${pkgs.bash}/bin/bash postgres -c '${
+          ${pkgs.su}/bin/su -s ${pkgs.bash}/bin/bash postgres -c '${
             config.services.postgresql.package
-          }/bin/pg_dumpall' | gzip > "$out.part"
+          }/bin/pg_dumpall' | ${pkgs.gzip}/bin/gzip > "$out.part"
           mv "$out.part" "$out"
           chmod 0600 "$out"
           # 8 weeks, mirroring the narrowest fleet retention; the replicated copy on the

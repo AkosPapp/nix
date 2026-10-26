@@ -42,9 +42,10 @@
           # an authored home. dump = §4.1 L3 landing point for the nightly pg_dumpall,
           # recursive-replicated to akos01 as a child of persist/hp.
           #
-          # Live-box parity (already-present chain is NOT recreated by disko, so verify
-          # once after deploy):
-          #   zfs get mountpoint zroot/persist zroot/persist/hp   # -> /persist /persist/hp
+          # Live-box parity (already-present chain is NOT recreated by disko) - the two
+          # manual steps below were applied to the live pool on 2026-10-26:
+          #   zfs set mountpoint=/persist zroot/persist      (was the /zroot/persist default)
+          #   zfs set mountpoint=/persist/hp zroot/persist/hp
           #   zfs create -o mountpoint=/var/lib/pgdump zroot/persist/hp/dump   # new child
           "persist" = {
             type = "zfs_fs";
@@ -54,9 +55,18 @@
             type = "zfs_fs";
             mountpoint = "/persist/hp";
           };
+          # dump is what killed the first 2026-10-26 deploy: declaring a dataset makes disko
+          # emit a REQUIRED mount for its mountpoint, the dataset did not exist yet, the
+          # failing var-lib-pgdump.mount failed local-fs.target, and systemd pulled in
+          # emergency.target mid-activation (magic-rollback recovered the box, but only a
+          # console reboot did after that). The znapzend-pg-dump ExecStartPre in
+          # hosts/hp/default.nix creates the dataset lazily, so this mount is intentionally
+          # not load-bearing: nofail turns a missing dump dataset back into a plain
+          # `zfs list` gap instead of an emergency shell.
           "persist/hp/dump" = {
             type = "zfs_fs";
             mountpoint = "/var/lib/pgdump";
+            mountOptions = [ "defaults" "nofail" ];
           };
           # create a nested dataset named persist/hp/sftpgo
           "persist/hp/sftpgo" = {
