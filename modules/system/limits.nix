@@ -329,26 +329,26 @@
           "hermes-backend"
         ];
         tasks = 256;
-        cpu = "100%";
-        memHigh = "512M";
-        memMax = "768M";
+        cpu = "200%";
+        memHigh = "1G";
+        memMax = "1536M";
         note = "LLM-directed executors; the existing hermes sandbox is the wall's inner face.";
       };
       paseo = {
         when = c: (c.MODULES.services.paseo.enable or false);
         units = ["paseo-daemon"];
         tasks = 256;
-        cpu = "100%";
-        memHigh = "512M";
-        memMax = "768M";
+        cpu = "200%";
+        memHigh = "1G";
+        memMax = "1536M";
       };
       paseoHermes = {
         when = c: (c.MODULES.services.paseo-hermes.enable or false);
         units = ["paseo-hermes"];
         tasks = 256;
-        cpu = "100%";
-        memHigh = "512M";
-        memMax = "768M";
+        cpu = "200%";
+        memHigh = "1G";
+        memMax = "1536M";
       };
       vaultwarden = {
         when = c: (c.services.vaultwarden.enable or false);

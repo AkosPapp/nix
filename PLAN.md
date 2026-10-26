@@ -81,7 +81,7 @@ is a self-DoS, not a sandbox. GPU/LLM units get slack; boring units get tight ca
 | trilium / librechat / homepage / searx | 128      | 100%     | 256M       | 384M      | boring-tier, one default                           |
 | sftpgo / transmission                  | 128      | 100%     | 256M       | 512M      | transmission: `IOWeight=10` (bfq, §1.6)            |
 | matrix bridges (mautrix-*)             | 64       | 50%      | 192M       | 256M      | one process each                                   |
-| hermes-agent / paseo / opencode        | 256      | 100%     | 512M       | 768M      | already has `sandbox` in hermes-agent.nix          |
+| hermes-agent / paseo / opencode        | 256      | 200%     | 1G         | 1536M     | 2026-10-26: 512M high pin-froze the cron workers (133k memory.high events, peak 630M) |
 | dnsmasq                                | 16       | 25%      | 32M        | 64M       |                                                    |
 | zfs-exporter, node-exporter, smartd    | 16       | 10%      | 32M        | 64M       | monitoring must survive everyone else              |
 | **floor for the host itself**          | —        | —        | —          | —         | sanoid/syncoid, journald, systemd: ~2 G unreserved |

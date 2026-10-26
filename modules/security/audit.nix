@@ -33,7 +33,16 @@
       "-a always,exit -F arch=b64 -S mount -S umount2 -S pivot_root -k mount"
       "-a always,exit -F arch=b64 -S init_module -S finit_module -S delete_module -k modules"
       "-a always,exit -F arch=b64 -S ptrace -k ptrace"
-      "-a exit,always -F arch=b64 -S bpf -S kexec_load -k kernel"
+      "-a exit,always -F arch=b64 -S kexec_load -k kernel"
+      # Deliberately NO `-S bpf` watch here: coroot-node-agent's eBPF collection calls
+      # bpf() hundreds of times per second, so a global bpf syscall log is not "rare by
+      # construction" on any audit host of this fleet - on hp it wrote 3.2 G of audit.log
+      # in 9 h, overflowed the audit backlog (196 s cumulative task-blocking, and the
+      # audit-target uids' execve rules pay that stall: hermes' 2026-10-26 20:00 cron
+      # workers blew their 30 s ack window), and the audit-forward -> journald -> alloy
+      # -> loki replay of that backlog pinned the machine at load 10/8. A flooded audit
+      # is a silent audit anyway; coroot's own inventory lists loaded eBPF programs.
+      # If bpf witnessing is ever wanted again, it must be on hosts without an agent.
       "-w /etc/shadow -p wa -k secret-access"
       "-w /etc/sudoers -p wa -k secret-access"
       "-w /etc/sudoers.d/ -p wa -k secret-access"
