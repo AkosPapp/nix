@@ -66,7 +66,7 @@
           "persist/hp/dump" = {
             type = "zfs_fs";
             mountpoint = "/var/lib/pgdump";
-            mountOptions = [ "defaults" "nofail" ];
+            mountOptions = ["defaults" "nofail"];
           };
           # create a nested dataset named persist/hp/sftpgo
           "persist/hp/sftpgo" = {

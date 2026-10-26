@@ -112,10 +112,11 @@
         # peers the flake doesn't know about resolvable, just slowly.
         echo "server=/${tailnetDnsName}/100.100.100.100"
         ${lib.concatMapStringsSep "\n    " (z: ''
-          echo 'address=/${z.domain}/${z.ip}'
-          echo 'address=/${z.domain}.${tailnetDnsName}/${z.ip}'
-          echo 'address=/${z.domain}.${selfFqdn}/${z.ip}'
-        '') tailnetZones}
+        echo 'address=/${z.domain}/${z.ip}'
+        echo 'address=/${z.domain}.${tailnetDnsName}/${z.ip}'
+        echo 'address=/${z.domain}.${selfFqdn}/${z.ip}'
+      '')
+      tailnetZones}
         # glibc qualifies bare names with `networking.domain` (this host's tailnet FQDN), dnsmasq
         # forwards those to MagicDNS, MagicDNS answers authoritatively SERVFAIL for a sub-name of
         # a peer - and dnsmasq then never answers its client at all (measured 2026-10-26: the

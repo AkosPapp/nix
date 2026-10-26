@@ -258,6 +258,7 @@
         pkgs-unstable.cursor-cli
         pkgs-unstable.gitkraken
         pkgs-unstable.picocom
+        pkgs-unstable.xxd
         pkgs-unstable.rpi-imager
         pkgs-unstable.gparted
         pkgs-unstable.perf-tools
