@@ -37,11 +37,19 @@
     ip = h.config.MODULES.networking.tailscale.hostIP;
   }) (lib.removeAttrs nixosConfigurations [configName]));
 
-  # dnsmasq's dynamic include, regenerated on a timer. While tailscale is connected, its zone
-  # (MagicDNS) is forwarded and every other host's zone resolves to that host's tailscale IP.
-  # robo4you.at points at r4uai01's netbird IP only while its route leaves through wt0 and it
-  # answers the zone; otherwise none of those lines exist and dnsmasq falls through to the public
-  # servers. The file is only replaced (and dnsmasq restarted) when its contents change.
+  tailnetDnsName = config.MODULES.networking.tailscale.tailnetDnsName;
+  # `networking.domain` (modules/networking/tailscale.nix) = this host's tailnet FQDN, so glibc
+  # qualifies every bare name as <name>.<selfFqdn> before trying the name itself.
+  selfFqdn = "${configName}.${tailnetDnsName}";
+  selfIP = config.MODULES.networking.tailscale.hostIP;
+
+  # dnsmasq's dynamic include, regenerated on a timer. While tailscale is connected, every other
+  # host's zone and tailnet FQDN resolve to that host's tailscale IP - including the search-
+  # qualified form glibc tries first - and MagicDNS is only a fallback for unknown peers. The
+  # /airlab/ forward exists only while wlo1 holds a lab address. robo4you.at points at r4uai01's
+  # netbird IP only while its route leaves through wt0 and it answers the zone; otherwise none of
+  # those lines exist and dnsmasq falls through to the public servers. The file is only replaced
+  # (and dnsmasq restarted) when its contents change.
   splitDns = pkgs.writeShellScript "split-dns" ''
     export PATH="${lib.makeBinPath [
       config.systemd.package
@@ -99,9 +107,34 @@
 
     {
       if [ "$tailscale_up" = 1 ]; then
-        echo "server=/${config.MODULES.networking.tailscale.tailnetDnsName}/100.100.100.100"
-        ${lib.concatMapStringsSep "\n    " (z: "echo 'address=/${z.domain}/${z.ip}'") tailnetZones}
+        # Only a fallback now: forwards into MagicDNS crawl (or stall outright, see below), so
+        # every name that matters is answered by the address= lines instead. This keeps tailnet
+        # peers the flake doesn't know about resolvable, just slowly.
+        echo "server=/${tailnetDnsName}/100.100.100.100"
+        ${lib.concatMapStringsSep "\n    " (z: ''
+          echo 'address=/${z.domain}/${z.ip}'
+          echo 'address=/${z.domain}.${tailnetDnsName}/${z.ip}'
+          echo 'address=/${z.domain}.${selfFqdn}/${z.ip}'
+        '') tailnetZones}
+        # glibc qualifies bare names with `networking.domain` (this host's tailnet FQDN), dnsmasq
+        # forwards those to MagicDNS, MagicDNS answers authoritatively SERVFAIL for a sub-name of
+        # a peer - and dnsmasq then never answers its client at all (measured 2026-10-26: the
+        # same query <30ms direct, forever via dnsmasq; even the NOERROR replies arrive ~3s
+        # late). Every plain-name lookup on the box stalled ~10s behind that first search
+        # domain, which is how the homepage dashboards became "inaccessible". The qualified
+        # forms of known hosts are answered locally instead, and the own subtree becomes
+        # authoritative here: an unknown qualified name gets a fast NXDOMAIN so glibc proceeds
+        # to the bare name, never through the swallowed forward.
+        echo "host-record=${selfFqdn},${selfIP}"
+        echo "local=/${selfFqdn}/"
       fi
+      # AirLab's server only answers on the lab LAN. Forwarding the zone while away is a silent
+      # black hole - and the lab hands out `airlab` as search domain, so that black hole sat in
+      # front of every bare name (and the lab has a machine of its own named `hp`, which shadowed
+      # the tailnet zone outright). The line exists only while wlo1 holds a lab address.
+      case $(ip -4 -o addr show dev wlo1 2>/dev/null) in
+        *"inet 10.50."*) echo "server=/airlab/10.50.20.2" ;;
+      esac
       if [ "$netbird_up" = 1 ]; then
         echo "server=/$netbird_zone/$netbird_dns"
       fi
@@ -376,7 +409,8 @@ in {
   # One local resolver (dnsmasq) instead of systemd-resolved, because the split depends on
   # whether each VPN is actually usable:
   # - public backups, in the requested order: 9.9.9.9, 1.1.1.1, 8.8.8.8
-  # - AirLab's DNS only for its zone (the DHCP-provided servers are otherwise ignored)
+  # - AirLab's DNS only for its zone, and only while wlo1 is on the lab LAN (in the dynamic
+  #   include below; the DHCP-provided servers are otherwise ignored)
   # - Tailscale's MagicDNS and the other hosts' Traefik zones only while tailscale is connected
   # - robo4you.at via netbird's r4uai01 (100.124.160.88) only while wt0 is up, the route to it
   #   leaves through wt0, and it answers the zone. netbird's advertised 172.18.0.1 is this host's
@@ -408,7 +442,6 @@ in {
         "9.9.9.9"
         "1.1.1.1"
         "8.8.8.8"
-        "/airlab/10.50.20.2"
       ];
       conf-dir = "/run/dnsmasq.d,*.conf";
     };

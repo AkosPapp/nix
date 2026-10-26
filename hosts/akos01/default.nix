@@ -13,8 +13,15 @@
     ip = h.config.MODULES.networking.tailscale.hostIP;
   }) (lib.removeAttrs nixosConfigurations [configName]));
 
-  # dnsmasq's dynamic include, regenerated on a timer. While tailscale is connected, its zone
-  # (MagicDNS) is forwarded and every other host's zone resolves to that host's tailscale IP.
+  tailnetDnsName = config.MODULES.networking.tailscale.tailnetDnsName;
+  # `networking.domain` (modules/networking/tailscale.nix) = this host's tailnet FQDN, so glibc
+  # qualifies every bare name as <name>.<selfFqdn> before trying the name itself.
+  selfFqdn = "${configName}.${tailnetDnsName}";
+  selfIP = config.MODULES.networking.tailscale.hostIP;
+
+  # dnsmasq's dynamic include, regenerated on a timer. While tailscale is connected, every other
+  # host's zone and tailnet FQDN resolve to that host's tailscale IP - including the search-
+  # qualified form glibc tries first - and MagicDNS is only a fallback for unknown peers.
   # robo4you.at points at r4uai01's netbird IP only while its route leaves through wt0 and it
   # answers the zone; otherwise none of those lines exist and dnsmasq falls through to the public
   # servers. The file is only replaced (and dnsmasq restarted) when its contents change.
@@ -75,8 +82,25 @@
 
     {
       if [ "$tailscale_up" = 1 ]; then
-        echo "server=/${config.MODULES.networking.tailscale.tailnetDnsName}/100.100.100.100"
-        ${lib.concatMapStringsSep "\n    " (z: "echo 'address=/${z.domain}/${z.ip}'") tailnetZones}
+        # Only a fallback now: forwards into MagicDNS crawl (or stall outright, see below), so
+        # every name that matters is answered by the address= lines instead. This keeps tailnet
+        # peers the flake doesn't know about resolvable, just slowly.
+        echo "server=/${tailnetDnsName}/100.100.100.100"
+        ${lib.concatMapStringsSep "\n    " (z: ''
+          echo 'address=/${z.domain}/${z.ip}'
+          echo 'address=/${z.domain}.${tailnetDnsName}/${z.ip}'
+          echo 'address=/${z.domain}.${selfFqdn}/${z.ip}'
+        '') tailnetZones}
+        # glibc qualifies bare names with `networking.domain` (this host's tailnet FQDN), dnsmasq
+        # forwards those to MagicDNS, MagicDNS answers authoritatively SERVFAIL for a sub-name of
+        # a peer - and dnsmasq then never answers its client at all (measured on legion5
+        # 2026-10-26: the same query <30ms direct, forever via dnsmasq; even the NOERROR replies
+        # arrive ~3s late). Every plain-name lookup on the box stalled ~10s behind that first
+        # search domain. The qualified forms of known hosts are answered locally instead, and the
+        # own subtree becomes authoritative here: an unknown qualified name gets a fast NXDOMAIN
+        # so glibc proceeds to the bare name, never through the swallowed forward.
+        echo "host-record=${selfFqdn},${selfIP}"
+        echo "local=/${selfFqdn}/"
       fi
       if [ "$netbird_up" = 1 ]; then
         echo "server=/$netbird_zone/$netbird_dns"
