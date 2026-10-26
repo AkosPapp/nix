@@ -117,7 +117,7 @@ in {
     collectorUrl = mkOption {
       type = types.nullOr types.str;
       default = null;
-      example = "http://100.92.36.52:8080";
+      example = "http://100.83.255.5:8080";
       description = ''
         Override for the agent's server endpoint. Null (the default) derives it: loopback on the
         server host, the server host's Tailscale IP everywhere else.

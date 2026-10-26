@@ -280,11 +280,11 @@ in {
     MODULES.services.homepage.enable = true;
     MODULES.services.prometheus.enable = true;
     MODULES.services.loki.enable = true;
-    # Coroot server on this host too (2026-10-25): each fleet host now has its OWN Coroot
-    # server + web UI - this one visualises only akos01. Its UI publishes through Traefik
-    # on this host (coroot.<this host's domain>); the local eBPF agent pushes to it over
-    # loopback. Data stays local - this is NOT a replacement for hp's hub, which keeps
-    # visualising hp (and any agentEnable-only host still points there).
+    # Coroot server - THE fleet aggregation point since 2026-10-26: hp's own server half was
+    # disabled and hp (plus the vm-agents guest) now push here as agents; this server
+    # visualises the whole fleet. UI publishes through Traefik on this host
+    # (coroot.<this host's domain>); the local eBPF agent pushes to it over loopback.
+    # The multi-server mode itself remains supported (see modules/services/coroot.nix).
     MODULES.services.coroot.enable = true;
     # PLAN §2 Tier A + §3.4 egress LOG (see modules/security/jail.nix; hp carries the full
     # data-tier set). postgresql here serves the Immich stack over the unix socket; the deny

@@ -546,14 +546,14 @@ in {
     "matrix-synapse"
   ];
 
-  # Coroot observability hub: ClickHouse + Coroot + node-agent (see modules/services/coroot.nix).
-  # UI at https://coroot.hp over Tailscale. 2026-10-25: every fleet host gets its own Coroot
-  # server; this one visualises hp. akos01 no longer pushes here - it runs its own server
-  # (coroot.<akos01's domain>); any future agentEnable-only host would still point HERE.
-  # After first start: log in as admin with the one-time password
-  # `sudo grep AUTH_BOOTSTRAP_ADMIN_PASSWORD /var/lib/coroot/secrets.env` (root-only, self-deletes
-  # after a week), then set the Coroot cluster's logs source to Loki in Settings.
-  MODULES.services.coroot.enable = true;
+  # Coroot: node-agent only on hp (2026-10-26: the server half - UI + ClickHouse - was
+  # disabled here and aggregation moved to akos01, the fleet's single Coroot server).
+  # The agent pushes over Tailscale to akos01's collector (derived serverHost), hp is
+  # visualised in that server's UI (coroot.<akos01's domain>); the old per-host servers
+  # (2026-10-25) left the hp-local data in the now-orphaned coroot-data and
+  # coroot-clickhouse-data docker volumes. Loopback OTLP emitters (litellm, open-webui)
+  # key off coroot.enable and switch their trace export off on this host by themselves.
+  MODULES.services.coroot.agentEnable = true;
 
   # n8n, the n8n-sandbox runner and LibreChat were removed from the fleet on 2026-10-24
   # (PLAN.md §1.5) - the chat UIs that remain are Open WebUI and Omniroute's own.

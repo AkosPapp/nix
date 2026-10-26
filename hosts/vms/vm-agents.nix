@@ -62,7 +62,8 @@
 
   # coroot-node-agent, package build (modules/services/coroot.nix's packageAgent path is
   # host-only - its server half references fleet MODULES options this guest lacks). Pushes
-  # to hp's Coroot server (tailscale IP spelled out; a guest sees no nixosConfigurations).
+  # to akos01's Coroot server (tailscale IP spelled out; a guest sees no nixosConfigurations;
+  # 2026-10-26: was hp, whose server half was disabled and aggregation moved to akos01).
   # Loopback listener on 8141 = PORTS.corootNodeAgent, kept in sync by eye. The guest
   # kernel is stock nixpkgs, so CONFIG_DEBUG_INFO_BTF is on - the CO-RE probes need it.
   systemd.services.coroot-node-agent = {
@@ -78,7 +79,7 @@
       ExecStart = ''
         ${pkgs.coroot-node-agent}/bin/coroot-node-agent \
           --listen=127.0.0.1:8141 \
-          --collector-endpoint=http://100.92.36.52:8080 \
+          --collector-endpoint=http://100.83.255.5:8080 \
           --cgroupfs-root=/sys/fs/cgroup \
           --wal-dir=/var/lib/coroot-node-agent
       '';
