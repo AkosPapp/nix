@@ -26,11 +26,24 @@ in {
           server = {
             http_listen_address = "127.0.0.1";
             http_listen_port = config.PORTS.loki;
+            # Ring traffic (querier->scheduler/ingester) is process-internal in target=all;
+            # bind it to loopback too (it defaulted to 0.0.0.0:9095 - see the common.instance_addr
+            # note below for why anything else self-DoSes loki under the fleet's jails).
+            grpc_listen_address = "127.0.0.1";
+            grpc_listen_port = config.PORTS.lokiGrpc;
           };
 
           common = {
             path_prefix = dataDir;
             replication_factor = 1;
+            # 2026-10-26, coroot incident anivwpvh: loki auto-detects its ring instance address
+            # from the first non-loopback interface = ens18's LAN IP, and dials its OWN
+            # scheduler/ingester there. The §3.4 egress jail (modules/security/jail.nix) rightly
+            # REJECTs loki dialling the LAN - so target=all rejected itself and every query
+            # 500'd (100% availability burn on both hosts). Advertising loopback makes the
+            # self-dial a loopback hop (the one thing the jail must allow; see the loki row's
+            # allowedLoopbackTCPPorts) instead of a lateral one.
+            instance_addr = "127.0.0.1";
             storage.filesystem = {
               chunks_directory = "${dataDir}/chunks";
               rules_directory = "${dataDir}/rules";

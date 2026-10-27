@@ -9,6 +9,13 @@
   cfg = config.MODULES.services.paseo;
   traefik = config.MODULES.networking.traefik;
 
+  # What model.id can do, straight from the fleet model catalogue
+  # (modules/services/model-catalog.nix) whenever it knows the model - the one source the
+  # interactive opencode entry (via its module defaults), MODULES.services.paseo-machine and
+  # hermes-agent.nix read too, so the install paths can no longer drift apart. null = the
+  # model is not catalogued: the installer options then fall back to omitting the fields.
+  modelCatalogEntry = config.MODULES.services.modelCatalog.models.${cfg.model.id} or null;
+
   paseoCli = pkgs.callPackage ../../packages/paseo/cli.nix {};
   paseoRelay = pkgs.callPackage ../../packages/paseo/relay.nix {};
 
@@ -1464,24 +1471,32 @@ in {
         '';
       };
 
+      # All four default to the fleet model catalogue's entry for model.id, so the installers,
+      # the opencode module defaults and the hermes agent describe one model from one table.
+      # Set one here only to override that entry for the installers specifically.
       contextLength = mkOption {
         type = types.nullOr types.ints.positive;
-        default = 262144;
+        default =
+          if modelCatalogEntry != null
+          then modelCatalogEntry.contextLength
+          else null;
+        defaultText = lib.literalExpression "MODULES.services.modelCatalog.models.${cfg.model.id}.contextLength";
         example = 131072;
         description = ''
           Context window of model.id in tokens - what the gateway actually serves. Written as pi's
           contextWindow and opencode's limit.context. null omits both and leaves the harnesses
           guessing, and pi guesses 128000: it then compacts its history at contextWindow - 16384
-          (~111K) instead of using the window it was handed. Keep this in step with model.id, and
-          with MODULES.services.paseo-machine.modelContextLength and the interactive entry in
-          users/akos.nix - three copies of one number, because the three install paths describe the
-          same model to two harnesses in two dialects.
+          (~111K) instead of using the window it was handed.
         '';
       };
 
       outputLength = mkOption {
         type = types.nullOr types.ints.positive;
-        default = 32768;
+        default =
+          if modelCatalogEntry != null
+          then modelCatalogEntry.outputLength
+          else null;
+        defaultText = lib.literalExpression "MODULES.services.modelCatalog.models.${cfg.model.id}.outputLength";
         example = 16384;
         description = ''
           Max output tokens of model.id: pi's maxTokens, opencode's limit.output. pi guesses 16384
@@ -1492,7 +1507,11 @@ in {
 
       thinkingLevels = mkOption {
         type = types.listOf types.str;
-        default = ["low" "medium" "xhigh"];
+        default =
+          if modelCatalogEntry != null
+          then modelCatalogEntry.thinkingLevels
+          else [];
+        defaultText = lib.literalExpression "MODULES.services.modelCatalog.models.${cfg.model.id}.thinkingLevels";
         example = ["low" "medium"];
         description = ''
           Thinking levels model.id accepts, weakest first, spelled the way the gateway spells
@@ -1506,7 +1525,11 @@ in {
 
       thinkingDefault = mkOption {
         type = types.str;
-        default = "xhigh";
+        default =
+          if modelCatalogEntry != null
+          then modelCatalogEntry.thinkingDefault
+          else "xhigh";
+        defaultText = lib.literalExpression "MODULES.services.modelCatalog.models.${cfg.model.id}.thinkingDefault";
         example = "medium";
         description = ''
           Thinking level a session starts on: opencode's base model options (what it sends until a

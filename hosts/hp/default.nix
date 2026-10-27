@@ -2,158 +2,8 @@
   config,
   pkgs,
   lib,
-  nixosConfigurations,
-  configName,
   ...
-}: let
-  # Other hosts' Traefik zones (by default their host name: legion5, akos01, ...) and the Tailscale IP
-  # behind each. Generated from the flake, so a new host needs no edit here.
-  tailnetZones = lib.filter (z: z.ip != null) (lib.mapAttrsToList (host: h: {
-    domain = h.config.MODULES.networking.traefik.domain;
-    ip = h.config.MODULES.networking.tailscale.hostIP;
-  }) (lib.removeAttrs nixosConfigurations [configName]));
-
-  tailnetDnsName = config.MODULES.networking.tailscale.tailnetDnsName;
-  # `networking.domain` (modules/networking/tailscale.nix) = this host's tailnet FQDN, so glibc
-  # qualifies every bare name as <name>.<selfFqdn> before trying the name itself.
-  selfFqdn = "${configName}.${tailnetDnsName}";
-  selfIP = config.MODULES.networking.tailscale.hostIP;
-
-  # dnsmasq's dynamic include, regenerated on a timer. While tailscale is connected, every other
-  # host's zone and tailnet FQDN resolve to that host's tailscale IP - including the search-
-  # qualified form glibc tries first - and MagicDNS is only a fallback for unknown peers.
-  # robo4you.at points at r4uai01's netbird IP only while its route leaves through wt0 and it
-  # answers the zone; otherwise none of those lines exist and dnsmasq falls through to the public
-  # servers. The file is only replaced (and dnsmasq restarted) when its contents change.
-  splitDns = pkgs.writeShellScript "split-dns" ''
-    export PATH="${lib.makeBinPath [
-      config.systemd.package
-      config.services.tailscale.package
-      config.services.netbird.package
-      pkgs.coreutils
-      pkgs.jq
-      pkgs.iproute2
-      pkgs.dnsutils
-      pkgs.diffutils
-    ]}"
-
-    conf=/run/dnsmasq.d/split.conf
-    mkdir -p "$(dirname "$conf")"
-
-    netbird_dns=100.124.160.88
-    netbird_zone=robo4you.at
-
-    # tailscale0 survives `tailscale down`, so ask the backend instead of the interface.
-    tailscale_up=0
-    if ip link show dev tailscale0 up >/dev/null 2>&1; then
-      state=$(timeout 2 tailscale status --json 2>/dev/null | jq -r '.BackendState // empty') || state=
-      if [ "$state" = "Running" ]; then
-        tailscale_up=1
-      fi
-    fi
-
-    # wt0 having an address proves nothing: the daemon can sit disconnected for hours with the
-    # interface left in place, and every query dnsmasq forwards into it blackholes - including
-    # netbird's own lookup of its management host, which turns one dropout into a permanent
-    # lockout. Ask the daemon instead: connected to Signal AND at least one relay available or
-    # one peer connected (peers legitimately sit Idle on a lazy mesh, so relays carry most of
-    # the "data plane alive" vote). Only then the zone probe still has to answer.
-    netbird_up=0
-    if ip link show dev wt0 up >/dev/null 2>&1; then
-      nb=$(timeout 3 netbird status --json 2>/dev/null | jq -r \
-        '[.signal.connected // false, (.relays.available // 0), (.peers.connected // 0)] | @tsv') || nb=
-      case "$nb" in
-        true*)
-          route=$(ip route get "$netbird_dns" 2>/dev/null) || route=
-          case " $route " in
-            *" dev wt0 "*)
-              relays=$(cut -f2 <<<"$nb")
-              peers=$(cut -f3 <<<"$nb")
-              if [ "$relays" -gt 0 ] 2>/dev/null || [ "$peers" -gt 0 ] 2>/dev/null; then
-                if [ -n "$(dig +time=1 +tries=3 +short "@$netbird_dns" "$netbird_zone" SOA 2>/dev/null)" ]; then
-                  netbird_up=1
-                fi
-              fi
-              ;;
-          esac
-          ;;
-      esac
-    fi
-
-    {
-      if [ "$tailscale_up" = 1 ]; then
-        # Only a fallback now: forwards into MagicDNS crawl (or stall outright, see below), so
-        # every name that matters is answered by the address= lines instead. This keeps tailnet
-        # peers the flake doesn't know about resolvable, just slowly.
-        echo "server=/${tailnetDnsName}/100.100.100.100"
-        ${lib.concatMapStringsSep "\n    " (z: ''
-        echo 'address=/${z.domain}/${z.ip}'
-        echo 'address=/${z.domain}.${tailnetDnsName}/${z.ip}'
-        echo 'address=/${z.domain}.${selfFqdn}/${z.ip}'
-      '')
-      tailnetZones}
-        # glibc qualifies bare names with `networking.domain` (this host's tailnet FQDN), dnsmasq
-        # forwards those to MagicDNS, MagicDNS answers authoritatively SERVFAIL for a sub-name of
-        # a peer - and dnsmasq then never answers its client at all (measured on legion5
-        # 2026-10-26: the same query <30ms direct, forever via dnsmasq; even the NOERROR replies
-        # arrive ~3s late). Every plain-name lookup on the box stalled ~10s behind that first
-        # search domain. The qualified forms of known hosts are answered locally instead, and the
-        # own subtree becomes authoritative here: an unknown qualified name gets a fast NXDOMAIN
-        # so glibc proceeds to the bare name, never through the swallowed forward.
-        echo "host-record=${selfFqdn},${selfIP}"
-        echo "local=/${selfFqdn}/"
-      fi
-      if [ "$netbird_up" = 1 ]; then
-        echo "server=/$netbird_zone/$netbird_dns"
-      fi
-      # The tunnel must never have to resolve its own front door: robo4you.at routes into
-      # netbird, so netbird.robo4you.at gets a permanent longest-match exception to the public
-      # resolvers - emitted whether or not the zone line is present, so netbird's bootstrap
-      # lookup can never depend on the connection it needs that lookup to establish.
-      echo "server=/netbird.$netbird_zone/9.9.9.9"
-      echo "server=/netbird.$netbird_zone/1.1.1.1"
-    } > "$conf.new"
-
-    if ! cmp -s "$conf.new" "$conf"; then
-      mv "$conf.new" "$conf"
-      systemctl restart dnsmasq
-    else
-      rm -f "$conf.new"
-    fi
-  '';
-
-  # The timer below is the backstop; this is the fast path. `ip monitor` streams the same
-  # netlink events udev sees, so a VPN interface, address or route landing (netbird's wt0,
-  # tailscale's routes flushed on down) wakes the updater within ~1s instead of up to a poll
-  # interval plus script runtime. One burst of events (a reconnect flaps several routes)
-  # collapses to a single updater run, and `systemctl start` waits for it, serialising runs.
-  splitDnsWatch = pkgs.writeShellScript "split-dns-watch" ''
-    export PATH="${lib.makeBinPath [
-      pkgs.iproute2
-      config.systemd.package
-      pkgs.coreutils
-    ]}"
-    while IFS= read -r _; do
-      # Give whoever changed the network a beat to finish, drain the rest of the burst, then trigger.
-      sleep 1
-      while IFS= read -r -t 1 _; do :; done
-      systemctl start split-dns.service || true
-    done < <(exec ip monitor link address route)
-  '';
-
-  # PDF and JSON tooling for the Hermes agent, its cron jobs, and root's shell.
-  # enableLanguages must be pinned: the tesseract wrapper's default is *every*
-  # language (~1 GB of traineddata). eng is mandatory alongside (tessdata bug).
-  agentTools = with pkgs; [
-    poppler-utils # pdftotext, pdfimages, pdfinfo (attr renamed from poppler_utils)
-    pdfgrep
-    jq
-    (tesseract.override {enableLanguages = ["eng" "deu"];}) # scanned-PDF OCR, German
-    # This nixpkgs' plain ffmpeg is the full build (libx264/x265, freetype/drawtext),
-    # verified against the locked flake's derivation - no need for ffmpeg-full here.
-    ffmpeg
-  ];
-in {
+}: {
   imports = [./hardware-configuration.nix];
 
   MODULES.networking.tailscale.hostIP = "100.92.36.52";
@@ -163,6 +13,18 @@ in {
   # Nightly: pull litellm/omniroute/trilium images, recreate a container only when its
   # image actually changed (docker-images-update.nix).
   MODULES.virtualisation.docker-images-update.enable = true;
+
+  # VPN-aware split DNS (modules/networking/dns/split-dns.nix): dnsmasq becomes the system
+  # resolver, the tailnet/netbird forwards follow the VPNs' real state, and tailscaled stops
+  # managing resolv.conf. hp is the fleet's exit node and accepts tailnet routes; the AirLab
+  # forward is static here because the box physically sits in the lab.
+  MODULES.networking.dns.splitDns = {
+    enable = true;
+    advertiseExitNode = true;
+    labForward.enable = true;
+  };
+  networking.enableIPv6 = false;
+
   MODULES.services.syncthing.deviceID = "ST66PS2-5LYQY5J-LNI3FR4-3VLG7W3-F4ZHRS2-72NZMBG-QVWV2QD-6SB2DQF";
   # The notes graph, down here so the Hermes agent can read it. `path` stays legion5's path on
   # purpose: that string is the Syncthing folder ID *and* the peer-matching key (see
@@ -177,191 +39,14 @@ in {
       # the parent dir's owner:group, which an unprivileged syncthing cannot do into a group it is
       # not a member of (syncthing must never join `hermes`) -> every finalize fails with
       # "copy owner from parent: lchown: invalid argument" and the folder retries forever. The
-      # 2755 setgid bit below already gives new files group=hermes through kernel inheritance,
-      # which is all the agent's read access needs.
+      # 2755 setgid bit the hermes module's tmpfiles rules already give new files group=hermes
+      # through kernel inheritance, which is all the agent's read access needs.
       extra_devices = ["phone"];
       # git stays on legion5; hp only wants the markdown. Ignore patterns are per-device, so this
       # doesn't change what legion5 and the phone exchange with each other.
       ignorePatterns = ["/.git"];
     }
   ];
-  # hp's syncthing already runs as the `syncthing` uid for the grafana/prometheus shares, so the
-  # notes folder goes next to those instead of under /var/lib/hermes: reaching a share inside
-  # /var/lib/hermes would mean either the hermes group (2770 = *group writable*, so a network-facing
-  # daemon could delete the agent's own state) or an execute-only POSIX ACL, which this ZFS dataset
-  # does not support. It is world-readable for the same reason dashboardsDir is: the agent runs in a
-  # user namespace, where foreign uids show up as nobody and only the `other` bits carry.
-  systemd.tmpfiles.rules = [
-    # dnsmasq's dynamic include directory, written by the split-dns service below.
-    "d /run/dnsmasq.d 0755 root root -"
-    "d /var/lib/notes 2755 syncthing hermes - -"
-    # The agent's own note folder (inside the share, so its notes sync like any other file).
-    # The 2775 is the whole scope of its write access: every other directory in the share stays
-    # 2755, so outside hermes/ the agent can create or replace nothing.
-    "d /var/lib/notes/hermes 2775 syncthing hermes - -"
-  ];
-  # Per-session escalation for the whole share, run by hand as root - the agent has no root in
-  # its sandbox and must not gain any: broad write access then exists only between an explicit
-  # `grant` and the next `revoke`, and a reboot reasserts the tmpfiles modes anyway. No rebuild
-  # involved, so it works while a chat session is live.
-  environment.systemPackages =
-    [
-      (pkgs.writeShellScriptBin "hermes-notes-edit" ''
-        set -eu
-
-        if [ "$#" -lt 1 ]; then
-          echo "usage: hermes-notes-edit grant|revoke|status" >&2
-          exit 2
-        fi
-
-        # Everything in the share except syncthing's own state.
-        walk() {
-          find /var/lib/notes -not -path '*/.stfolder*' -not -name '.stignore' "$@"
-        }
-
-        case "$1" in
-          grant)
-            # g+w on directories lets the agent replace files; on files, edit them in place.
-            # New folders synced in afterwards need another grant pass (status shows the damage).
-            walk -type d -exec chmod g+w '{}' +
-            walk -type f -exec chmod g+w '{}' +
-            echo "granted: hermes can edit every file in the notes share"
-            ;;
-          revoke)
-            walk -type d -exec chmod 2755 '{}' +
-            walk -type f -exec chmod 644 '{}' +
-            chmod 2775 /var/lib/notes/hermes
-            echo "revoked: back to the agent's own hermes/ folder only"
-            ;;
-          status)
-            if walk -mindepth 1 -type d -not -path '/var/lib/notes/hermes*' -perm -g+w | grep -q .; then
-              echo "GRANTED: group-writable beyond hermes/:"
-              walk -mindepth 1 -type d -perm -g+w
-            else
-              echo "locked: agent writes limited to /var/lib/notes/hermes"
-            fi
-            ;;
-          *)
-            echo "usage: hermes-notes-edit grant|revoke|status" >&2
-            exit 2
-            ;;
-        esac
-      '')
-    ]
-    ++ agentTools;
-  # The agent's sandbox sees /var/lib/hermes and nothing else, so bind the share into it. The two
-  # Hermes units get it read-write at the mount, but write access is carried by the file modes
-  # instead: 2755 everywhere except /var/lib/notes/hermes (2775), so the kernel denies the agent
-  # create/replace/delete anywhere else while `hermes-notes-edit grant` (above) can still widen it
-  # for one session without a restart. matrix-reader keeps the hard read-only bind - it only ever
-  # reads notes. The `-` prefix keeps the units up if the folder is ever missing.
-  #
-  # One agent-side rule this trades away nothing on but cannot be enforced by modes: the units run
-  # UMask=0077, so a file the agent writes is 0600 and syncthing, reading as `other`, would never
-  # see it. The agent's notes workflow chmods its own files 644 as it writes them.
-  systemd.services = let
-    notes-bind = "-/var/lib/notes:/var/lib/hermes/notes";
-  in {
-    # The Hermes units run with a closed PATH; environment.systemPackages is NOT in
-    # it, so every tool the agent's terminal() or cron shells may execute has to be
-    # listed on the unit itself (the systemd module appends these to the unit PATH).
-    hermes-agent.path = agentTools;
-    hermes-backend.path = agentTools;
-    hermes-agent.serviceConfig.BindPaths = [notes-bind];
-    hermes-backend.serviceConfig.BindPaths = [notes-bind];
-    matrix-reader.serviceConfig.BindReadOnlyPaths = [notes-bind];
-
-    # /var/lib/pgdump should be the zfs dataset zroot/persist/hp/dump (that is what makes
-    # the logical dump ride the L2 push to akos01). PLAN's manual `zfs create` before the
-    # first 00:05 timer becomes this idempotent pre-start instead: tmpfiles creates the
-    # mountpoint empty at boot, the dataset lands on the empty dir at first use, later
-    # runs no-op. The leading "-" is systemd's ignore-failure marker (dataset exists /
-    # dir busy), so no shell is needed; if the dir ever holds files before the dataset
-    # exists, create fails soft and dumps keep writing to the plain dir - same as before,
-    # just visible via `zfs list` when checked.
-    znapzend-pg-dump.serviceConfig.ExecStartPre = "-${pkgs.zfs}/sbin/zfs create -o mountpoint=/var/lib/pgdump zroot/persist/hp/dump";
-
-    split-dns = {
-      description = "Regenerate dnsmasq's VPN-dependent split-DNS include";
-      # A transient dnsmasq restart failure must not stop the timer from retrying.
-      startLimitIntervalSec = 0;
-      serviceConfig = {
-        Type = "oneshot";
-        ExecStart = "${splitDns}";
-      };
-    };
-
-    split-dns-watch = {
-      description = "Trigger split-dns immediately on interface/address/route changes";
-      wantedBy = ["multi-user.target"];
-      # `ip monitor` can die on a netlink buffer overrun; never let the start-limit give up on it.
-      startLimitIntervalSec = 0;
-      serviceConfig = {
-        ExecStart = "${splitDnsWatch}";
-        Restart = "always";
-        RestartSec = "2s";
-      };
-    };
-  };
-  # One local resolver (dnsmasq) instead of systemd-resolved, because the split depends on
-  # whether each VPN is actually usable:
-  # - public backups, in the requested order: 9.9.9.9, 1.1.1.1, 8.8.8.8
-  # - AirLab's DNS only for its zone (the DHCP-provided servers are otherwise ignored)
-  # - Tailscale's MagicDNS and the other hosts' Traefik zones only while tailscale is connected
-  # - robo4you.at via netbird's r4uai01 (100.124.160.88) only while wt0 is up, the route to it
-  #   leaves through wt0, and it answers the zone. netbird's DNS client is disabled in
-  #   users/akos.nix.
-  # The dynamic parts come from splitDns above; dnsmasq is restarted only when its include
-  # actually changes.
-  services.resolved.enable = false;
-
-  services.dnsmasq = {
-    # modules/networking/dns.nix already runs this host's authoritative zone in dnsmasq and
-    # deliberately keeps it off the system resolver; here we also want it to be the system
-    # resolver, and to keep listening on the tailscale address for the authoritative zone.
-    resolveLocalQueries = lib.mkForce true;
-    settings = {
-      # Never adopt the DHCP servers as defaults: the public list below is the fallback.
-      no-resolv = lib.mkForce true;
-      # `no-resolv` already ignores this; drop the module's marker to avoid a startup warning.
-      resolv-file = lib.mkForce [];
-      # The tailscale address may not exist yet when dnsmasq starts.
-      bind-dynamic = lib.mkForce true;
-      listen-address = lib.mkForce [
-        "127.0.0.1"
-        "::1"
-        config.MODULES.networking.tailscale.hostIP
-      ];
-      strict-order = true;
-      server = [
-        "9.9.9.9"
-        "1.1.1.1"
-        "8.8.8.8"
-        "/airlab/10.50.20.2"
-      ];
-      conf-dir = "/run/dnsmasq.d,*.conf";
-    };
-  };
-
-  systemd.timers.split-dns = {
-    wantedBy = ["timers.target"];
-    timerConfig = {
-      OnBootSec = "5s";
-      OnUnitActiveSec = "10s";
-    };
-  };
-
-  # Tailscale still provides the tailnet; dnsmasq forwards its zone explicitly.
-  services.tailscale = {
-    # dnsmasq owns the system resolver, so tailscaled must not manage resolv.conf.
-    extraSetFlags = lib.mkForce [
-      "--accept-dns=false"
-      "--accept-routes=true"
-      "--advertise-exit-node=true"
-    ];
-    useRoutingFeatures = "both";
-  };
-  networking.enableIPv6 = false;
 
   PROFILES.zroot.enable = true;
   PROFILES.server.enable = true;
@@ -493,6 +178,10 @@ in {
     sshKeySecret = "znapzend/ssh_key_b64";
     # lands on zroot/persist/hp/dump -> rides the recursive push to akos01
     pgDumpDir = "/var/lib/pgdump";
+    # PLAN's manual `zfs create` before the first 00:05 timer became this idempotent
+    # ExecStartPre instead (znapzend.nix): the logical dump lands ON the dataset, which is
+    # what makes it ride the L2 push to akos01.
+    pgDumpDataset = "zroot/persist/hp/dump";
     jobs = [
       {
         dataset = "zroot/root";
@@ -554,6 +243,9 @@ in {
   # coroot-clickhouse-data docker volumes. Loopback OTLP emitters (litellm, open-webui)
   # key off coroot.enable and switch their trace export off on this host by themselves.
   MODULES.services.coroot.agentEnable = true;
+  # Coroot RCA -> Postgres metrics for this box's cluster (role+extensions provisioned by
+  # postgresql.nix; credentials go into Coroot's per-app form once per monitored instance).
+  MODULES.services.postgres.corootIntegration.enable = true;
 
   # n8n, the n8n-sandbox runner and LibreChat were removed from the fleet on 2026-10-24
   # (PLAN.md §1.5) - the chat UIs that remain are Open WebUI and Omniroute's own.
@@ -572,110 +264,15 @@ in {
   # opencode (terminal coding agent) on this host, for root's shell. hp has no akos uid, so the
   # module cannot be reached via users/akos.nix and is enabled here directly, with the API-key
   # secret mounted root:root (secretOwner/secretGroup). What root gets is exactly the interactive
-  # setup legion5's akos uses - the package (environment.systemPackages = root's PATH),
-  # /etc/opencode.json + $OPENCODE_CONFIG pointing at it, and the same litellm.hp provider,
-  # model and sops key restated verbatim from users/akos.nix (repo convention: every consumer
-  # restates the catalogue, cf. the paseo-machine block in hosts/legion5/default.nix).
+  # setup legion5's akos uses: the module's default provider catalogue and model come from
+  # modules/services/model-catalog.nix, so only the model choice and the root ownership are
+  # host facts here.
   MODULES.services.opencode = {
     enable = true;
     secretOwner = "root";
     secretGroup = "root";
     defaultModel = "litellm/futurelab/qwen3.8-flash-next";
     smallModel = "litellm/futurelab/qwen3.8-flash-next";
-    providers.litellm = {
-      displayName = "LiteLLM (hp)";
-      baseURL = "https://litellm.hp/v1";
-      apiKeySecret = "opencode/litellm_api_key";
-      models = {
-        "futurelab/qwen3.8-flash-next" = let
-          effort = e: {
-            chat_template_kwargs = {
-              thinking = true;
-              reasoning_effort = e;
-            };
-          };
-        in {
-          contextLength = 262144;
-          outputLength = 32768;
-          modalities = {
-            input = ["text" "image" "video"];
-            output = ["text"];
-          };
-          options = effort "xhigh";
-          variants = {
-            # Variants merge over `options`, so "off" has to switch the base thinking flag off too.
-            off = {
-              enable_thinking = false;
-              chat_template_kwargs.thinking = false;
-            };
-            low = effort "low";
-            medium = effort "medium";
-            xhigh = effort "xhigh";
-          };
-          cost = {
-            input = 0.0;
-            output = 0.0;
-            cache_read = 0.0;
-            cache_write = 0.0;
-          };
-        };
-      };
-    };
-    # Backup for when this host's litellm is down (from another machine's point of view): the
-    # same model straight from the futurelab Aqueduct gateway, restated verbatim from
-    # users/akos.nix. Bare model id on purpose - "futurelab/..." is the LiteLLM wildcard
-    # spelling, the Aqueduct gateway lists the name without a prefix.
-    providers.futurelab = {
-      displayName = "FutureLab (Aqueduct)";
-      baseURL = "https://futurelab.robo4you.at/v1";
-      apiKeySecret = "futurelab_api_key";
-      models = {
-        "qwen3.8-flash-next" = {
-          contextLength = 262144;
-          outputLength = 32768;
-          modalities = {
-            input = ["text" "image" "video"];
-            output = ["text"];
-          };
-          options = {
-            chat_template_kwargs = {
-              thinking = true;
-              reasoning_effort = "xhigh";
-            };
-          };
-          variants = {
-            off = {
-              enable_thinking = false;
-              chat_template_kwargs.thinking = false;
-            };
-            low = {
-              chat_template_kwargs = {
-                thinking = true;
-                reasoning_effort = "low";
-              };
-            };
-            medium = {
-              chat_template_kwargs = {
-                thinking = true;
-                reasoning_effort = "medium";
-              };
-            };
-            xhigh = {
-              chat_template_kwargs = {
-                thinking = true;
-                reasoning_effort = "xhigh";
-              };
-            };
-          };
-          cost = {
-            input = 0.0;
-            output = 0.0;
-            cache_read = 0.0;
-            cache_write = 0.0;
-          };
-        };
-      };
-    };
   };
 
   # Personal agent stack - see RUNBOOK-hermes.md next to this file for the manual steps (sops
@@ -735,7 +332,13 @@ in {
   # bridge above. Runbook: RUNBOOK-xmpp.md.
   MODULES.services.xmpp.enable = true;
 
-  MODULES.services.hermes-agent.enable = true;
+  MODULES.services.hermes-agent = {
+    enable = true;
+    # Bind the Syncthing notes share (the MODULES.services.syncthing.shares entry above) into
+    # the agent's sandbox at <stateDir>/notes, with the tmpfiles modes and the hermes-notes-edit
+    # escalation tool (hermes-agent.nix). hp's syncthing runs as `syncthing` - the default.
+    notes.enable = true;
+  };
 
   # Hermes' calendar, out to the world: a token-gated ICS feed at
   # https://hp.tail546fb.ts.net:8443/ics/<token>/hermes.ics (the token lives in sops as
@@ -785,13 +388,11 @@ in {
   # 'could not access file "vchord"'. Re-added exactly what the nixpkgs immich module
   # shipped while services.immich.database.enable was still set here - same package
   # version, same preload. Retire together with the leftover DB itself.
-  services.postgresql = {
-    extensions = ps: [
-      ps.pgvector
-      ps.vectorchord
-    ];
-    settings.shared_preload_libraries = ["vchord.so"];
-  };
+  services.postgresql.extensions = ps: [
+    ps.pgvector
+    ps.vectorchord
+  ];
+  MODULES.services.postgres.preloadLibraries = ["vchord.so"];
   # MODULES.services.transmission.enable = true;
   MODULES.services.searx.enable = true;
   MODULES.nix.substituters.airlab-attic.enable = true;
@@ -831,4 +432,5 @@ in {
   boot.kernel.sysctl = {
     "net.ipv6.conf.all.disable_ipv6" = 1;
   };
+  MODULES.nix.builders.airlab = true;
 }

@@ -5,7 +5,7 @@
   pkgs-unstable,
   ...
 }: let
-  inherit (lib) mkEnableOption mkIf mkOption types;
+  inherit (lib) mkEnableOption mkIf mkOption literalExpression types;
 
   cfg = config.MODULES.services.opencode;
 
@@ -115,6 +115,64 @@
       };
     };
   };
+
+  # The fleet catalogue (modules/services/model-catalog.nix) rendered in opencode's dialect,
+  # used as the default value of `providers` below. Nothing here is host-specific: a host only
+  # turns the module on and names its models - see the option's description for adding or
+  # replacing entries.
+  # The vLLM chat-template kwargs the fleet's gateways take, per reasoning_effort level.
+  effort = e: {
+    chat_template_kwargs = {
+      thinking = true;
+      reasoning_effort = e;
+    };
+  };
+
+  # One catalogue entry as opencode wants it: `options` is the base every request carries
+  # (thinking on, at the catalogue's default level), and `variants` are the switchable levels.
+  # Variants merge over `options`, so "off" has to clear the base thinking flag too. A model
+  # without thinking levels gets neither options nor variants.
+  ocModel = m: {
+    inherit (m) contextLength outputLength modalities cost;
+    options =
+      if m.thinkingDefault != null
+      then effort m.thinkingDefault
+      else {};
+    variants =
+      lib.optionalAttrs (m.thinkingLevels != []) {
+        off = {
+          enable_thinking = false;
+          chat_template_kwargs.thinking = false;
+        };
+      }
+      // lib.genAttrs m.thinkingLevels effort;
+  };
+
+  catalog = config.MODULES.services.modelCatalog.models;
+
+  defaultProviders = {
+    # Primary: this fleet's LiteLLM gateway on hp - see litellm.nix for what is behind it.
+    # Catalogue keys are the LiteLLM spellings, so the provider map is the catalogue as-is.
+    litellm = {
+      displayName = "LiteLLM (hp)";
+      baseURL = "https://litellm.hp/v1";
+      apiKeySecret = "opencode/litellm_api_key";
+      models = lib.mapAttrs' (_: m: lib.nameValuePair m.litellmName (ocModel m)) catalog;
+    };
+    # Backup for when hp is down: the same models straight from their own gateways (for
+    # futurelab, the Aqueduct endpoint litellm.nix's futurelabEnable wildcard proxies on hp).
+    # No automatic failover in opencode - pick them by hand in the model selector. Keyed by
+    # directName: the vendor prefix only exists in LiteLLM's wildcard spelling, and only models
+    # that list one appear here.
+    futurelab = {
+      displayName = "FutureLab (Aqueduct)";
+      baseURL = "https://futurelab.robo4you.at/v1";
+      apiKeySecret = "futurelab_api_key";
+      models =
+        lib.mapAttrs' (_: m: lib.nameValuePair m.directName (ocModel m))
+        (lib.filterAttrs (_: m: m.directName != null) catalog);
+    };
+  };
 in {
   options.MODULES.services.opencode = {
     enable = mkEnableOption "opencode (the terminal coding agent) with a declarative provider/model catalogue";
@@ -138,10 +196,19 @@ in {
 
     providers = mkOption {
       type = types.attrsOf (types.submodule providerSubmodule);
-      default = {};
+      default = defaultProviders;
+      defaultText = literalExpression "the fleet's shared gateway catalogue (litellm + futurelab)";
       description = ''
         opencode providers, keyed by the id opencode uses for it - also the "<provider>" half of
         defaultModel/smallModel and of any model's full name.
+
+        Defaults to the fleet's shared catalogue (this fleet's LiteLLM gateway plus the
+        futurelab Aqueduct gateway, both serving qwen3.8-flash-next). Since these are option
+        defaults, a consumer just ADDS its own `providers.<id> = {...}` to reach more gateways,
+        and `lib.mkForce` replaces or empties the whole catalogue. The default also means
+        enabling this module pulls the two gateways' sops secrets
+        (opencode/litellm_api_key, futurelab_api_key) onto the host - only for providers
+        actually configured, so a mkForce-d `{}` pulls nothing.
       '';
     };
 
@@ -162,6 +229,45 @@ in {
       default = "users";
       example = "root";
       description = "Group of the mounted provider API-key secrets; see secretOwner.";
+    };
+
+    mcp.playwright = {
+      enable = mkEnableOption ''
+        the Playwright MCP server in opencode's config, letting a session drive a real
+        browser (navigate, click, type, screenshot). Off by default: an agent with hands
+        on a browser is a big capability, so each host opts in explicitly.
+      '';
+
+      package = mkOption {
+        type = types.package;
+        default = pkgs.playwright-mcp;
+        defaultText = literalExpression "pkgs.playwright-mcp";
+        description = "playwright-mcp package opencode spawns as the stdio MCP server.";
+      };
+
+      browser = mkOption {
+        type = types.package;
+        default = pkgs.brave;
+        defaultText = literalExpression "pkgs.brave";
+        description = ''
+          Chromium-based browser Playwright launches, handed to it as
+          --executable-path (with --browser chromium, its engine for any such binary).
+          Playwright starts it as its own instance with a separate persistent profile
+          (~/.cache/ms-playwright by default), never attaching to the user's already
+          running browser - logins made in the automation profile survive restarts but
+          stay out of the daily-driver profile.
+        '';
+      };
+
+      extraArgs = mkOption {
+        type = types.listOf types.str;
+        default = [];
+        example = [
+          "--headless"
+          "--isolated"
+        ];
+        description = "Extra playwright-mcp CLI flags, appended verbatim to the rendered command.";
+      };
     };
   };
 
@@ -243,6 +349,24 @@ in {
       }
       // lib.optionalAttrs (cfg.defaultModel != null) {model = cfg.defaultModel;}
       // lib.optionalAttrs (cfg.smallModel != null) {small_model = cfg.smallModel;}
+      // lib.optionalAttrs cfg.mcp.playwright.enable {
+        # Store paths inline, so no PATH or node/npx at runtime; opencode spawns the
+        # stdio server itself and Playwright only starts the browser once a tool is
+        # called, so headless (e.g. paseo) sessions pay nothing for having it.
+        mcp.playwright = {
+          type = "local";
+          command =
+            [
+              "${lib.getExe cfg.mcp.playwright.package}"
+              "--browser"
+              "chromium"
+              "--executable-path"
+              "${lib.getExe cfg.mcp.playwright.browser}"
+            ]
+            ++ cfg.mcp.playwright.extraArgs;
+          enabled = true;
+        };
+      }
     );
 
     environment.variables.OPENCODE_CONFIG = "/etc/opencode.json";

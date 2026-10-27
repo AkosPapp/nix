@@ -128,6 +128,68 @@ in {
 
       security.audit.rules = kernelRules ++ secretReadRules ++ execRules ++ cfg.extraRules;
 
+      # Locked audit cannot be reprogrammed without a reboot (hp 2026-10-26 21:34: every
+      # deploy since the lock landed died here and deploy-rs rolled back a healthy switch).
+      # While enabled=2 the kernel rejects EVERY auditctl mutation, but nixpkgs'
+      # audit-rules-nixos.service (a) restarts on every activation, because the rules
+      # derivation's store path changes with each generation, and (b) runs `auditctl -R`
+      # (which starts with -D) straight into that lock - exit 1, activation fails,
+      # magic-rollback reverts everything. Its ExecStopPost `-e 0` / `-D` hit the same
+      # lock (status 255) on the stop leg. Both get fixed here:
+      # - restartIfChanged = false keeps a running unit untouched across switches, so the
+      #   boot-time load stays the single rule-loading moment - exactly what "lock" means:
+      #   rules change on reboot, not per switch.
+      # - the lock-tolerant ExecStart covers the case nixpkgs cannot skip: a unit left in
+      #   failed/inactive state by an earlier activation IS re-started by the next switch
+      #   (NixOS starts every enabled unit that is not active). Reading `auditctl -s` is
+      #   always permitted; enabled=2 means the boot rules are already in force, so the
+      #   loader succeeds as a no-op instead of poisoning the activation.
+      # The rules file mirrors nixpkgs' security/audit.nix generator verbatim (-D preamble,
+      # -b/-f/-r, the rule list, final -e) because the module's own `rules` derivation is
+      # a private let-binding - re-check this on any nixpkgs bump of that module.
+      systemd.services.audit-rules-nixos = let
+        auditctl = "${pkgs.audit}/bin/auditctl";
+        fleetAuditRules = pkgs.writeTextDir "audit.rules" ''
+          -D
+          -b ${toString config.security.audit.backlogLimit}
+          -f ${toString
+            {
+              silent = 0;
+              printk = 1;
+              panic = 2;
+            }.${
+              config.security.audit.failureMode
+            }}
+          -r ${toString config.security.audit.rateLimit}
+          ${lib.concatLines config.security.audit.rules}
+          -e ${
+            if config.security.audit.enable == "lock"
+            then "2"
+            else "1"
+          }
+        '';
+      in {
+        restartIfChanged = false;
+        serviceConfig = {
+          # mkForce: multiple modules defining ExecStart would CHAIN (oneshot runs every
+          # line), and the chained nixpkgs `auditctl -R` would fail under the lock again.
+          ExecStart = lib.mkForce (pkgs.writeShellScript "audit-rules-load" ''
+            enabled=$(${auditctl} -s 2>/dev/null | grep '^enabled' | cut -d' ' -f2)
+            if [ "$enabled" = 2 ]; then
+              echo "audit: locked since boot (enabled=2); the loaded rules stay in force until reboot"
+              exit 0
+            fi
+            exec ${auditctl} -R ${fleetAuditRules}/audit.rules
+          '');
+          # The lock always makes these fail; a real stop only happens on shutdown, where
+          # audit goes away with the kernel anyway. `-` = ignore the exit code.
+          ExecStopPost = lib.mkForce [
+            "-${auditctl} -e 0"
+            "-${auditctl} -D"
+          ];
+        };
+      };
+
       # The §3.3 shipper. Root tailer; systemd-cat into the journal. The entry label to
       # query is unit="audit-forward" (Alloy maps __journal__systemd_unit -> unit, and
       # journald attributes the tailed lines to the tailer's unit, not to "audit").

@@ -19,6 +19,7 @@
 {
   config,
   lib,
+  pkgs,
   ...
 }: let
   inherit (lib) mkEnableOption mkIf mkOption mkForce types;
@@ -78,6 +79,46 @@ in {
       ];
       description = "System-user-to-role mappings, each still scoped to a single database.";
     };
+
+    preloadLibraries = mkOption {
+      type = types.listOf types.str;
+      default = [];
+      example = ["vchord.so"];
+      description = ''
+        shared_preload_libraries for this host's Postgres. Consumers declare their entry
+        here (immich: vchord.so; corootIntegration adds pg_stat_statements) - the module
+        owns the settings leaf and mkForce's it, because nixpkgs' immich module defines the
+        same leaf with a plain list and two plain definitions of one option is an eval
+        error. Declare preload HERE, not on services.postgresql.settings.
+      '';
+    };
+
+    corootIntegration = {
+      enable = mkEnableOption ''
+        Coroot's Postgres integration on this host's server (PLAN §4): a login role with
+        pg_monitor, pg_stat_statements in every database, and the preload entry - all
+        provisioned by a oneshot as the postgres user. The password lives in the sops
+        passwordSecret below and goes into Coroot's per-app "Configure Postgres
+        integration" form (port 5432, this role); the hardened pg_hba's loopback
+        scram-sha-256 lines already admit it, nothing opens beyond loopback.
+      '';
+
+      role = mkOption {
+        type = types.strMatching "[a-z_][a-z0-9_]*";
+        default = "coroot";
+        description = ''
+          Login role Coroot connects as. Also gets a same-named database: pq-style clients
+          default dbname to the username, and without it that first connect fails outright.
+          Interpolated into SQL, hence the charset type.
+        '';
+      };
+
+      passwordSecret = mkOption {
+        type = types.str;
+        default = "coroot/postgres_password";
+        description = "sops secret holding the role's password (installed 0400, owned by postgres).";
+      };
+    };
   };
 
   config = mkIf cfg.enable {
@@ -123,5 +164,66 @@ in {
         ]
       )
     );
+
+    # Own the preload leaf (see MODULES.services.postgres.preloadLibraries' description):
+    # mkForce beats nixpkgs-immich's plain definition of the same option instead of
+    # colliding with it; skipped when the host declares nothing, so hosts without a
+    # preload need keep whatever nixpkgs wires by default.
+    services.postgresql.settings.shared_preload_libraries = mkIf (cfg.preloadLibraries != []) (
+      mkForce (
+        lib.unique
+        (cfg.preloadLibraries ++ lib.optionals cfg.corootIntegration.enable ["pg_stat_statements"])
+      )
+    );
+
+    # ---- Coroot Postgres integration (option description above) ------------------------------
+    sops.secrets.${cfg.corootIntegration.passwordSecret} = mkIf cfg.corootIntegration.enable {
+      owner = "postgres";
+      mode = "0400";
+    };
+
+    # The unit runs as the postgres OS user, so the hardened pg_hba's first line
+    # (`local all postgres peer map=postgres`) admits it over the socket - no extra rule,
+    # and the role it creates can only ever reach the cluster through the loopback scram
+    # lines like every other TCP client. Idempotent (IF NOT EXISTS / ALTER / GRANT), so a
+    # re-run after rotating the sops password is the whole story:
+    #   systemctl restart coroot-postgres-setup
+    # hp/akos01 2026-10-27: Coroot's RCA kept showing "It seems this app is a Postgres
+    # database... Configure integration" for every app touching 5432 because nothing was
+    # provisioned anywhere in the fleet.
+    systemd.services.coroot-postgres-setup = mkIf cfg.corootIntegration.enable {
+      description = "Provision Coroot's Postgres monitoring role and pg_stat_statements";
+      after = ["postgresql.service"];
+      wantedBy = ["multi-user.target"];
+      serviceConfig = {
+        Type = "oneshot";
+        User = "postgres";
+        RemainAfterExit = true;
+        ExecStart = pkgs.writeShellScript "coroot-postgres-setup" ''
+          set -euo pipefail
+          psql=${config.services.postgresql.package}/bin/psql
+          # Quoted heredoc: the shell must not eat $$ (psql-side DO block) or :'pw'
+          # (psql variable, carries the password WITHOUT it ever touching argv).
+          "$psql" -v ON_ERROR_STOP=1 -v pw="$(< ${config.sops.secrets.${cfg.corootIntegration.passwordSecret}.path})" <<'SQL'
+          DO $$ BEGIN
+            IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${cfg.corootIntegration.role}') THEN
+              CREATE ROLE ${cfg.corootIntegration.role} LOGIN;
+            ELSE
+              ALTER ROLE ${cfg.corootIntegration.role} LOGIN;
+            END IF;
+          END $$;
+          ALTER ROLE ${cfg.corootIntegration.role} PASSWORD :'pw';
+          GRANT pg_monitor TO ${cfg.corootIntegration.role};
+          SELECT 'CREATE DATABASE ${cfg.corootIntegration.role} OWNER ${cfg.corootIntegration.role}'
+          WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '${cfg.corootIntegration.role}')\gexec
+          SQL
+          # pg_stat_statements is per-database; Coroot may connect to any of them, and
+          # template1 included means freshly created DBs arrive statement-ready.
+          for db in $("$psql" -Atc "SELECT datname FROM pg_database WHERE datallowconn AND datname <> 'template0'"); do
+            "$psql" -d "$db" -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements" >/dev/null
+          done
+        '';
+      };
+    };
   };
 }

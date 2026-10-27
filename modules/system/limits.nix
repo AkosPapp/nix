@@ -128,13 +128,18 @@
   };
 
   # Small Go binaries that must answer while everything else burns.
+  # 2026-10-27: the old numbers (tasks=16, high=32M, max=64M) strangled akos01's pair -
+  # node-exporter peaks at 39M and postgres-exporter sits pinned at 64M (memory.events:
+  # 3.78M and 6.7M high-hits!), postgres-exporter runs 15 threads = at a 16-task cap, and
+  # both froze mid-scrape: backlog 4096/4096, prometheus targets down, coroot "memory
+  # pressure" + "failed to connect" alerts. Still small, but sized above the working set.
   tiny = unit: when: {
     inherit when;
     units = [unit];
-    tasks = 16;
-    cpu = "10%";
-    memHigh = "32M";
-    memMax = "64M";
+    tasks = 64;
+    cpu = "25%";
+    memHigh = "96M";
+    memMax = "192M";
     note = "monitoring must survive everyone else - tiny but guaranteed.";
   };
 
@@ -210,9 +215,14 @@
         units = ["immich-machine-learning"];
         tasks = 256;
         cpu = "200%";
-        memHigh = "768M";
-        memMax = "1536M";
-        note = "ML does not need the moon.";
+        # 2026-10-27: MemoryHigh was 768M but the CLIP/face worker's steady-state RSS is
+        # ~900M measured on akos01 - capping BELOW the working set keeps the unit in
+        # permanent reclaim, which surfaced as gunicorn WORKER TIMEOUT + coredumps on hp
+        # and a storm of CLOSE-WAIT sockets (immich's ML calls dying mid-request). High is
+        # now above the observed set; max leaves room for one model load burst.
+        memHigh = "1280M";
+        memMax = "2048M";
+        note = "ML does not need the moon - but it does need its model resident.";
       };
       redisImmich = boring "redis-immich" (c: (c.services.redis.servers.immich.enable or false));
       redisSearx = boring "redis-searx" (c: (c.services.redis.servers.searx.enable or false));
@@ -243,8 +253,9 @@
       };
       coroot = {
         when = c: (c.MODULES.services.coroot.enable or false);
-        units = ["docker-coroot"];
-        dockerName = "coroot";
+        # Native unit since 2026-10-27 (nixpkgs-unstable package; was the docker-coroot
+        # container, whose caps needed --memory flags because units never reach containers).
+        units = ["coroot"];
         tasks = 256;
         cpu = "200%";
         memHigh = "768M";
@@ -267,8 +278,8 @@
       };
       corootNodeAgent = {
         when = c: (c.MODULES.services.coroot.enable or false) || (c.MODULES.services.coroot.agentEnable or false);
-        units = ["docker-coroot-node-agent"];
-        dockerName = "coroot-node-agent";
+        # Native unit on hosts since 2026-10-27 (was the docker-coroot-node-agent container).
+        units = ["coroot-node-agent"];
         tasks = 128;
         cpu = "50%";
         cpuOnly = true;

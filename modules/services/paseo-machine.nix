@@ -24,11 +24,15 @@
   #   thinking pi: reasoning + thinkingLevelMap   opencode: options + variants
   #            + compat.chatTemplateKwargs
   #
-  # Nothing here has a default: a host that names a model also states what it can do, and unset
-  # options write no fields at all, so these values never leak onto a model they were not meant
-  # for. Without them both harnesses guess - pi assumes 128000/16384 (and then compacts at
-  # contextWindow - 16384, ~111K instead of the real window) and reports the model as unable to
-  # think, so /thinking has nothing to offer.
+  # The options default from the fleet model catalogue (modules/services/model-catalog.nix)
+  # when cfg.modelId is listed there - the same table opencode.nix, paseo.nix and
+  # hermes-agent.nix read - and a model the catalogue does not know writes no fields at all, so
+  # these values never leak onto a model they were not meant for. Without them both harnesses
+  # guess - pi assumes 128000/16384 (and then compacts at contextWindow - 16384, ~111K instead
+  # of the real window) and reports the model as unable to think, so /thinking has nothing to
+  # offer.
+  modelCatalogEntry = config.MODULES.services.modelCatalog.models.${cfg.modelId} or null;
+
   modelLimitContext = cfg.modelContextLength;
   modelLimitOutput = cfg.modelOutputLength;
   hasModelLimits = modelLimitContext != null || modelLimitOutput != null;
@@ -567,47 +571,66 @@ in {
 
     modelContextLength = mkOption {
       type = types.nullOr types.ints.positive;
-      default = null;
+      default =
+        if modelCatalogEntry != null
+        then modelCatalogEntry.contextLength
+        else null;
+      defaultText = lib.literalExpression "the fleet model catalogue's contextLength for modelId (null if uncatalogued)";
       example = 262144;
       description = ''
         Context window of cfg.modelId in tokens - what the gateway behind modelBaseUrl actually
-        serves. Written as pi's contextWindow and opencode's limit.context. Set it next to
-        modelId, for the model it names: null (the default) writes neither field and leaves the
-        harnesses guessing, and pi guesses 128000, which makes it compact its history at ~111K
-        instead of using the window it was handed. Same number users/akos.nix gives the
-        interactive opencode entry for the same model.
+        serves. Written as pi's contextWindow and opencode's limit.context. Defaults to the
+        MODULES.services.modelCatalog entry for modelId, so this machine describes the model
+        exactly like the hub's installers and the interactive opencode entry do. null
+        (uncatalogued, or overridden) writes neither field and leaves the harnesses guessing,
+        and pi guesses 128000, which makes it compact its history at ~111K instead of using the
+        window it was handed.
       '';
     };
 
     modelOutputLength = mkOption {
       type = types.nullOr types.ints.positive;
-      default = null;
+      default =
+        if modelCatalogEntry != null
+        then modelCatalogEntry.outputLength
+        else null;
+      defaultText = lib.literalExpression "the fleet model catalogue's outputLength for modelId (null if uncatalogued)";
       example = 32768;
       description = ''
-        Max output tokens of cfg.modelId: pi's maxTokens, opencode's limit.output. pi guesses
-        16384 when unset, which caps every answer and truncates long tool-call arguments (pi
-        fails such a call rather than resume it). Keep it well under modelContextLength.
+        Max output tokens of cfg.modelId: pi's maxTokens, opencode's limit.output. Catalogue-
+        sourced like modelContextLength. pi guesses 16384 when unset, which caps every answer
+        and truncates long tool-call arguments (pi fails such a call rather than resume it).
+        Keep it well under modelContextLength.
       '';
     };
 
     modelThinkingLevels = mkOption {
       type = types.listOf types.str;
-      default = [];
+      default =
+        if modelCatalogEntry != null
+        then modelCatalogEntry.thinkingLevels
+        else [];
+      defaultText = lib.literalExpression "the fleet model catalogue's thinkingLevels for modelId ([] if uncatalogued)";
       example = ["low" "medium" "xhigh"];
       description = ''
         Thinking levels cfg.modelId accepts, weakest first, spelled the way the gateway spells
         reasoning_effort (pi's own level keys: minimal, low, medium, high, xhigh, max - "off" is
-        implied and never listed). The last entry is the level a harness starts on.
+        implied and never listed). The last entry is the level a harness starts on. Catalogue-
+        sourced like the limits.
 
-        Empty (the default) means the model is declared as non-reasoning: pi reports thinking
-        "no" and opencode gets no variants. Set it per model, never as a default - a level the
-        gateway does not implement is a request it rejects.
+        Empty (an uncatalogued model's default) means the model is declared as non-reasoning:
+        pi reports thinking "no" and opencode gets no variants. A level the gateway does not
+        implement is a request it rejects.
       '';
     };
 
     modelThinkingDefault = mkOption {
       type = types.str;
-      default = "xhigh";
+      default =
+        if modelCatalogEntry != null && modelCatalogEntry.thinkingDefault != null
+        then modelCatalogEntry.thinkingDefault
+        else "xhigh";
+      defaultText = lib.literalExpression "the fleet model catalogue's thinkingDefault for modelId (xhigh if uncatalogued)";
       example = "medium";
       description = ''
         Thinking level a session starts on for cfg.modelId, when modelThinkingLevels is non-empty:

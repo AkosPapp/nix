@@ -257,9 +257,10 @@ in {
     })
 
     (mkIf (cfg.enable && config.services.cloudflared.enable) {
-      # cloudflared serves its own Prometheus metrics on every `tunnel run` (the --metrics flag
-      # default, 127.0.0.1:35555 - nixpkgs' module neither passes nor moves it), no separate
-      # exporter binary - same shape as the traefik/syncthing jobs above. It's the tunnel's own
+      # cloudflared serves its own Prometheus metrics on every `tunnel run`, no separate
+      # exporter binary - the listen address is pinned to PORTS.cloudflaredMetrics by
+      # modules/networking/dns/cloudflare.nix's `metrics` config key (cloudflared's built-in
+      # default is 20241) - same shape as the traefik/syncthing jobs above. It's the tunnel's own
       # view of the public path: connection/streams up, reconnect counts, request and response
       # bytes - i.e. "is the Cloudflare door actually open", which nothing else can see.
       # (Zone-analytics style metrics would need prometheus-community's cloudflare-exporter,

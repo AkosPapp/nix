@@ -147,6 +147,74 @@
           || echo "hermes-egress: could not allow gateway api port $port" >&2
         exit 0
   '';
+
+  # PDF and JSON tooling for the Hermes agent, its cron jobs, and admin shells. These land on
+  # the units' PATH and in systemPackages; the tesseract language list stays pinned because the
+  # wrapper's default is *every* language (~1 GB of traineddata).
+  agentTools = with pkgs;
+    [
+      poppler-utils # pdftotext, pdfimages, pdfinfo (attr renamed from poppler_utils)
+      pdfgrep
+      jq
+      (tesseract.override {enableLanguages = cfg.ocrLanguages;}) # scanned-PDF OCR
+      # This nixpkgs' plain ffmpeg is the full build (libx264/x265, freetype/drawtext),
+      # verified against the locked flake's derivation - no need for ffmpeg-full here.
+      ffmpeg
+    ]
+    ++ cfg.extraPackages;
+
+  # Per-session escalation for the notes share (notes.enable), run by hand as root - the agent
+  # has no root in its sandbox and must not gain any: broad write access then exists only
+  # between an explicit `grant` and the next `revoke`, and a reboot reasserts the tmpfiles modes
+  # anyway. No rebuild involved, so it works while a chat session is live.
+  notesEdit = pkgs.writeShellScriptBin "hermes-notes-edit" ''
+    set -eu
+
+    share="${cfg.notes.shareDir}"
+
+    if [ "$#" -lt 1 ]; then
+      echo "usage: hermes-notes-edit grant|revoke|status" >&2
+      exit 2
+    fi
+
+    # Everything in the share except syncthing's own state.
+    walk() {
+      find "$share" -not -path '*/.stfolder*' -not -name '.stignore' "$@"
+    }
+
+    case "$1" in
+      grant)
+        # g+w on directories lets the agent replace files; on files, edit them in place.
+        # New folders synced in afterwards need another grant pass (status shows the damage).
+        walk -type d -exec chmod g+w '{}' +
+        walk -type f -exec chmod g+w '{}' +
+        echo "granted: hermes can edit every file in the notes share"
+        ;;
+      revoke)
+        walk -type d -exec chmod 2755 '{}' +
+        walk -type f -exec chmod 644 '{}' +
+        chmod 2775 "$share/hermes"
+        echo "revoked: back to the agent's own hermes/ folder only"
+        ;;
+      status)
+        if walk -mindepth 1 -type d -not -path "$share/hermes*" -perm -g+w | grep -q .; then
+          echo "GRANTED: group-writable beyond hermes/:"
+          walk -mindepth 1 -type d -perm -g+w
+        else
+          echo "locked: agent writes limited to $share/hermes"
+        fi
+        ;;
+      *)
+        echo "usage: hermes-notes-edit grant|revoke|status" >&2
+        exit 2
+        ;;
+    esac
+  '';
+
+  # The notes share bind (see the notes options): the agent's sandbox sees hermes.stateDir and
+  # nothing else, so the share has to be bind-mounted into it. "-" = keep the units up when the
+  # folder is missing (e.g. syncthing hasn't materialised it yet on a fresh host).
+  notes-bind = "-${cfg.notes.shareDir}:${hermes.stateDir}/notes";
 in {
   options.MODULES.services.hermes-agent = {
     enable = mkEnableOption ''
@@ -160,6 +228,19 @@ in {
       description = ''
         Default model, by its LiteLLM name. Any other model the API key is allowed to use can be
         picked per chat with `/model` - Hermes lists them from LiteLLM's /v1/models.
+      '';
+    };
+
+    modelContextLength = mkOption {
+      type = types.nullOr types.ints.positive;
+      default = (config.MODULES.services.modelCatalog.lookup cfg.model).contextLength or null;
+      defaultText = lib.literalExpression "the fleet model catalogue's contextLength for MODULES.services.hermes-agent.model";
+      description = ''
+        Context window pinned for `model` in Hermes' provider config. LiteLLM cannot report one
+        for wildcard models, so Hermes would otherwise guess from the name (1M, which is also
+        Aqueduct's max_model_len) and drift toward that ceiling instead of compressing; the
+        catalogue entry for the same model (modules/services/model-catalog.nix) is what
+        opencode/paseo use, so Hermes stays in step with them. null omits the pin.
       '';
     };
 
@@ -209,6 +290,58 @@ in {
       '';
     };
 
+    ocrLanguages = mkOption {
+      type = types.listOf types.str;
+      default = ["eng" "deu"];
+      description = ''
+        Languages the tesseract OCR tool ships. Must always include "eng" (tessdata bug); pin
+        the rest - the wrapper's unpinned default is every language, ~1 GB of traineddata.
+      '';
+    };
+
+    extraPackages = mkOption {
+      type = types.listOf types.package;
+      default = [];
+      description = ''
+        Packages appended to the agent's tool set (poppler-utils, pdfgrep, jq, tesseract,
+        ffmpeg): put on the Hermes units' PATH and in environment.systemPackages.
+      '';
+    };
+
+    notes = {
+      enable = mkEnableOption ''
+        a Syncthing-maintained notes share inside the agent's sandbox: bind-mounted into
+        <stateDir>/notes, writable only through the file modes (the agent's own hermes/ folder,
+        2775; everything else 2755 until `hermes-notes-edit grant` widens the share for one
+        session as root). The share itself is wired up per-host through
+        MODULES.services.syncthing.shares
+      '';
+
+      shareDir = mkOption {
+        type = types.str;
+        default = "/var/lib/notes";
+        description = ''
+          Where this host's syncthing keeps the notes share. Deliberately next to the other
+          /var/lib shares rather than inside the hermes state dir: reaching a share under
+          /var/lib/hermes would mean either the hermes group being group-writable (2770 = a
+          network-facing daemon could delete the agent's own state) or an execute-only POSIX
+          ACL, which these ZFS datasets do not support. The folder is world-readable for the
+          same reason dashboardsDir is: the agent runs in a user namespace, where foreign uids
+          show up as nobody and only the `other` bits carry.
+        '';
+      };
+
+      shareOwner = mkOption {
+        type = types.str;
+        default = "syncthing";
+        example = "akos";
+        description = ''
+          User the tmpfiles modes are set for - the uid this host's syncthing runs the share as.
+          A host whose syncthing runs as a person (MODULES.services.syncthing.user) names it here.
+        '';
+      };
+    };
+
     paseoHermesSandbox = mkOption {
       type = types.attrs;
       default = sandbox;
@@ -241,20 +374,26 @@ in {
           provider = "custom:litellm";
           default = cfg.model;
         };
-        providers.litellm = {
-          name = "LiteLLM";
-          api = "http://127.0.0.1:${toString config.PORTS.litellm}/v1";
-          key_env = "LITELLM_API_KEY";
-          transport = "chat_completions";
-          default_model = cfg.model;
-          # What /model offers: whatever this key may use, straight from LiteLLM.
-          discover_models = true;
-          # LiteLLM can't report context windows for wildcard models, so Hermes would guess from
-          # the name (1M, which is also Aqueduct's max_model_len). Pinned to the FutureLab-documented
-          # window for this model (262144, output cap 32768 — same values as users/akos.nix uses for
-          # opencode/paseo), so Hermes compresses before 262k instead of drifting toward the 1M ceiling.
-          models."futurelab/qwen3.8-flash-next".context_length = 262144;
-        };
+        providers.litellm =
+          {
+            name = "LiteLLM";
+            api = "http://127.0.0.1:${toString config.PORTS.litellm}/v1";
+            key_env = "LITELLM_API_KEY";
+            transport = "chat_completions";
+            default_model = cfg.model;
+            # What /model offers: whatever this key may use, straight from LiteLLM.
+            discover_models = true;
+          }
+          // lib.optionalAttrs (cfg.modelContextLength != null) {
+            # LiteLLM can't report context windows for wildcard models, so Hermes would guess from
+            # the name (1M, which is also Aqueduct's max_model_len). Pinned to the fleet model
+            # catalogue's window for cfg.model (default; see modelContextLength), so Hermes
+            # compresses before 262k instead of drifting toward the 1M ceiling - and describes the
+            # model exactly like opencode/paseo do.
+            models = {
+              ${cfg.model}.context_length = cfg.modelContextLength;
+            };
+          };
         # Commands run in this service's own sandbox (see serviceConfig below), not a container:
         # the Google skills work by running commands, and a rootless container
         # runtime would need the setuid helpers and user namespaces the sandbox takes away.
@@ -315,6 +454,22 @@ in {
       restartUnits = ["hermes-agent.service" "hermes-backend.service"];
     };
 
+    # The agent's tool set is also handy in admin shells, and hermes-notes-edit must be root-
+    # reachable by hand (the units get the tools via their PATH above; systemPackages is not on
+    # their closed PATH).
+    environment.systemPackages = agentTools ++ lib.optionals cfg.notes.enable [notesEdit];
+
+    systemd.tmpfiles.rules = lib.optionals cfg.notes.enable [
+      # The share itself: setgid so files syncthing lands in it inherit group=hermes, which is
+      # all the agent's read access needs (world-readable carries it inside the agent's user
+      # namespace, where foreign uids show up as nobody).
+      "d ${cfg.notes.shareDir} 2755 ${cfg.notes.shareOwner} ${hermes.group} - -"
+      # The agent's own note folder (inside the share, so its notes sync like any other file).
+      # The 2775 is the whole scope of its write access: every other directory in the share stays
+      # 2755, so outside hermes/ the agent can create or replace nothing.
+      "d ${cfg.notes.shareDir}/hermes 2775 ${cfg.notes.shareOwner} ${hermes.group} - -"
+    ];
+
     # Lingering (a systemd user manager, for restart-safe cron) is not wanted: cron jobs launched
     # in a user manager would run outside every restriction below; without it cron falls back to
     # plain child processes of the gateway, inside the sandbox. The login shell, however, MUST be
@@ -337,8 +492,25 @@ in {
       after = [config.services.matrix-synapse.serviceUnit "litellm.service" "matrix-provision-users.service" "matrix-reader.service"];
       wants = ["matrix-provision-users.service" "matrix-reader.service"];
 
+      # The Hermes units run with a closed PATH; environment.systemPackages is NOT in
+      # it, so every tool the agent's terminal() or cron shells may execute has to be
+      # listed on the unit itself (the systemd module appends these to the unit PATH).
+      path = agentTools;
+
       serviceConfig =
         sandbox
+        // optionalAttrs cfg.notes.enable {
+          # The two Hermes units get the notes share read-write at the mount, but write access is
+          # carried by the file modes instead: 2755 everywhere except <share>/hermes (2775), so the
+          # kernel denies the agent create/replace/delete anywhere else while `hermes-notes-edit
+          # grant` can still widen it for one session without a restart.
+          #
+          # One agent-side rule this trades away nothing on but cannot be enforced by modes: the
+          # units run UMask=0077, so a file the agent writes is 0600 and syncthing, reading as
+          # `other`, would never see it. The agent's notes workflow chmods its own files 644 as
+          # it writes them.
+          BindPaths = sandbox.BindPaths ++ [notes-bind];
+        }
         // {
           # Root (+): while the gateway is down, drop the egress rule for its old api port.
           # Flush-only, instant, exit-0-always - nothing here may ever block a transition.
@@ -380,7 +552,10 @@ in {
     };
 
     # The dashboard (web UI) - a separate process from the gateway, same HERMES_HOME.
-    systemd.services.hermes-backend.serviceConfig = sandbox;
+    systemd.services.hermes-backend = {
+      path = agentTools;
+      serviceConfig = sandbox // optionalAttrs cfg.notes.enable {BindPaths = sandbox.BindPaths ++ [notes-bind];};
+    };
     systemd.services.hermes-backend.wants = ["matrix-reader.service"];
     systemd.services.hermes-backend.after = ["matrix-reader.service"];
 
@@ -419,6 +594,9 @@ in {
         ProtectHome = true;
         TemporaryFileSystem = ["/var/lib:ro"];
         BindPaths = [hermes.stateDir];
+        # The notes share, hard read-only for the reader - it only ever reads notes (the Hermes
+        # units get the read-write bind, see above).
+        BindReadOnlyPaths = lib.optionals cfg.notes.enable [notes-bind];
         InaccessiblePaths = ["-/run/secrets.d" "-/run/secrets" "-/run/docker.sock" "-/run/postgresql" "-/srv" "-/mnt" "-/media"];
         PrivateTmp = true;
         PrivateDevices = true;

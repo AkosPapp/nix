@@ -21,6 +21,9 @@ in {
     immich = 2283;
     litellm = 8095;
     loki = 8031;
+    # loki's gRPC (scheduler/ingester ring traffic) - loopback-only since 2026-10-27; see
+    # modules/services/loki.nix. Named so the jail rule and the config share one source.
+    lokiGrpc = 9095;
     nextcloud = 8088;
     nixAutobuild = 8085;
     nginxStatus = 8087;

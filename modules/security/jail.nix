@@ -303,7 +303,12 @@
         };
         publicDefault = "deny";
         allowDns = false;
-        note = "promtail pushes IN (conntrack); Loki itself dials nobody.";
+        # Loki's hash ring (target=all: querier->scheduler/ingester) dials the instance address
+        # the module advertises = 127.0.0.1 (modules/services/loki.nix common.instance_addr);
+        # "dials nobody" was wrong - it dials ITSELF and the blanket REJECT rejected its own
+        # scheduler port: 100% query errors on both hosts, coroot incident anivwpvh, 2026-10-26.
+        allowedLoopbackTCPPorts = [(config.PORTS.lokiGrpc or 9095)];
+        note = "promtail/alloy push IN (conntrack); Loki's only OUT is the loopback ring hop.";
       };
       grafana = {
         units = ["grafana"];
@@ -560,7 +565,9 @@
       ReadWritePaths =
         j.readWritePaths
         ++ lib.optionals (name == "syncthing") (
-          map (f: f.path) (builtins.attrValues (config.services.syncthing.folders or {}))
+          # settings.folders, not the old services.syncthing.folders - the latter is a
+          # renamed alias and even READING it prints nixpkgs' "Obsolete option" trace.
+          map (f: f.path) (builtins.attrValues (config.services.syncthing.settings.folders or {}))
         );
       BindPaths = j.bindPaths;
       BindReadOnlyPaths = j.bindReadOnlyPaths;

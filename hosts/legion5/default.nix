@@ -29,150 +29,6 @@
       override_path = "/home/akos/servers${path}";
     })
     varLibSharePaths;
-
-  # Other hosts' Traefik zones (by default their host name: hp, akos01, ...) and the Tailscale IP
-  # behind each. Generated from the flake, so a new host needs no edit here.
-  tailnetZones = lib.filter (z: z.ip != null) (lib.mapAttrsToList (host: h: {
-    domain = h.config.MODULES.networking.traefik.domain;
-    ip = h.config.MODULES.networking.tailscale.hostIP;
-  }) (lib.removeAttrs nixosConfigurations [configName]));
-
-  tailnetDnsName = config.MODULES.networking.tailscale.tailnetDnsName;
-  # `networking.domain` (modules/networking/tailscale.nix) = this host's tailnet FQDN, so glibc
-  # qualifies every bare name as <name>.<selfFqdn> before trying the name itself.
-  selfFqdn = "${configName}.${tailnetDnsName}";
-  selfIP = config.MODULES.networking.tailscale.hostIP;
-
-  # dnsmasq's dynamic include, regenerated on a timer. While tailscale is connected, every other
-  # host's zone and tailnet FQDN resolve to that host's tailscale IP - including the search-
-  # qualified form glibc tries first - and MagicDNS is only a fallback for unknown peers. The
-  # /airlab/ forward exists only while wlo1 holds a lab address. robo4you.at points at r4uai01's
-  # netbird IP only while its route leaves through wt0 and it answers the zone; otherwise none of
-  # those lines exist and dnsmasq falls through to the public servers. The file is only replaced
-  # (and dnsmasq restarted) when its contents change.
-  splitDns = pkgs.writeShellScript "split-dns" ''
-    export PATH="${lib.makeBinPath [
-      config.systemd.package
-      config.services.tailscale.package
-      config.services.netbird.package
-      pkgs.coreutils
-      pkgs.jq
-      pkgs.iproute2
-      pkgs.dnsutils
-      pkgs.diffutils
-    ]}"
-
-    conf=/run/dnsmasq.d/split.conf
-    mkdir -p "$(dirname "$conf")"
-
-    netbird_dns=100.124.160.88
-    netbird_zone=robo4you.at
-
-    # tailscale0 survives `tailscale down`, so ask the backend instead of the interface.
-    tailscale_up=0
-    if ip link show dev tailscale0 up >/dev/null 2>&1; then
-      state=$(timeout 2 tailscale status --json 2>/dev/null | jq -r '.BackendState // empty') || state=
-      if [ "$state" = "Running" ]; then
-        tailscale_up=1
-      fi
-    fi
-
-    # wt0 having an address proves nothing: the daemon can sit disconnected for hours with the
-    # interface left in place, and every query dnsmasq forwards into it blackholes - including
-    # netbird's own lookup of its management host, which turns one dropout into a permanent
-    # lockout. Ask the daemon instead: connected to Signal AND at least one relay available or
-    # one peer connected (peers legitimately sit Idle on a lazy mesh, so relays carry most of
-    # the "data plane alive" vote). Only then the zone probe still has to answer.
-    netbird_up=0
-    if ip link show dev wt0 up >/dev/null 2>&1; then
-      nb=$(timeout 3 netbird status --json 2>/dev/null | jq -r \
-        '[.signal.connected // false, (.relays.available // 0), (.peers.connected // 0)] | @tsv') || nb=
-      case "$nb" in
-        true*)
-          route=$(ip route get "$netbird_dns" 2>/dev/null) || route=
-          case " $route " in
-            *" dev wt0 "*)
-              relays=$(cut -f2 <<<"$nb")
-              peers=$(cut -f3 <<<"$nb")
-              if [ "$relays" -gt 0 ] 2>/dev/null || [ "$peers" -gt 0 ] 2>/dev/null; then
-                if [ -n "$(dig +time=1 +tries=3 +short "@$netbird_dns" "$netbird_zone" SOA 2>/dev/null)" ]; then
-                  netbird_up=1
-                fi
-              fi
-              ;;
-          esac
-          ;;
-      esac
-    fi
-
-    {
-      if [ "$tailscale_up" = 1 ]; then
-        # Only a fallback now: forwards into MagicDNS crawl (or stall outright, see below), so
-        # every name that matters is answered by the address= lines instead. This keeps tailnet
-        # peers the flake doesn't know about resolvable, just slowly.
-        echo "server=/${tailnetDnsName}/100.100.100.100"
-        ${lib.concatMapStringsSep "\n    " (z: ''
-        echo 'address=/${z.domain}/${z.ip}'
-        echo 'address=/${z.domain}.${tailnetDnsName}/${z.ip}'
-        echo 'address=/${z.domain}.${selfFqdn}/${z.ip}'
-      '')
-      tailnetZones}
-        # glibc qualifies bare names with `networking.domain` (this host's tailnet FQDN), dnsmasq
-        # forwards those to MagicDNS, MagicDNS answers authoritatively SERVFAIL for a sub-name of
-        # a peer - and dnsmasq then never answers its client at all (measured 2026-10-26: the
-        # same query <30ms direct, forever via dnsmasq; even the NOERROR replies arrive ~3s
-        # late). Every plain-name lookup on the box stalled ~10s behind that first search
-        # domain, which is how the homepage dashboards became "inaccessible". The qualified
-        # forms of known hosts are answered locally instead, and the own subtree becomes
-        # authoritative here: an unknown qualified name gets a fast NXDOMAIN so glibc proceeds
-        # to the bare name, never through the swallowed forward.
-        echo "host-record=${selfFqdn},${selfIP}"
-        echo "local=/${selfFqdn}/"
-      fi
-      # AirLab's server only answers on the lab LAN. Forwarding the zone while away is a silent
-      # black hole - and the lab hands out `airlab` as search domain, so that black hole sat in
-      # front of every bare name (and the lab has a machine of its own named `hp`, which shadowed
-      # the tailnet zone outright). The line exists only while wlo1 holds a lab address.
-      case $(ip -4 -o addr show dev wlo1 2>/dev/null) in
-        *"inet 10.50."*) echo "server=/airlab/10.50.20.2" ;;
-      esac
-      if [ "$netbird_up" = 1 ]; then
-        echo "server=/$netbird_zone/$netbird_dns"
-      fi
-      # The tunnel must never have to resolve its own front door: robo4you.at routes into
-      # netbird, so netbird.robo4you.at gets a permanent longest-match exception to the public
-      # resolvers - emitted whether or not the zone line is present, so netbird's bootstrap
-      # lookup can never depend on the connection it needs that lookup to establish.
-      echo "server=/netbird.$netbird_zone/9.9.9.9"
-      echo "server=/netbird.$netbird_zone/1.1.1.1"
-    } > "$conf.new"
-
-    if ! cmp -s "$conf.new" "$conf"; then
-      mv "$conf.new" "$conf"
-      systemctl restart dnsmasq
-    else
-      rm -f "$conf.new"
-    fi
-  '';
-
-  # The timer above is the backstop; this is the fast path. `ip monitor` streams the same
-  # netlink events udev sees, so a VPN interface, address or route landing (netbird's wt0,
-  # tailscale's routes flushed on down) wakes the updater within ~1s instead of up to a poll
-  # interval plus script runtime. One burst of events (a reconnect flaps several routes)
-  # collapses to a single updater run, and `systemctl start` waits for it, serialising runs.
-  splitDnsWatch = pkgs.writeShellScript "split-dns-watch" ''
-    export PATH="${lib.makeBinPath [
-      pkgs.iproute2
-      config.systemd.package
-      pkgs.coreutils
-    ]}"
-    while IFS= read -r _; do
-      # Give whoever changed the network a beat to finish, drain the rest of the burst, then trigger.
-      sleep 1
-      while IFS= read -r -t 1 _; do :; done
-      systemctl start split-dns.service || true
-    done < <(exec ip monitor link address route)
-  '';
 in {
   imports = [./hardware-configuration.nix];
 
@@ -259,6 +115,11 @@ in {
   # ZED 2i capture camera: no USB runtime suspend (see modules/hardware/perifirals/zed.nix).
   MODULES.hardware.perifirals.zed.enable = true;
   USERS.akos.enable = true;
+  # Browser control from opencode shells: a Playwright MCP server driving Brave in its
+  # own automation profile (module defaults - see mcp.playwright in
+  # modules/services/opencode.nix). legion5-only for now: it opens a visible Brave,
+  # which only makes sense on a host with a desktop session.
+  MODULES.services.opencode.mcp.playwright.enable = true;
   # Paseo harness machine, declaratively - the twin of the `curl .../install/<token>/pi.sh |
   # bash` installer (leftovers from it: bash packages/paseo/machine/cleanup-home.sh). A Paseo
   # daemon runs as akos, dials out to hp's relay and registers itself on hp's cockpit
@@ -276,14 +137,12 @@ in {
     modelProviderLabel = "LiteLLM (hp)";
     modelId = "futurelab/qwen3.8-flash-next";
     modelApiKeySecret = "opencode/litellm_api_key";
-    # What this one model can do, restated for the harness configs (pi's contextWindow /
-    # maxTokens / thinkingLevelMap, opencode's limit / variants) - same numbers and levels as
-    # users/akos.nix declares for the interactive opencode entry, so a daemon prompt and a shell
-    # prompt see one model. Per model on purpose: nothing here applies to a model this host does
-    # not name.
-    modelContextLength = 262144;
-    modelOutputLength = 32768;
-    modelThinkingLevels = ["low" "medium" "xhigh"];
+    # What this model can do (pi's contextWindow / maxTokens / thinkingLevelMap, opencode's
+    # limit / variants) comes from the fleet model catalogue
+    # (MODULES.services.modelCatalog.models, keyed by modelId) - the same table
+    # users/akos.nix's interactive opencode entry defaults from, so a daemon prompt and a
+    # shell prompt see one model. Set the model*Length/Levels options here only to override
+    # the catalogue for this machine alone.
     # Let pi discover every model the LiteLLM gateway serves (pi-models-discovery extension,
     # fetched from npm) instead of only the hand-curated one: new gateway models show up in
     # /model without an edit here. The futurelab backup below stays static - Aqueduct is a
@@ -407,82 +266,15 @@ in {
     "net.core.wmem_default" = 20971520;
   };
 
-  # One local resolver (dnsmasq) instead of systemd-resolved, because the split depends on
-  # whether each VPN is actually usable:
-  # - public backups, in the requested order: 9.9.9.9, 1.1.1.1, 8.8.8.8
-  # - AirLab's DNS only for its zone, and only while wlo1 is on the lab LAN (in the dynamic
-  #   include below; the DHCP-provided servers are otherwise ignored)
-  # - Tailscale's MagicDNS and the other hosts' Traefik zones only while tailscale is connected
-  # - robo4you.at via netbird's r4uai01 (100.124.160.88) only while wt0 is up, the route to it
-  #   leaves through wt0, and it answers the zone. netbird's advertised 172.18.0.1 is this host's
-  #   own docker bridge, and its DNS client is disabled in users/akos.nix.
-  # The dynamic parts come from splitDns above; dnsmasq is restarted only when its include
-  # actually changes.
-  services.resolved.enable = false;
-
-  services.dnsmasq = {
+  # The VPN-aware split resolver (modules/networking/dns/split-dns.nix): dnsmasq as the system
+  # resolver, tailnet zones only while tailscale runs, robo4you.at only while netbird really
+  # works, public servers as the fallback. This box roams, so the /airlab forward is the
+  # interface-gated one - it only exists while wlo1 holds a lab address. No exit node here.
+  MODULES.networking.dns.splitDns = {
     enable = true;
-    # modules/networking/dns.nix already runs this host's authoritative zone in dnsmasq and
-    # deliberately keeps it off the system resolver; here we also want it to be the system
-    # resolver, and to keep listening on the tailscale address for the authoritative zone.
-    resolveLocalQueries = lib.mkForce true;
-    settings = {
-      # Never adopt the DHCP servers as defaults: the public list below is the fallback.
-      no-resolv = lib.mkForce true;
-      # `no-resolv` already ignores this; drop the module's marker to avoid a startup warning.
-      resolv-file = lib.mkForce [];
-      # The tailscale address may not exist yet when dnsmasq starts.
-      bind-dynamic = lib.mkForce true;
-      listen-address = lib.mkForce [
-        "127.0.0.1"
-        "::1"
-        config.MODULES.networking.tailscale.hostIP
-      ];
-      strict-order = true;
-      server = [
-        "9.9.9.9"
-        "1.1.1.1"
-        "8.8.8.8"
-      ];
-      conf-dir = "/run/dnsmasq.d,*.conf";
+    labForward = {
+      enable = true;
+      interface = "wlo1";
     };
   };
-
-  systemd.tmpfiles.rules = ["d /run/dnsmasq.d 0755 root root -"];
-
-  systemd.services.split-dns = {
-    description = "Regenerate dnsmasq's VPN-dependent split-DNS include";
-    # A transient dnsmasq restart failure must not stop the timer from retrying.
-    startLimitIntervalSec = 0;
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = "${splitDns}";
-    };
-  };
-  systemd.timers.split-dns = {
-    wantedBy = ["timers.target"];
-    timerConfig = {
-      OnBootSec = "5s";
-      OnUnitActiveSec = "10s";
-    };
-  };
-
-  systemd.services.split-dns-watch = {
-    description = "Trigger split-dns immediately on interface/address/route changes";
-    wantedBy = ["multi-user.target"];
-    # `ip monitor` can die on a netlink buffer overrun; never let the start-limit give up on it.
-    startLimitIntervalSec = 0;
-    serviceConfig = {
-      ExecStart = "${splitDnsWatch}";
-      Restart = "always";
-      RestartSec = "2s";
-    };
-  };
-
-  # Tailscale still provides the tailnet; dnsmasq forwards its zone explicitly.
-  services.tailscale.extraSetFlags = lib.mkForce [
-    "--accept-dns=false"
-    "--accept-routes=true"
-    "--advertise-exit-node=false"
-  ];
 }

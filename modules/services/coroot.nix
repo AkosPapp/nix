@@ -13,10 +13,33 @@
 #   - Inside a microVM: not visible from the host's agent (separate kernel). When §6 lands, give
 #     each service VM its own coroot-node-agent; the host-side agent only ever sees the tap side
 #     of those connections.
+#
+# Packaging (2026-10-27): server and node agent are the NATIVE nixpkgs-unstable packages
+# (coroot 1.27.4 / coroot-node-agent 1.36.1, both from the shared pkgs-unstable pin - neither
+# exists in nixos-26.05). They were docker images before; the agent-server API is versioned
+# together, and taking both from one pin is what keeps that pairing guaranteed. ClickHouse
+# stays a docker container: its data volume is the only copy of the flow history and there is
+# no reason to touch it for a server bump. The docker volumes coroot-data (sqlite) and
+# coroot-node-agent-data were lifted/retired by coroot-data-migration; remove them by hand
+# once the new generation is confirmed good:
+#   docker volume rm coroot-data coroot-node-agent-data
+#
+# OpenTelemetry: since 1.27 the server ingests OTLP/HTTP on the LISTEN port itself -
+# /v1/traces, /v1/logs, /v1/metrics, authenticated with a per-project API key in the
+# x-api-key header (project settings in the UI, or POST /api/project/<id>/api_keys).
+# Traefik already publishes the listener as https://coroot.<host>, so instrumented apps
+# need no new port anywhere:
+#   OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=https://coroot.<host>/v1/traces
+#   OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=https://coroot.<host>/v1/logs
+#   OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf  OTEL_METRICS_EXPORTER=none
+#   OTEL_EXPORTER_OTLP_HEADERS=x-api-key=<key>
+# The gRPC listener is disabled (no PORTS entry; OTLP/HTTP covers traces and logs, and the
+# node agent has always pushed over its own protocol).
 {
   config,
   lib,
   pkgs,
+  pkgs-unstable,
   nixosConfigurations,
   configName,
   ...
@@ -105,15 +128,6 @@ in {
       listener; all communication is outbound.
     '';
 
-    packageAgent = mkEnableOption ''
-      coroot-node-agent as a NATIVE systemd unit from the nixpkgs package instead of the
-      docker container. This is the microVM-guest path: the guest has no docker, but it IS
-      a kernel of its own (BTF on, nixpkgs default), so the agent reports the VM's services
-      as a separate node. For a guest importing only the microvm module (the vm-agents
-      prototype), use its inline systemd unit instead - this option needs the fleet module
-      set (PORTS, and coroot.nix's paths are validated even inside its own mkIfs).
-    '';
-
     collectorUrl = mkOption {
       type = types.nullOr types.str;
       default = null;
@@ -124,27 +138,23 @@ in {
       '';
     };
 
-    image = mkOption {
-      type = types.str;
-      default = "ghcr.io/coroot/coroot:1.9.9";
-      description = "Coroot server image. Pinned release; docker-images-update.service pulls newer tags on its own.";
-    };
-
-    agentImage = mkOption {
-      type = types.str;
-      default = "ghcr.io/coroot/coroot-node-agent:1.19.7";
-      description = "Coroot node-agent image. Must stay within a minor version of `image` (the agent/server API is versioned together).";
-    };
-
     clickhouseImage = mkOption {
       type = types.str;
       default = "clickhouse/clickhouse-server:24.3";
-      description = "ClickHouse image; the tag Coroot's own docker-compose pins.";
+      description = ''
+        ClickHouse image; the tag this fleet's flow-history volume was created under and the
+        one Coroot's own docker install pinned when the server arrived (verified live on
+        akos01 across the 1.9.9 -> 1.27.4 server bump - coroot's ClickHouse migrations are
+        append-only, the newer server runs the older server fine).
+      '';
     };
   };
 
   config = lib.mkMerge [
     # ---------------------------------------------------------------- agent (server or not) --
+    # Native unit, not a container: eBPF needs the same privileges either way, and as a host
+    # service it reads /sys/fs/cgroup directly instead of through docker's /host bind. The
+    # package comes from pkgs-unstable to stay version-paired with the server half.
     (mkIf (cfg.enable || cfg.agentEnable) {
       assertions = [
         {
@@ -157,60 +167,15 @@ in {
         }
       ];
 
-      virtualisation.docker.enable = true;
-      virtualisation.oci-containers.backend = "docker";
-
-      virtualisation.oci-containers.containers.coroot-node-agent = {
-        image = cfg.agentImage;
-        cmd = [
-          # Loopback even with host networking: nothing connects TO the agent (it pushes), and the
-          # port serves plain /metrics. Default would be the same; named in PORTS anyway.
-          "--listen=127.0.0.1:${toString config.PORTS.corootNodeAgent}"
-          "--collector-endpoint=${collectorUrl}"
-          "--cgroupfs-root=/host/sys/fs/cgroup"
-          "--wal-dir=/data"
-        ];
-        volumes = [
-          # Coroot's own compose mounts. tracefs + debugfs for kprobes/uprobes/tc, and the host's
-          # cgroup tree at a side path so the agent can still see containers from inside its own.
-          "/sys/kernel/tracing:/sys/kernel/tracing"
-          "/sys/kernel/debug:/sys/kernel/debug"
-          "/sys/fs/cgroup:/host/sys/fs/cgroup"
-          "coroot-node-agent-data:/data"
-        ];
-        # eBPF needs the lot: privileged (CAP_BPF/PERFMON + access to every pid/net namespace),
-        # host PID to attribute sockets to the right container, host netns to see the host's and
-        # the microVM taps' traffic.
-        extraOptions = [
-          "--privileged"
-          "--pid=host"
-          "--network=host"
-        ];
-      };
-    })
-
-    # ------------------------------------------------------ guest agent (microVM path) ------
-    # The nixpkgs package (not the image): a firecracker guest has no docker daemon, and
-    # pulling an image into a VM that gets its store read-only from the host would be
-    # backwards anyway. The guest kernel ships CONFIG_DEBUG_INFO_BTF (nixpkgs
-    # common-config since 5.11), which is what the agent's CO-RE eBPF probes need.
-    (mkIf cfg.packageAgent {
-      assertions = [
-        {
-          assertion = !(cfg.enable || cfg.agentEnable);
-          message = ''
-            MODULES.services.coroot.packageAgent and the docker agent cannot both run:
-            they would fight over the loopback listener.
-          '';
-        }
-      ];
-
       systemd.services.coroot-node-agent = {
-        description = "Coroot node agent (package build, microVM guest)";
+        description = "Coroot node agent";
         wantedBy = ["multi-user.target"];
-        # Push-only, but the collector lives on the tailnet, so tailscaled must be up first.
-        after = ["network-online.target" "tailscaled.service"];
-        wants = ["network-online.target"];
+        # Push-only, but the collector lives on the tailnet, so tailscaled must be up first;
+        # on the server host, start after coroot itself so the first push lands.
+        after =
+          ["network-online.target" "tailscaled.service"]
+          ++ lib.optionals cfg.enable ["coroot.service"];
+        wants = ["network-online.target"] ++ lib.optionals cfg.enable ["coroot.service"];
         requires = ["tailscaled.service"];
         serviceConfig = {
           Restart = "always";
@@ -218,11 +183,12 @@ in {
           # The only writable state is the WAL spool for push retries.
           StateDirectory = "coroot-node-agent";
           ExecStart = lib.concatStringsSep " " [
-            "${pkgs.coroot-node-agent}/bin/coroot-node-agent"
+            "${pkgs-unstable.coroot-node-agent}/bin/coroot-node-agent"
+            # Loopback: nothing connects TO the agent (it pushes), and the port serves plain
+            # /metrics. The package default is 0.0.0.0:80 - always override it.
             "--listen=127.0.0.1:${toString config.PORTS.corootNodeAgent}"
             "--collector-endpoint=${collectorUrl}"
-            # cgroup v2, the guest's own tree - no /host indirection (that's the docker
-            # variant's problem: a container cannot see its own host's root cgroup).
+            # cgroup v2, this machine's own tree (the docker variant needed /host).
             "--cgroupfs-root=/sys/fs/cgroup"
             "--wal-dir=/var/lib/coroot-node-agent"
           ];
@@ -246,6 +212,11 @@ in {
         }
       ];
 
+      # Only ClickHouse still runs in a container here (module header); since 2026-10-27 the
+      # agent and the server itself are native units and an agent-only host needs no docker.
+      virtualisation.docker.enable = true;
+      virtualisation.oci-containers.backend = "docker";
+
       systemd.tmpfiles.rules = [
         "d ${dataDir} 0700 root root - -"
       ];
@@ -257,8 +228,8 @@ in {
       # `coroot set-admin-password`, or re-add the line and delete the admin user row.
       systemd.services.coroot-secrets = {
         description = "Generate Coroot's bootstrap admin password";
-        before = ["docker-coroot.service"];
-        requiredBy = ["docker-coroot.service"];
+        before = ["coroot.service"];
+        requiredBy = ["coroot.service"];
         path = [
           pkgs.openssl
           pkgs.coreutils
@@ -282,6 +253,78 @@ in {
         '';
       };
 
+      # One-time lift of the docker era's sqlite (+ any other state) into the native data dir,
+      # so the 1.9.9 -> 1.27.4 upgrade keeps the admin user, the project and its id. Guarded on
+      # the absence of the sqlite file: once the native server has written it, this is a no-op
+      # forever and the docker volume is dead weight (module header says how to drop it).
+      # 2026-10-27: the guard file is db.sqlite - both 1.9.9 and 1.27 name it that (first
+      # deploy guarded on a non-existent coroot.db and re-copied the volume on every boot,
+      # which would have reverted the live DB each restart).
+      systemd.services.coroot-data-migration = {
+        description = "Move Coroot's sqlite data out of the docker volume (one-time)";
+        after = ["docker.service"];
+        wants = ["docker.service"];
+        requiredBy = ["coroot.service"];
+        before = ["coroot.service"];
+        path = [pkgs.coreutils];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
+        script = ''
+          if [ ! -e ${dataDir}/db.sqlite ] && [ -d /var/lib/docker/volumes/coroot-data/_data ]; then
+            cp -a /var/lib/docker/volumes/coroot-data/_data/. ${dataDir}/
+          fi
+        '';
+      };
+
+      systemd.services.coroot = {
+        description = "Coroot server";
+        wantedBy = ["multi-user.target"];
+        # ClickHouse takes a few seconds to accept connections; without the ordering the server
+        # exits on its first migration attempt and systemd's restart policy recovers it seconds
+        # later anyway - this just makes first boot quiet.
+        after = ["docker-coroot-clickhouse.service" "coroot-data-migration.service" "coroot-secrets.service"];
+        requires = ["docker-coroot-clickhouse.service" "coroot-data-migration.service"];
+        serviceConfig = {
+          Restart = "always";
+          RestartSec = "5s";
+          # The bootstrap admin password (consumed on first start only) arrives through the
+          # same root-only env file the docker container used; kingpin reads the env name
+          # directly, so no ExecStart interpolation and no secret in the unit or argv.
+          EnvironmentFile = secretsFile;
+          ExecStart = lib.concatStringsSep " " [
+            "${pkgs-unstable.coroot}/bin/coroot"
+            "run"
+            # Bind all interfaces on :PORT: remote hosts' agents push here over tailscale0,
+            # and nothing else routes to this box - the firewall's default zone still drops;
+            # see the tailscale0 rule below. The UI and the OTLP endpoints live on this port
+            # too (Traefik fronts it as coroot.<host>).
+            "--listen=:${toString config.PORTS.coroot}"
+            "--grpc-disabled"
+            "--data-dir=${dataDir}"
+            # "global_*" (not "bootstrap_*"): re-applied from config on every start, so a changed
+            # PORTS.prometheus after a rebuild actually takes effect instead of living only in the
+            # first-run database row.
+            "--global-prometheus-url=http://127.0.0.1:${toString config.PORTS.prometheus}"
+            # coroot parses the prometheus pair together: a URL without a refresh-interval is
+            # fatal at startup (config.go "invalid global_prometheus: invalid refresh-interval"
+            # - seen live on akos01 2026-10-25). 15s is the documented default.
+            "--global-refresh-interval=15s"
+            # 2026-10-26, the alert storm after the native-server switch: UseClickHouse DEFAULTS
+            # TO FALSE, and then collector/metrics.go proxies agent remote-write to PROMETHEUS
+            # (that's how the old 1.9.9 docker image worked). But 1.27's world/constructor reads
+            # the agent series from CLICKHOUSE - with an empty metrics table every app 404s and
+            # every check fires at once ("no instances available" x27, network checks blind).
+            # Coroot's own deploy manifests run modern servers with CH as the metrics store; so
+            # must we. (The agent's /api/v1/write proxy traffic into prometheus stops with this.)
+            "--global-prometheus-use-clickhouse"
+            "--global-clickhouse-address=127.0.0.1:${toString config.PORTS.corootClickhouseNative}"
+            "--do-not-check-for-updates"
+          ];
+        };
+      };
+
       virtualisation.oci-containers.containers.coroot-clickhouse = {
         image = cfg.clickhouseImage;
         environment.CLICKHOUSE_SKIP_USER_SETUP = "1";
@@ -299,51 +342,6 @@ in {
           # The compose file raises nofile for ClickHouse; the XML drop-in has no equivalent.
           "--ulimit=nofile=262144:262144"
         ];
-      };
-
-      virtualisation.oci-containers.containers.coroot = {
-        image = cfg.image;
-        environment = {
-          # Reachable by remote agents on the tailscale interface - and nowhere else, the
-          # firewall's default zone still drops; see the tailscale0 rule below.
-          LISTEN = ":${toString config.PORTS.coroot}";
-          # OTLP ingest: the HTTP listener serves /v1/traces, /v1/metrics and /v1/logs on the
-          # SAME port, no auth (same trust boundary as the agent push above) - verified with
-          # a live python-OTel SDK push on akos01, 2026-10-25. Loopback clients per the
-          # per-host coroot model: every host's apps push to their OWN server over 127.0.0.1.
-          # NOTE: this image (1.9.9) has NO OTLP/gRPC server (github coroot 1.9.9 has no
-          # collector/grpc.go) - newer releases add `GRPC_LISTEN`; revisit when the image
-          # is bumped. Emitters configured below therefore use OTLP/HTTP endpoints with
-          # the full /v1/<signal> path.
-          DATA_DIR = "/data";
-          # "global_*" (not "bootstrap_*"): re-applied from config on every start, so a changed
-          # PORTS.prometheus after a rebuild actually takes effect instead of living only in the
-          # first-run database row.
-          GLOBAL_PROMETHEUS_URL = "http://127.0.0.1:${toString config.PORTS.prometheus}";
-          # coroot parses these together: GLOBAL_PROMETHEUS_URL without
-          # GLOBAL_REFRESH_INTERVAL is fatal at startup (config.go:178 "invalid
-          # global_prometheus: invalid refresh-interval") - seen live on akos01
-          # 2026-10-25. 15s is the documented default.
-          GLOBAL_REFRESH_INTERVAL = "15s";
-          GLOBAL_CLICKHOUSE_ADDRESS = "127.0.0.1:${toString config.PORTS.corootClickhouseNative}";
-          DISABLE_USAGE_STATISTICS = "true";
-        };
-        environmentFiles = [secretsFile];
-        volumes = ["coroot-data:/data"];
-        # The compose file runs it as root; the sqlite DB in the named volume is root-owned.
-        extraOptions = ["--network=host" "--user=0:0"];
-      };
-
-      # ClickHouse takes a few seconds to accept connections; without the ordering the server
-      # exits on its first migration attempt and systemd's restart policy recovers it seconds
-      # later anyway - this just makes first boot quiet.
-      systemd.services.docker-coroot = {
-        after = ["docker-coroot-clickhouse.service"];
-        requires = ["docker-coroot-clickhouse.service"];
-      };
-      systemd.services.docker-coroot-node-agent = {
-        after = ["docker-coroot.service"];
-        wants = ["docker-coroot.service"];
       };
 
       # Remote agents (other hosts' node-agents) push here.

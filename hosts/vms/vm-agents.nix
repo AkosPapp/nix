@@ -60,12 +60,14 @@
 
   services.tailscale.enable = true;
 
-  # coroot-node-agent, package build (modules/services/coroot.nix's packageAgent path is
-  # host-only - its server half references fleet MODULES options this guest lacks). Pushes
-  # to akos01's Coroot server (tailscale IP spelled out; a guest sees no nixosConfigurations;
-  # 2026-10-26: was hp, whose server half was disabled and aggregation moved to akos01).
-  # Loopback listener on 8141 = PORTS.corootNodeAgent, kept in sync by eye. The guest
-  # kernel is stock nixpkgs, so CONFIG_DEBUG_INFO_BTF is on - the CO-RE probes need it.
+  # coroot-node-agent, package build. The fleet module's agent is the nixpkgs-unstable package
+  # (paired with the 1.27.x server), but guests never receive pkgs-unstable (flake.nix nulls it),
+  # so this inline unit uses the 26.05 package (1.32.0); the server accepts older agents and
+  # marks the node's version in the UI. Bump by checking it against the server on akos01.
+  # Pushes to akos01's Coroot server (tailscale IP spelled out; a guest sees no
+  # nixosConfigurations; 2026-10-26: was hp, whose server half was disabled and aggregation
+  # moved to akos01). Loopback listener on 8141 = PORTS.corootNodeAgent, kept in sync by eye.
+  # The guest kernel is stock nixpkgs, so CONFIG_DEBUG_INFO_BTF is on - the CO-RE probes need it.
   systemd.services.coroot-node-agent = {
     description = "Coroot node agent (package build, microVM guest)";
     wantedBy = ["multi-user.target"];

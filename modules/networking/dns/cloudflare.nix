@@ -213,6 +213,10 @@ in {
           tunnel = cfg.tunnel.name;
           credentials-file = "/run/credentials/cloudflared-tunnel-${cfg.tunnel.name}.service/credentials.json";
           protocol = "http2";
+          # Pinned: cloudflared's built-in default is 127.0.0.1:20241, NOT PORTS.cloudflaredMetrics
+          # (measured on hp 2026-10-27: prometheus scraped 35555, cloudflared served 20241, target
+          # permanently down). Whatever PORTS says is what we bind.
+          metrics = "127.0.0.1:${toString config.PORTS.cloudflaredMetrics}";
           ingress =
             map (sub: {
               hostname = traefikCloudflare.hostOf sub;
@@ -225,8 +229,9 @@ in {
         lib.mkForce "${config.services.cloudflared.package}/bin/cloudflared tunnel --config=${
           pkgs.writeText "cloudflared-${cfg.tunnel.name}.yml" tunnelConfig
         } --no-autoupdate run";
-      # The metrics server (Prometheus format, scraped by prometheus.nix) is on by default at
-      # PORTS.cloudflaredMetrics - nothing to configure, cloudflared just starts it.
+      # The metrics server (Prometheus format, scraped by prometheus.nix) is pinned to
+      # PORTS.cloudflaredMetrics via the config's `metrics` key above - cloudflared's own
+      # default is the different port 20241, so never rely on it.
     };
 
     systemd.services.cloudflare-dns-sync = {

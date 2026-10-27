@@ -59,7 +59,6 @@
     map
     (host: "http://${(hostConfig host).MODULES.networking.tailscale.hostIP}:${toString config.PORTS.immichMachineLearning}")
     remoteAiHosts;
-
   # remote workers first (dedicated AI hosts), local worker last as a fallback - matches Immich's
   # own recommendation of appending rather than replacing the default local URL
   aiHostUrls = remoteAiHostUrls ++ [localMlUrl];
@@ -165,6 +164,10 @@ in {
       # full-server gate needs it: the ML-only path (below) strips database/redis out.
       MODULES.services.postgres.enable = true;
       MODULES.services.postgres.socketPeerRoles = [config.services.immich.database.user];
+      # vectorchord only works when preloaded; nixpkgs' immich module also sets the leaf,
+      # but MODULES.services.postgres mkForce's it from preloadLibraries (postgresql.nix),
+      # so this - not the immich module's copy - is what actually lands.
+      MODULES.services.postgres.preloadLibraries = ["vchord.so"];
     })
 
     (mkIf cfg.machineLearning.enable {
