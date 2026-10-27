@@ -1,0 +1,150 @@
+/* md2pdf default print stylesheet: A4 geometry, page numbers, styled tables,
+   math kept atomic (see packages/md2pdf.nix). Users layer their own -c file on top. */
+
+@page {
+  size: A4;
+  margin: 20mm 18mm 20mm 18mm;
+
+  @bottom-center {
+    content: counter(page) " / " counter(pages);
+    font-family: "Noto Sans", sans-serif;
+    font-size: 8.5pt;
+    color: #9ca3af;
+  }
+}
+
+html {
+  font-size: 10.5pt;
+}
+
+body {
+  font-family: "Noto Serif", "Noto Sans CJK SC", "Noto Color Emoji", serif;
+  color: #1f2937;
+  line-height: 1.55;
+  margin: 0;
+  max-width: 100%;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* ---------- Headings ---------- */
+h1 {
+  font-family: "Noto Sans", "Noto Sans CJK SC", sans-serif;
+  font-size: 1.9em;
+  font-weight: 800;
+  color: #111827;
+  margin: 0 0 0.2em 0;
+  padding-bottom: 0.35em;
+  border-bottom: 3px solid #2563eb;
+}
+
+h2 {
+  font-family: "Noto Sans", "Noto Sans CJK SC", sans-serif;
+  font-size: 1.25em;
+  font-weight: 700;
+  color: #1d4ed8;
+  margin: 1.6em 0 0.6em 0;
+  padding: 0.15em 0.5em;
+  background: #eff6ff;
+  border-left: 4px solid #2563eb;
+  border-radius: 0 4px 4px 0;
+  break-after: avoid;
+}
+
+h3 {
+  font-family: "Noto Sans", sans-serif;
+  font-size: 1.05em;
+  color: #374151;
+  break-after: avoid;
+}
+
+/* ---------- Horizontal rules ---------- */
+hr {
+  border: none;
+  border-top: 1px dashed #d1d5db;
+  margin: 1.4em 0;
+}
+
+/* ---------- Inline emphasis ---------- */
+strong {
+  color: #111827;
+}
+
+/* ---------- Tables ---------- */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.8em 0 1em 0;
+  font-size: 0.92em;
+  break-inside: avoid;
+}
+
+thead th {
+  font-family: "Noto Sans", sans-serif;
+  background: #1e40af;
+  color: #ffffff;
+  text-align: left;
+  padding: 0.35em 0.6em;
+  border: 1px solid #1e3a8a;
+  font-weight: 600;
+}
+
+tbody td {
+  padding: 0.3em 0.6em;
+  border: 1px solid #d1d5db;
+  vertical-align: top;
+}
+
+tbody tr:nth-child(even) {
+  background: #f3f4f6;
+}
+
+/* ---------- Blockquotes (Kernidee box) ---------- */
+blockquote {
+  margin: 1em 0;
+  padding: 0.6em 1em;
+  background: #fefce8;
+  border-left: 4px solid #eab308;
+  border-radius: 0 6px 6px 0;
+}
+
+blockquote p {
+  margin: 0.2em 0;
+}
+
+/* ---------- Lists ---------- */
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li {
+  margin: 0.25em 0;
+}
+
+li > ul, li > ol {
+  margin: 0.2em 0;
+}
+
+p {
+  margin: 0.55em 0;
+}
+
+/* ---------- Math (MathJax) ---------- */
+/* keep each formula atomic so punctuation never gets orphaned on its own line */
+mjx-container {
+  white-space: nowrap;
+}
+
+mjx-container[display="true"] {
+  margin: 0.8em 0 !important;
+  text-align: center;
+  break-inside: avoid;
+}
+
+/* ---------- Header/footer title block pandoc adds ---------- */
+header#title-block-header {
+  display: none;
+}
+
+/* keep the first block tight under h1 */
+h1 + p { margin-top: 0.8em; }

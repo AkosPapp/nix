@@ -5,12 +5,18 @@ before changing anything under `hosts/`, `users/`, `modules/`, or `profiles/`.
 
 ## The repo in one breath
 
-`flake.nix` auto-imports every `*.nix` under `modules/` into every
-`nixosConfiguration`, and wires each `hosts/<name>/` directory as the host's
-own module. `users/<name>.nix` are opt-in user modules (enabled via
-`USERS.<name>.enable`). Everything under `modules/` is therefore *always
-available* - a host never needs an `imports` line to use one, and nothing
+`flake.nix` auto-imports every `*.nix` under `modules/` (plus `profiles/` and
+`users/`) into every `nixosConfiguration`, and wires each `hosts/<name>/`
+directory as the host's own module. `users/<name>.nix` are opt-in user modules
+(enabled via `USERS.<name>.enable`). Everything under `modules/` is therefore
+*always available* - a host never needs an `imports` line to use one, and nothing
 outside `hosts/` may reference a specific host name.
+
+The machines are `hp`, `akos01` and `legion5`; `iso` is a buildable installer
+config, not a node. Firecracker guests (`hosts/vms/`) live in
+`microvmConfigurations`, **not** in `nixosConfigurations` - deploy-rs iterates
+the latter and must never ssh-activate a VM; guests deliberately see
+`nixosConfigurations = {}`.
 
 ## Rule 1 - host files are service lists, not implementations
 
@@ -59,6 +65,13 @@ follow, not to re-litigate):
   (`acceptPush.{enable,datasetPrefix,authorizedKey}` composes the
   forced-command `authorized_keys` line) and the pg-dump dataset creation
   (`pgDumpDataset`).
+- `modules/security/service-graph.nix` - the fleet's single tailnet edge
+  table. The nft/iptables allow-jails and the Suricata tap's pass-list are
+  both rendered from it, and it derives peer sources (Prometheus scrapers,
+  the immich server <-> ML-worker dial chain) from the `nixosConfigurations`
+  specialArgs. **A new service that accepts or dials tailnet TCP must add
+  its edge there - in both roles, since each host's tap also sees our own
+  outbound SYNs - or Suricata fires `SG-DRIFT` on every connection of it.**
 
 ## Rule 2 - no duplicated blocks, ever
 
@@ -81,6 +94,10 @@ them:
   kwargs, costs) exist **only** in `modules/services/model-catalog.nix`.
   Consumers default from it via `MODULES.services.modelCatalog.lookup`;
   hosts/users only name the model.
+- Per-unit resource caps exist **only** in `modules/system/limits.nix`
+  (`config.LIMITS` rows, `tiny`/`boring` tiers, dated sizing notes). Units
+  get no `MemoryMax`/`CPUQuota` anywhere else; a host with a twist overlays
+  the named row's field.
 - The split-DNS scripts existed verbatim on hp, legion5 and akos01 before
   they moved into `modules/networking/dns/split-dns.nix`. Their per-host
   calls (exit-node advertisement, `acceptRoutes`, lab-forward gating on
@@ -89,13 +106,58 @@ them:
   `hosts/hp/default.nix`; it is now the opencode module's `providers`
   default rendered from the catalog.
 - Cross-host facts flow through the flake's `nixosConfigurations`
-  specialArgs (hp's Traefik zone list, Syncthing mirror lists) instead of
-  being restated per host.
+  specialArgs (hp's Traefik zone list, Syncthing mirror lists, the
+  service-graph edge table) instead of being restated per host.
 
 If a block must exist twice for a hard technical reason (e.g. microVM
 guests deliberately see `nixosConfigurations = {}` and so spell akos01's
 Tailscale IP literally), say so in a comment at the duplication site -
 an unexplained duplicate will be assumed fixable and consolidated.
+
+## Fleet namespaces an agent would otherwise miss
+
+- `config.PORTS.<name>` (`modules/networking/ports.nix`) is every service's
+  port registry. Modules and hosts interpolate `PORTS.*`; a hardcoded port
+  number is a bug (measured 2026-10-27: prometheus scraped cloudflared's
+  metrics on the `PORTS` number while cloudflared's own default was a
+  different port - the pinning now lives in the generated tunnel config).
+- `config.LIMITS.<row>` (`modules/system/limits.nix`): the systemd
+  CPU/memory/tasks caps per unit, keyed by predicates over the config.
+- sops: one encrypted file, `sops/secrets.yaml` (recipient set in
+  `sops/.sops.yaml` = every host's age key). Modules consume it via
+  `config.sops.secrets."<key>".path` and `sops.templates`; new keys go in
+  via `sops edit` inside `sops/`, never as plaintext anywhere.
+- **attrsOf default trap** (verified empirically on nixpkgs 26.05): the
+  moment a host defines ANY dotted key under an `attrsOf` option (e.g.
+  `LIMITS.ollama.memMax`), the option's *default map* is dropped entirely
+  and every row the host did not name vanishes. Fleet-defaulted option maps
+  therefore default to `{}` and consumers read them through a field-wise
+  merge helper - see the header comments of `modules/system/limits.nix` and
+  `modules/security/jail.nix`. Any new option with per-attribute defaults
+  must use that pattern.
+
+## Deploy
+
+- deploy-rs config lives in the flake (`deploy.nodes`; `remoteBuild` and a
+  10-minute `confirmTimeout` are already set there). Deploy one host from a
+  repo checkout with `deploy -s --targets .#<host>`. The long
+  `confirmTimeout` is load-bearing: hp's unit-start phase legitimately runs
+  past 2 min and the 30 s default rolled back a healthy switch (2026-10-26).
+  `iso` is excluded from `deploy.nodes`.
+- `make switch` runs `nixos-rebuild switch --flake .# --impure` and then
+  **auto-commits**; `make sync` commits and pushes. Agents must not commit
+  (see Working conventions), so never use those two targets - `make stage`
+  or `git add` only.
+- `nix run .#cloudflare-config` is the one-time Cloudflare login/tunnel/DNS
+  setup and the sanctioned way to refresh the tunnel's sops secrets.
+
+## Design docs
+
+- `PLAN.md` is the design document module comments cite by section (§2.1
+  pg_hba hardening, §3.4 jail egress, §6 microVMs, ...). Read the cited
+  section before touching the jail, postgres or microvm modules.
+- `SECURITY-AUDIT-2026-10-24.md` is a dated audit whose numbered findings
+  several module comments reference; its fixes are already in.
 
 ## Working conventions
 
@@ -110,12 +172,13 @@ an unexplained duplicate will be assumed fixable and consolidated.
   ... does not exist" even though the file is on disk.
 - Verify with `nix-instantiate --parse <file>` while iterating, and
   evaluate the real configs before finishing:
-  `nix eval --raw '.#nixosConfigurations.<host>.config.networking.hostName'`
-  for `hp`, `legion5`, `akos01`, plus `.#nixosConfigurations.iso` when
-  relevant. `nix eval` works offline (inputs are cached).
+  `nix eval --raw ".#nixosConfigurations.<host>.config.system.build.toplevel.drvPath"`
+  for every host touched (`hp`, `legion5`, `akos01`, plus `iso` when
+  relevant). `nix eval` works offline (inputs are cached).
 - Watch for the NixOS "attribute already defined" trap: defining both
   `a.b = x;` and `a = { b = y; };` for the same leaf in one module errors.
 - Options need `description`s (or `mkEnableOption` texts) - they surface in
   `nixos-option`/manpages and this repo's modules are written as
   self-documenting APIs for hosts.
-- Don't commit or push; the user reviews working-tree changes.
+- Don't commit or push; the user reviews working-tree changes (staged,
+  per the `git add` rule above).

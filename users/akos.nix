@@ -104,6 +104,7 @@
       virtualisation.virtualbox.enable = true;
       wm.niri.enable = true;
       dev.platformio.enable = true;
+      dev.md2pdf.enable = true;
     };
 
     systemd.services.systemd-udev-settle.enable = false;
@@ -137,7 +138,9 @@
       sops
       immich-go
       immich-cli
-      md2pdf
+      # (no bare `md2pdf` here: pkgs.md2pdf is the old Python/WeasyPrint tool
+      # without real math rendering; the pandoc+Chromium one is installed via
+      # MODULES.dev.md2pdf below)
 
       # system tools
       libnotify

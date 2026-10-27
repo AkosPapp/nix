@@ -568,6 +568,15 @@ in {
       after = [config.services.matrix-synapse.serviceUnit];
       requires = [config.services.matrix-synapse.serviceUnit];
       wantedBy = ["multi-user.target"];
+      # Keep Synapse itself on the hook for this unit, not just the (once-active, then never
+      # re-triggered) multi-user.target: stopping Synapse pulls this down as a Requires= dependent,
+      # but a NixOS activation only (re)starts units *it* changed - an unchanged dependent stays
+      # dead across every later switch too (hp 2026-10-26 22:54: a switch stopped the reader mid
+      # Synapse churn and four further switches never brought it back; Hermes was chat-blind for
+      # 21 h). UpheldBy re-starts the reader whenever Synapse is up and finds it down; the reader
+      # already backs off against a still-warming homeserver, so no crash-loop while Synapse
+      # catches up.
+      upheldBy = [config.services.matrix-synapse.serviceUnit];
       environment = {
         MATRIX_HOMESERVER = matrix.clientUrl;
         MATRIX_BOT_USER_ID = matrix.botId;
