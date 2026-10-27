@@ -252,10 +252,23 @@ in {
         description = ''
           Chromium-based browser Playwright launches, handed to it as
           --executable-path (with --browser chromium, its engine for any such binary).
-          Playwright starts it as its own instance with a separate persistent profile
-          (~/.cache/ms-playwright by default), never attaching to the user's already
-          running browser - logins made in the automation profile survive restarts but
-          stay out of the daily-driver profile.
+          Playwright starts it as its own instance with a separate persistent profile,
+          never attaching to the user's already running browser - logins made in the
+          automation profile survive restarts but stay out of the daily-driver profile.
+        '';
+      };
+
+      userDataDir = mkOption {
+        type = types.str;
+        default = "{env:HOME}/.local/share/opencode/playwright-mcp-profile";
+        description = ''
+          Profile directory for the browser Playwright launches, passed as
+          --user-data-dir. opencode's {env:} substitution expands HOME at load,
+          since /etc/opencode.json is user-agnostic. Must be writable and must be
+          set: without it playwright-mcp puts its default profile under
+          $PLAYWRIGHT_BROWSERS_PATH, which the nixpkgs wrapper pins to the
+          read-only store (measured on legion5 2026-10-27: first navigate failed
+          "ENOENT ... mkdir /nix/store/...-playwright-browsers/mcp-chrome-for-testing-7799135").
         '';
       };
 
@@ -362,6 +375,8 @@ in {
               "chromium"
               "--executable-path"
               "${lib.getExe cfg.mcp.playwright.browser}"
+              "--user-data-dir"
+              cfg.mcp.playwright.userDataDir
             ]
             ++ cfg.mcp.playwright.extraArgs;
           enabled = true;
