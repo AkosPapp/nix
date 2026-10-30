@@ -142,7 +142,11 @@
   MODULES.services.litellm.public.enable = true;
   MODULES.services.prometheus.enable = true;
   # 21 GiB box; eval fails if the LIMITS table's MemoryHigh lines stop fitting (PLAN.md §1.2).
-  MODULES.system.limits.memoryBudget = "18G";
+  # 19G since 2026-10-30, the day the paperless row landed and broke the old 18G sum: owner
+  # measured the box idle at ~60% RAM with most of that ZFS ARC (reclaimable under pressure),
+  # so the throttle-line cap - not the hardware - is the binding limit here, and it moved to
+  # keep every row's memHigh honest instead of squeezing a new one below its working set.
+  MODULES.system.limits.memoryBudget = "19G";
   # Author the §1.7 PSI-pressure alert rules here; Syncthing ships them to every Prometheus.
   MODULES.system.limits.managePressureRules = true;
   # PLAN.md §2 Tier A + §3.4: per-service containment specs live in modules/security/jail.nix
@@ -361,6 +365,37 @@
   # mechanics and the one-time key creation command).
   MODULES.services.trilium.litellm.enable = false;
 
+  # Joplin (https://joplinapp.org), side by side with Trilium for the same job - https://joplin.hp
+  # on the tailnet: the Joplin DESKTOP streamed from lscr.io/linuxserver/joplin. The Hermes
+  # comparison is API vs FILES: Trilium goes through ETAPI (above), while Joplin syncs its notes
+  # as plain markdown into /var/lib/hermes/joplin, which Hermes reads and writes directly - the
+  # container writes with the hermes uid, so both sides own every file (joplin.nix). First-boot
+  # steps are in the syncDir option's text: sync target "File system", path /joplin-sync,
+  # auto-sync on. No browser login (webUser = null, 2026-10-27: every tailnet peer is akos' own
+  # device, so the nginx basic auth guards nothing a determined-enough local isn't already
+  # trusted with; see the option's caveat about Joplin plugins before widening the tail).
+  # AI chat is not seeded the way Trilium's LiteLLM provider is - if wanted, Options -> AI with
+  # http://127.0.0.1:8095/v1 and a virtual key minted like trilium.nix describes.
+  MODULES.services.joplin = {
+    enable = true;
+    webUser = null;
+    # The W6400 (amdgpu, renderD128) moves Selkies' capture/encode off the CPU - measured
+    # 2026-10-27: software x264 readback under the cgroup quota felt laggy from the browser,
+    # the image's own README calls this flag the whole GPU setup on AMD.
+    driDevice = "/dev/dri";
+  };
+
+  # paperless-ngx (https://paperless-ngx.com), the document archive - https://paperless.hp on
+  # the tailnet. The third note-app sibling on this box (trilium.nix API, joplin.nix files) and
+  # it joins the API camp: Hermes talks REST, not files - two loopback containers (app on
+  # sqlite + a valkey broker, the v3 image has no bundled halves) behind Traefik (paperless.nix).
+  # Hermes' token is the same one-time story trilium's ETAPI was: create the superuser on the
+  # first-run page, mint the token per paperless.nix's apiTokenSecret text, store it in sops as
+  # paperless/api_token, then flip the line below - until then the archive runs, but only the
+  # human UI can touch it. OCR languages ride hermes' eng+deu default.
+  MODULES.services.paperless.enable = true;
+  # MODULES.services.paperless.apiTokenSecret = "paperless/api_token";
+
   # Outline was tried and dropped - not needed. Its data (Postgres's "outline" database,
   # /var/lib/outline) was removed by hand on the host; see git history for how it was set up if
   # it comes back. mdbook (public docs) is unrelated and stays on.
@@ -377,7 +412,39 @@
   # Client ID and secret come from sops (idp/client_id, idp/client_secret).
   MODULES.security.idp.enable = true;
 
-  MODULES.services.sftpgo.enable = true;
+  # WebDAV for Joplin's sync target, served by the EXISTING sftpgo users (accounts are managed
+  # in the WebAdmin UI at https://sftpgo.hp, never declaratively - see sftpgo.nix). One-time
+  # step NOW ACTUALLY PRESENT on hp (2026-10-29, later than this block's first wording claimed):
+  # user akos virtual folder joplin, virtual path /joplin, mapped path /var/lib/hermes/joplin.
+  # It was created by a stopped-daemon sqlite insert, not the WebAdmin click, because the click
+  # never happened the first time and devices were silently syncing an empty wrong tree: with
+  # no /joplin virtual folder, the URL resolved INSIDE akos's home and Joplin's first attempt
+  # auto-created /var/lib/sftpgo/files/joplin as a real 12-item sync tree - clients then kept
+  # syncing THAT (216 "successful" requests today while the export sat invisible in the real
+  # tree; Joplin #12810 makes an unreachable/wrong target look like success). Daemon user-cache
+  # ExpirationTime is 0 (infinite), so DB edits require a daemon restart - the insert shape
+  # (folders row with the local filesystem JSON, users_folders_mapping quotas 0/0, "/" perms
+  # covering the vfolder) was replicated from an API-calibrated row on the same sftpgo 2.7.5.
+  # The stray dir is kept renamed as files/joplin-stray-20261029; its 11 device-side items were
+  # copied into the real tree first (ids are add-only) so no client tombstones notes it
+  # believes already synced. A second account `joplin` (home = the real tree, also never
+  # clicked into the UI plan) exists DISABLED in the DB - delete via WebAdmin when convenient;
+  # accounts stay WebAdmin-managed per sftpgo.nix. Clients (phone, legion5
+  # desktop) then sync to https://webdav.hp/joplin with the akos credentials they already use
+  # for Zotero at https://webdav.hp/zotero - same user, same password, different folder. The
+  # streamed desktop on https://joplin.hp KEEPS its "File system" sync (Hermes' file bridge,
+  # joplin.nix): WebDAV "/" + virtual paths resolve inside the akos account, and /joplin maps
+  # to the very same directory the container syncs locally, so every client shares one tree,
+  # last-write-wins. runAsUser = hermes is what makes that safe: the container writes its sync
+  # files 0600 as the hermes uid and /var/lib/hermes is 2770 - measured 2026-10-29 that a
+  # stock sftpgo-uid daemon could neither read them nor traverse the state dir. Zotero's
+  # storage and the sqlite DB are chowned to hermes along with them (idempotent ExecStartPre
+  # in sftpgo.nix) - paths and credentials unchanged, so zotero keeps working.
+  MODULES.services.sftpgo = {
+    enable = true;
+    runAsUser = "hermes";
+    sharedPaths = ["/var/lib/hermes/joplin"];
+  };
   MODULES.services.i2pd.enable = false;
   MODULES.services.immich.machineLearning.enable = true;
   # The immich SERVER moved to akos01, but the pre-migration immich database stayed

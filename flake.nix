@@ -35,6 +35,21 @@
       url = "github:NousResearch/hermes-agent";
       inputs.nixpkgs.follows = "nixpkgs-unstable";
     };
+    # gpu-unlock (tensor-core throttle removal) as of 2026-10-28 only carries Nix packaging in
+    # the still-open PR #186, so this pins that PR's head branch, not a release of the repo.
+    # modules/hardware/nvidia-gpu-unlock.nix consumes the flake module behind an opt-in flag.
+    # Re-point at `github:Zagitta/gpu-unlock` once (if) the PR merges.
+    #
+    # Rev matters per-CARD, not just per-PR (legion5 measured 2026-10-29): the branch's earlier
+    # head was upstream 1.1.0, whose recipes.c covers GA10x + AD102 only, so it booted and
+    # logged `gpu_unlock: no supported card at "0000:01:00.0"` for the RTX 4060 Laptop
+    # (10de:28e0). The 2.0.0 rebase added AD107. When a card says "no supported card", check
+    # kernel/gpu_unlock/recipes.c in THIS input for its device id before blaming power timing:
+    #   nix-instantiate --eval --expr '<gpu-unlock>/kernel/gpu_unlock/recipes.c' --raw | grep 28e0
+    gpu-unlock = {
+      url = "github:bearice/gpu-unlock/nix-flake";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {

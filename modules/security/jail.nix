@@ -273,6 +273,28 @@
         units = ["trilium"];
         note = "sync clients connect IN; only update-check dials out; tailnet/LAN blocked.";
       };
+      joplin = {
+        units = ["joplin"];
+        note = "browser sessions connect IN through Traefik; update checks/AI dial out; tailnet/LAN blocked.";
+      };
+      paperless = {
+        units = ["paperless"];
+        # Unlike the trilium/omniroute rows this one can ride the uid-based egress chain
+        # as-is: the s6 services drop to the host's `paperless` uid (USERMAP remap in
+        # paperless.nix), so the chain's owner match has a real, stable uid behind it.
+        user = "paperless";
+        # The celery broker hop; webserver, consumer and workers all dial it.
+        allowedLoopbackTCPPorts = [config.PORTS.paperlessBroker];
+        note = "UI/API clients (incl. Hermes) connect IN through Traefik/loopback; OUT is the broker hop + update checks; tailnet/LAN blocked.";
+      };
+      paperlessBroker = {
+        units = ["paperless-broker"];
+        # valkey listens on loopback and is dial-only; but the row exists so flipping the
+        # app jail without it never leaves the broker unjail-able by omission.
+        publicDefault = "deny";
+        allowDns = false;
+        note = "loopback queue: dials nobody, everything else is a bug.";
+      };
       prometheus = {
         units = ["prometheus"];
         # authorization.credentials_file (litellm scrape) is read by the prometheus uid.

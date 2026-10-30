@@ -100,6 +100,18 @@
         defaultModel = "litellm/futurelab/qwen3.8-flash-next";
         smallModel = "litellm/futurelab/qwen3.8-flash-next";
       };
+      # pi for interactive use, fully declarative (the module owns the package too):
+      # /etc/pi/models.json is symlinked into ~/.pi/agent with the API keys resolved at
+      # run time via pi's "!cat <sops path>" - nothing secret lands in the store or the
+      # home - and settings.json is deep-merged with the default model pinned to the
+      # litellm gateway (pi would otherwise boot on the alphabetically-first provider,
+      # which is the futurelab backup). Same catalogue and sops keys as
+      # services.opencode above; replaces the paseo-machine daemon's home writes
+      # (legion5 2026-10-29).
+      services.pi = {
+        enable = true;
+        users = ["akos"];
+      };
       virtualisation.docker.enable = true;
       virtualisation.virtualbox.enable = true;
       wm.niri.enable = true;
@@ -114,12 +126,9 @@
       # helpful tools
       starship
       ripgrep
-      # pi on PATH for interactive use - the same package (same unstable pin) the
-      # paseo-machine daemon drives; its litellm model config (~/.pi/agent/models.json)
-      # is written at service start by MODULES.services.paseo-machine. opencode comes from
-      # MODULES.services.opencode, whose /etc/opencode.json + $OPENCODE_CONFIG already
-      # registers the same litellm gateway for the shells.
-      pkgs-unstable.pi-coding-agent
+      # pi is installed (same unstable pin) and configured by MODULES.services.pi;
+      # opencode comes from MODULES.services.opencode, whose /etc/opencode.json +
+      # $OPENCODE_CONFIG registers the same gateways for the shells.
       httm
       mpv
       fd
@@ -234,6 +243,19 @@
       # works here - point Element straight at it. Same fix applies to any other Electron app
       # that shows the dialog: override with commandLineArgs "--password-store=gnome-libsecret".
       (element-desktop.override {commandLineArgs = "--password-store=gnome-libsecret";})
+      # The Trilium-vs-Joplin comparison (hosts/hp + modules/services/joplin.nix) from the
+      # desktop side: the native client instead of the streamed web one. Sync target is
+      # WebDAV: Options -> Sync -> WebDAV, URL https://webdav.hp/joplin, user akos (SFTPGo;
+      # the /joplin virtual folder maps to /var/lib/hermes/joplin hp's container and Hermes
+      # share - hosts/hp/default.nix). Batch sync, not live; the phone uses the same URL.
+      # (Supersedes the sshfs-mount + File system target this line used to document: WebDAV
+      # needs no manual mount and reaches the phone too.)
+      # pkgs-unstable is load-bearing, not hygiene: the 26.05 input's 3.5.13 REFUSES to sync
+      # against a target any 3.7-era client touched ("please upgrade your application to
+      # version 3.7.0+" - legion5, 2026-10-29), and pinned unstable carries 3.7.21 - exactly
+      # hp's container image version (joplin.nix's pin), so client and server share one sync
+      # format. `joplin` is NOT it - that is the CLI client.
+      pkgs-unstable.joplin-desktop
       logseq
       obsidian
       onlyoffice-desktopeditors

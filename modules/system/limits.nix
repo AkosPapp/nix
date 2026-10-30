@@ -110,12 +110,25 @@
     assert m != null;
       (builtins.fromJSON (builtins.head m)) * mult;
 
-  # --cpus wants "1.5" where CPUQuota wants "150%".
+  # --cpus wants "1.5" where CPUQuota wants "150%". Integer math with a hand-built decimal:
+  # nix >= 2.34 truncates int/int unconditionally where it used to yield a rational (measured
+  # 2026-10-30: 150/100 -> 1, 50/100 -> 0), so the old `toString (pct / 100)` silently shaves
+  # litellm's 150% row to --cpus=1 on every docker host - and a 0 renders as UNLIMITED to
+  # docker, so a sub-100% row escapes its cap entirely rather than shrink it.
   cpusFromQuota = q: let
     m = builtins.match "([0-9]+)%" q;
+    pct = builtins.fromJSON (builtins.head m);
+    whole = pct / 100;
+    frac = pct - whole * 100;
+    decimals =
+      if frac < 10
+      then "0${toString frac}"
+      else toString frac;
   in
     assert m != null;
-      toString ((builtins.fromJSON (builtins.head m)) / 100);
+      if frac == 0
+      then toString whole
+      else "${toString whole}.${decimals}";
 
   # §1.3's "boring tier, one default", parameterised by unit + predicate.
   boring = unit: when: {
@@ -302,6 +315,71 @@
         cpu = "100%";
         memHigh = "256M";
         memMax = "384M";
+      };
+      joplin = {
+        when = c: (c.MODULES.services.joplin.enable or false);
+        units = ["joplin"];
+        dockerName = "joplin";
+        # An Electron desktop plus a streamed session. With the render node passed (hp) the
+        # encode is on the GPU and 100% would almost do, but the software fallback (no
+        # driDevice) full-readbacks and x264-encodes on CPU - at one core that is the "note app
+        # feels like a slideshow" config hp measured 2026-10-27, so the row carries slack for
+        # the fallback. Mem: an idle session settles ~1G, so memHigh sits just above it
+        # (1536M broke hp's 18G budget sum the same night) and the wall gives real bursts 2G.
+        tasks = 256;
+        cpu = "300%";
+        memHigh = "1280M";
+        memMax = "2G";
+      };
+      paperless = {
+        when = c: (c.MODULES.services.paperless.enable or false);
+        units = ["paperless"];
+        dockerName = "paperless";
+        # One s6 container runs webserver + consumer + celery worker + scheduler over sqlite
+        # (the v3 image ships no bundled db), so four python runtimes' worth of threads plus
+        # tesseract/pdfjs subprocess bursts during indexing. The High line sits above the
+        # steady set (512M, not the paper 256M the boring tier would give - the immichMl
+        # incident 2026-10-27: a High line below the working set is permanent reclaim), and
+        # the wall leaves room for a tesseract burst; 200% keeps searching responsive while
+        # a scan batch ingests. Landing this row pushed hp's memHigh sum past the 18G budget
+        # on 2026-10-30 - the budget moved there, with the owner's measured reason (idle
+        # ~60% of the 21 GiB and most of it is ZFS ARC).
+        tasks = 256;
+        cpu = "200%";
+        memHigh = "512M";
+        memMax = "1536M";
+      };
+      paperlessBroker = {
+        when = c: (c.MODULES.services.paperless.enable or false);
+        units = ["paperless-broker"];
+        dockerName = "paperless-broker";
+        # valkey, persistence off: holds undelivered celery tasks and nothing else.
+        tasks = 64;
+        cpu = "50%";
+        memHigh = "64M";
+        memMax = "128M";
+      };
+      slurmctld = {
+        when = c: (c.MODULES.services.slurm.enable or false);
+        units = ["slurmctld"];
+        tasks = 256;
+        cpu = "100%";
+        memHigh = "256M";
+        memMax = "512M";
+        note = "single-node controller: no fan-out, but it has to answer sinfo while the machine is loaded, so it is boring-tier with a little slack";
+      };
+      slurmd = {
+        when = c: (c.MODULES.services.slurm.enable or false);
+        units = ["slurmd"];
+        tasks = 512;
+        cpu = "100%";
+        memHigh = "256M";
+        memMax = "512M";
+        # Only the launcher is capped here. The job processes are transient `slurmstepd-*` scopes
+        # that slurmd asks the SYSTEM manager to start in slurm.slice (cgroup.conf CgroupSlice),
+        # so they are not children of this unit and no LIMITS row can name a transient scope -
+        # that ceiling lives in MODULES.services.slurm.jobSlice instead.
+        note = "the launcher, not the workload; jobs are scoped in slurm.slice (see modules/services/slurm.nix)";
       };
       homepage = boring "homepage-dashboard" (c: (c.services.homepage-dashboard.enable or false));
       searx = boring "searx" (c: (c.services.searx.enable or false));

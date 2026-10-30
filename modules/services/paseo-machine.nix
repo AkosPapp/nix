@@ -79,19 +79,34 @@
   thinkingDefaultListed =
     !hasModelThinking || lib.elem cfg.modelThinkingDefault cfg.modelThinkingLevels;
 
-  # pi's startup thinking level lives in settings.json (models.json has no such field), keyed by
-  # exact "provider/modelId" so it is a default for THIS model and changes nothing about any other
-  # model pi might drive. pi writes this same file when the user saves a level with Ctrl+S, which
-  # is why the prepare script merges this fragment instead of replacing the file.
+  # pi's startup model and thinking level live in settings.json (models.json has no such field).
+  #
+  # defaultProvider/defaultModel: without them pi's initial-model search falls through to "first
+  # available model with a valid API key" (findInitialModel in dist/core/model-resolver.js), and
+  # with the backup provider configured both providers always have a key - models.json is written
+  # from attrsets, so the alphabetical provider map puts `futurelab` BEFORE `litellm`. An
+  # unpinned pi would therefore boot on the BACKUP endpoint. Pinning cfg.modelProvider/modelId
+  # keeps the primary the default and the backup something you switch to by hand (/model).
+  #
+  # modelThinkingLevels is keyed by exact "provider/modelId" so it is a default for THIS model
+  # and changes nothing about any other model pi might drive. pi writes this same file when the
+  # user saves a level with Ctrl+S, which is why the prepare script merges this fragment instead
+  # of replacing the file.
   #
   # packages: when model discovery is on, this is what pulls the official pi-models-discovery
   # extension - pi reads package declarations from settings.json and installs them (from npm)
   # itself at the first startup or /reload.
-  piSettings = pkgs.writeText "paseo-machine-pi-settings.json" (builtins.toJSON {
-    packages =
-      lib.optionals cfg.modelDiscoverModels [{source = "npm:pi-models-discovery";}];
-    modelThinkingLevels = {"${cfg.modelProvider}/${cfg.modelId}" = cfg.modelThinkingDefault;};
-  });
+  piSettings = pkgs.writeText "paseo-machine-pi-settings.json" (builtins.toJSON (
+    {
+      defaultProvider = cfg.modelProvider;
+      defaultModel = cfg.modelId;
+      packages =
+        lib.optionals cfg.modelDiscoverModels [{source = "npm:pi-models-discovery";}];
+    }
+    // lib.optionalAttrs hasModelThinking {
+      modelThinkingLevels = {"${cfg.modelProvider}/${cfg.modelId}" = cfg.modelThinkingDefault;};
+    }
+  ));
 
   # Where model discovery is enabled, the discovered litellm inventory replaces the static
   # entries by id - including cfg.modelId, whose advertised metadata carries no thinking info.
@@ -211,9 +226,10 @@
     pi = {
       package = pkgs-unstable.pi-coding-agent;
       configPath = ".pi/agent/models.json";
-      # Empty when the model declares no thinking levels: then there is no default to set and pi's
-      # settings.json is left entirely alone. Non-empty means one file to deep-merge, at path.
-      settings = lib.optionalAttrs hasModelThinking {
+      # settings.json is always asserted now: the fragment pins the default provider/model even
+      # for models without thinking levels (see piSettings). The prepare script deep-merges it, so
+      # keys pi and the user write themselves survive.
+      settings = {
         path = ".pi/agent/settings.json";
         file = piSettings;
       };

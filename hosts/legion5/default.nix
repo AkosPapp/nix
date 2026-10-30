@@ -111,56 +111,61 @@ in {
   MODULES.nix.substituters.airlab-attic.enable = true;
   MODULES.system.printing.enable = true;
   MODULES.hardware.nvidia.enable = true;
+  # gpu-unlock: lifts NVIDIA's GeForce half-rate cap on FP16/BF16/TF32 tensor math, applied from
+  # the initrd before nvidia binds (modules/hardware/nvidia-gpu-unlock.nix has the measured
+  # numbers and every incident below). Set up 2026-10-28, measured 2026-10-29: bf16 24.0 -> 35.6
+  # TFLOPS at unchanged board power. Three facts are specific to THIS host:
+  #   - the dGPU drives the panel (card1 = nvidia), so the unlock's FLR blanks the screen briefly
+  #     on every boot;
+  #   - Ada is EXPERIMENTAL upstream and this is the fleet's first Ada card, and the rev matters:
+  #     upstream 1.1.0 has no AD107 recipe and here it loaded, did nothing, and logged one
+  #     "no supported card" line - hence the flake pin (see flake.nix);
+  #   - keepAwake (DPM=0x00) only covers RUNTIME pm. Closing the lid suspends through the
+  #     platform's PCIe path and resets the selectors anyway - measured, ratio 6.0 -> 4.07 - so
+  #     surviving a lid close is `resume`'s job, not keepAwake's.
+  # A failed or unwanted unlock clears only on a FULL power-off (a warm reboot keeps it), which is
+  # why the module also installs a labelled "gpu-unlock OFF" boot entry rather than relying on
+  # picking an older generation off a menu.
+  MODULES.hardware.nvidia.gpuUnlock = {
+    enable = true;
+    targets = ["0000:01:00.0"];
+  };
   MODULES.hardware.perifirals.mice.openmouse.enable = true;
   # ZED 2i capture camera: no USB runtime suspend (see modules/hardware/perifirals/zed.nix).
   MODULES.hardware.perifirals.zed.enable = true;
+  # Slurm on one node: srun/sbatch/salloc against this box's own GPU instead of hand-coordinating
+  # with whatever else is holding the card (modules/services/slurm.nix). Loopback-only, so it is
+  # invisible to the tailnet and needs no service-graph edge.
+  # nodeAttrs is this machine's `slurmd -C` output (taken 2026-10-29) minus the NodeName token:
+  # Slurm's RealMemory default is 1 MiB and slurmd marks a node INVAL when the configured numbers
+  # exceed what the hardware reports, so they are a hardware fact of THIS host, re-measure after
+  # any RAM/board change rather than trusting the value below.
+  MODULES.services.slurm = {
+    enable = true;
+    nodeAttrs = "CPUs=16 Boards=1 SocketsPerBoard=1 CoresPerSocket=8 ThreadsPerCore=2 RealMemory=31393";
+    # /scratch is the person's working area; the unbacked dataset and its refquota are in ./disko.nix.
+    scratch.owner = "akos";
+    # = the disko.nix refquota (200G) in MiB; keep the two in sync when raising the quota
+    # (`zfs set refquota=... zroot/scratch` + here). Measured 2026-10-29: without this the
+    # node record keeps TmpDisk=0 and slurmctld rejects every --tmp request - slurmd's
+    # registration of the real filesystem size does NOT backfill the record. Per-job dirs
+    # under /scratch are $SLURM_JOB_ID by convention (Slurm 25.11 removed SLURM_TMPDIR).
+    scratch.tmpDiskMB = 204800;
+  };
   USERS.akos.enable = true;
   # Browser control from opencode shells: a Playwright MCP server driving Brave in its
   # own automation profile (module defaults - see mcp.playwright in
   # modules/services/opencode.nix). legion5-only for now: it opens a visible Brave,
   # which only makes sense on a host with a desktop session.
   MODULES.services.opencode.mcp.playwright.enable = true;
-  # Paseo harness machine, declaratively - the twin of the `curl .../install/<token>/pi.sh |
-  # bash` installer (leftovers from it: bash packages/paseo/machine/cleanup-home.sh). A Paseo
-  # daemon runs as akos, dials out to hp's relay and registers itself on hp's cockpit
-  # automatically; harnesses are opted into individually per user. akos is always on the
-  # tailnet, so both harnesses use the same LiteLLM gateway as the interactive setup
-  # (MODULES.services.opencode in users/akos.nix): same provider id, model and sops key, so
-  # the configs the daemon writes (~/.pi/agent/models.json, ~/.config/opencode/opencode.json)
-  # match what the shells already use - pi/opencode on a prompt work identically by hand.
-  # If the script's user unit is still around, retire it first:
-  #   systemctl --user disable --now paseo && rm ~/.config/systemd/user/paseo.service
-  MODULES.services.paseo-machine = {
-    enable = true;
-    modelBaseUrl = "https://litellm.hp/v1";
-    modelProvider = "litellm";
-    modelProviderLabel = "LiteLLM (hp)";
-    modelId = "futurelab/qwen3.8-flash-next";
-    modelApiKeySecret = "opencode/litellm_api_key";
-    # What this model can do (pi's contextWindow / maxTokens / thinkingLevelMap, opencode's
-    # limit / variants) comes from the fleet model catalogue
-    # (MODULES.services.modelCatalog.models, keyed by modelId) - the same table
-    # users/akos.nix's interactive opencode entry defaults from, so a daemon prompt and a
-    # shell prompt see one model. Set the model*Length/Levels options here only to override
-    # the catalogue for this machine alone.
-    # Let pi discover every model the LiteLLM gateway serves (pi-models-discovery extension,
-    # fetched from npm) instead of only the hand-curated one: new gateway models show up in
-    # /model without an edit here. The futurelab backup below stays static - Aqueduct is a
-    # one-model endpoint. opencode has no equivalent (custom providers are catalog-only).
-    modelDiscoverModels = true;
-    # Same model, dialled around hp when litellm.hp is unreachable: the futurelab Aqueduct
-    # gateway takes the bare model id (only LiteLLM spells it "futurelab/..."). Picked by hand
-    # in pi/opencode's model selector - nothing here fails over automatically. Key comes from
-    # the futurelab_api_key sops secret (same one hp's litellm wildcard reads).
-    backupProvider = {
-      baseUrl = "https://futurelab.robo4you.at/v1";
-      apiKeySecret = "futurelab_api_key";
-    };
-    users.akos.harnesses = {
-      pi.enable = true;
-      opencode.enable = true;
-    };
-  };
+  # The paseo cockpit machine lived here 2026-10-26..2026-10-29 (this block plus the
+  # installer leftovers in akos's home). Retired by request: its whole purpose was writing
+  # ~/.pi/agent/models.json, ~/.config/opencode/opencode.json and the daemon's
+  # credentials into the home, and those harness configs are now NixOS-declarative
+  # (MODULES.services.pi, MODULES.services.opencode - same gateways, same sops keys, no
+  # plaintext keys on disk). hp keeps its paseo hub + paseo-hermes; only this machine is
+  # gone. Leftover state was removed from ~akos after the switch (see
+  # packages/paseo/machine/cleanup-home.sh for the canonical list).
   MODULES.networking.tailscale.hostIP = "100.126.232.60";
   MODULES.services.syncthing.deviceID = "U6G2UZ4-RX5WVKR-5MAIXOA-4GX6ZL6-PGTAPWD-KXLK3V4-N4EPLT3-GWR7MQ7";
   # Shares live under akos's home directory, which the default "syncthing" system user can't

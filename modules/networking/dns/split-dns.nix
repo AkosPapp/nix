@@ -90,9 +90,16 @@
               relays=$(cut -f2 <<<"$nb")
               peers=$(cut -f3 <<<"$nb")
               if [ "$relays" -gt 0 ] 2>/dev/null || [ "$peers" -gt 0 ] 2>/dev/null; then
-                if [ -n "$(dig +time=1 +tries=3 +short "@$netbird_dns" "$netbird_zone" SOA 2>/dev/null)" ]; then
-                  netbird_up=1
-                fi
+                # The zone probe has to see an actual SOA answer line. dig prints its
+                # ";; communications error ..." / ";; no servers could be reached" block on
+                # *stdout* even under +short, so a plain non-empty test is vacuously true:
+                # measured on legion5 2026-10-30, the probe "answered" for hours while
+                # tailscale's ts-input CGNAT drop ate every reply, and the black-holed
+                # forward this guard exists to prevent sat in the conf the whole time.
+                answer=$(dig +noall +answer +time=1 +tries=3 "@$netbird_dns" "$netbird_zone" SOA 2>/dev/null) || answer=
+                case "$answer" in
+                  "$netbird_zone."*SOA*) netbird_up=1 ;;
+                esac
               fi
               ;;
           esac
@@ -170,6 +177,29 @@
       systemctl start split-dns.service || true
     done < <(exec ip monitor link address route)
   '';
+
+  # Tailscale's INPUT firewall (`ts-input`) is re-inserted at the head of the INPUT chain
+  # whenever tailscaled (re)syncs, and its last rule DROPs every packet from 100.64.0.0/10
+  # that does not arrive on tailscale0. netbird's 100.124.0.0/16 sits inside that CGNAT block,
+  # so all wt0 traffic - every reply from every netbird peer, r4uai01's DNS answers included -
+  # is eaten there, while netbird's own `-A INPUT -i wt0 -j ACCEPT` is *appended* after the
+  # jump and can never win the boot/restart race (measured on legion5 2026-10-30: the ts-input
+  # CGNAT DROP counter climbed in lockstep with `dig @100.124.160.88` timeouts; the reply was
+  # on the wire at +4ms, netbird's own nftables ACL accept fired, and iptables still killed it
+  # one table later). Re-prepend the wt0 accept so netbird sits where it meant to be; its
+  # nftables ACL table runs at the same hook before iptables-compat and is not terminal across
+  # tables, so it still governs which netbird peers may reach us - this rule only undoes the
+  # cross-vendor CGNAT-range collision, for both directions of the DNS path this module needs.
+  wt0InputGuard = pkgs.writeShellScript "wt0-input-guard" ''
+    export PATH="${lib.makeBinPath [pkgs.iptables]}"
+    # Remove every existing copy (netbird keeps appending its own, wherever the jump left
+    # room) and re-insert ours ahead of tailscale's jump. Idempotent; conntrack state is
+    # untouched by rule order changes, so running this repeatedly is free.
+    while iptables -w -C INPUT -i wt0 -j ACCEPT 2>/dev/null; do
+      iptables -w -D INPUT -i wt0 -j ACCEPT
+    done
+    iptables -w -I INPUT 1 -i wt0 -j ACCEPT
+  '';
 in {
   options.MODULES.networking.dns.splitDns = {
     enable = mkEnableOption ''
@@ -237,6 +267,17 @@ in {
         default = "10.50.";
         description = "IPv4 prefix that marks a lab address on `interface`.";
       };
+    };
+
+    netbirdInputGuard = mkOption {
+      type = types.bool;
+      default = true;
+      description = ''
+        Re-prepend an `-i wt0 -j ACCEPT` INPUT rule ahead of tailscale's ts-input jump on
+        every wt0/tailscale0 appearance (and on a slow timer). tailscale's CGNAT drop
+        (100.64.0.0/10 not on tailscale0) otherwise silently eats every netbird reply,
+        because netbird's own wt0 accept is appended after tailscale's prepended jump.
+      '';
     };
   };
 
@@ -332,6 +373,32 @@ in {
       timerConfig = {
         OnBootSec = "5s";
         OnUnitActiveSec = "10s";
+      };
+    };
+
+    systemd.services.wt0-input-guard = {
+      description = "Keep the wt0 INPUT accept ahead of tailscale's ts-input CGNAT drop";
+      enable = cfg.netbirdInputGuard;
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${wt0InputGuard}";
+      };
+    };
+
+    # Both VPNs rewrite this ordering on their own schedule: netbird appends its copy at
+    # interface setup (hence the wt0 device), tailscale re-prepends its jump on restart even
+    # though tailscale0 never disappears (hence that device too, plus the timer backstop).
+    systemd.units."dev-wt0.device".upheldBy =
+      lib.optionals cfg.netbirdInputGuard ["wt0-input-guard.service"];
+    systemd.units."dev-tailscale0.device".upheldBy =
+      lib.optionals cfg.netbirdInputGuard ["wt0-input-guard.service"];
+
+    systemd.timers.wt0-input-guard = {
+      enable = cfg.netbirdInputGuard;
+      wantedBy = ["timers.target"];
+      timerConfig = {
+        OnBootSec = "10s";
+        OnUnitActiveSec = "60s";
       };
     };
   };

@@ -1,7 +1,8 @@
 # PLAN §1.5 / the agent spine: ONE entry per fleet agent model, consumed by every module that
 # has to describe that model to a harness - opencode.nix (its provider catalogue), paseo.nix
-# (the installer scripts), paseo-machine.nix (declared harness machines) and hermes-agent.nix
-# (Hermes' own LiteLLM provider block). Before this lived here the qwen3.8-flash-next numbers
+# (the installer scripts), paseo-machine.nix (declared harness machines), pi.nix (its
+# models.json catalogue) and hermes-agent.nix (Hermes' own LiteLLM provider block). Before
+# this lived here the qwen3.8-flash-next numbers
 # were restated five times (hp, akos, paseo install defaults, paseo-machine on legion5, hermes)
 # and drift between them means one harness compacts early or one gateway rejects a request.
 #

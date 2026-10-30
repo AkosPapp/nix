@@ -284,6 +284,27 @@
         "type": "github"
       }
     },
+    "gpu-unlock": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1793254105,
+        "narHash": "sha256-Kh6epiQNuwZ5mDS9fPDrjK+lgrvN2jUocydbrl8VYhs=",
+        "owner": "bearice",
+        "repo": "gpu-unlock",
+        "rev": "5f0a572586af161e244fb469fe27d3163aaa2a82",
+        "type": "github"
+      },
+      "original": {
+        "owner": "bearice",
+        "ref": "nix-flake",
+        "repo": "gpu-unlock",
+        "type": "github"
+      }
+    },
     "hermes-agent": {
       "inputs": {
         "flake-parts": "flake-parts",
@@ -877,6 +898,7 @@
       "inputs": {
         "deploy-rs": "deploy-rs",
         "disko": "disko",
+        "gpu-unlock": "gpu-unlock",
         "hermes-agent": "hermes-agent",
         "microvm": "microvm",
         "my-nixvim": "my-nixvim",

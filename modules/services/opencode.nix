@@ -341,8 +341,13 @@ in {
               then p.displayName
               else pname;
             inherit options;
+            # Fully-qualified display name ("<provider>/<id>", the same spelling as the
+            # config `model` value and pi's model names in modules/services/pi.nix):
+            # opencode shows `name` in its picker where pi shows "<id> [provider]", and
+            # the two gateways differ only in that prefix (litellm/futurelab/... via the
+            # gateway vs futurelab/... direct). ids stay the wire spelling.
             models = lib.mapAttrs (mname: m:
-              {name = mname;}
+              {name = "${pname}/${mname}";}
               // lib.optionalAttrs (m.contextLength != null) {
                 limit = {
                   context = m.contextLength;

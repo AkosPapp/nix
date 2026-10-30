@@ -30,6 +30,12 @@ in {
     omniroute = 8102;
     openWebui = 8094;
     prometheus = 8009;
+    # The single-node Slurm pair (modules/services/slurm.nix). Both are upstream's defaults, and
+    # both are dialled only from this box: the module pins SlurmctldHost to 127.0.0.1 and opens no
+    # firewall rule, which is why they need no service-graph edge. Named so slurm.conf and any
+    # future tailnet exposure read from the same place.
+    slurmctld = 6817;
+    slurmd = 6818;
     stepCa = 9000;
     caPage = 8103;
     elementWeb = 8104;
@@ -56,6 +62,20 @@ in {
     hermesIcs = 8130;
     # Trilium Notes (modules/services/trilium.nix) - loopback only, behind Traefik.
     trilium = 8131;
+    # Joplin (modules/services/joplin.nix) - the Selkies container shares the host network and
+    # its nginx binds all interfaces, so all three listeners it owns are registered: joplin is
+    # the HTTP one Traefik proxies, joplinTls the image's self-signed listener Traefik does NOT
+    # use, joplinStream the selkies server behind that nginx (loopback-bound by the image
+    # itself, but still a port on this host's network namespace).
+    joplin = 8132;
+    joplinTls = 8133;
+    joplinStream = 8134;
+    # paperless-ngx (modules/services/paperless.nix) - loopback only, behind Traefik. Both of
+    # its containers share the host network (the v3 image has no bundled db/broker, so a valkey
+    # one runs beside it), hence a PORTS entry each, both bound to loopback by the container's
+    # own flag (PAPERLESS_BIND_ADDR / valkey --bind) rather than by a published mapping.
+    paperless = 8135;
+    paperlessBroker = 8136;
     # Coroot (modules/services/coroot.nix) - server UI/API, loopback + tailscale0 only.
     coroot = 8080;
     # coroot-node-agent's own /metrics listener - loopback only; nothing connects to it.
