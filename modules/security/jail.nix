@@ -280,8 +280,8 @@
       paperless = {
         units = ["paperless"];
         # Unlike the trilium/omniroute rows this one can ride the uid-based egress chain
-        # as-is: the s6 services drop to the host's `paperless` uid (USERMAP remap in
-        # paperless.nix), so the chain's owner match has a real, stable uid behind it.
+        # as-is: the container starts rootless as the pinned host `paperless` uid
+        # (paperless.nix), so the chain's owner match has a real, stable uid behind it.
         user = "paperless";
         # The celery broker hop; webserver, consumer and workers all dial it.
         allowedLoopbackTCPPorts = [config.PORTS.paperlessBroker];

@@ -10,25 +10,37 @@
   hermesModule = config.MODULES.services.hermes-agent;
 
   dataDir = "/var/lib/paperless";
-  # USERMAP_UID/USERMAP_GID, rewritten by the ExecStartPre below right before every
-  # `docker run` (the oci-containers unit runs `docker run`, not `docker start`, so the
-  # file is re-read on every start/restart). Same mechanism as joplin.nix's container.env.
-  envFile = "${dataDir}/container.env";
 
-  containerEnvScript = pkgs.writeShellScript "paperless-container-env" ''
-    set -eu
-    # The ids resolve HERE, at unit start: `paperless` is a system user whose numeric ids
-    # nixpkgs allocates at activation, so they are not knowable at eval time. Re-resolved
-    # on every start, so a uid churn is never baked into a running container. The image's
-    # s6 init remaps its own `paperless` user to these (init-modify-user) and every
-    # service then runs as that uid, so the bind mounts below carry one honest owner on
-    # the host instead of the image's default 1000 - which is some unrelated host user.
-    {
-      echo "USERMAP_UID=$(${pkgs.coreutils}/bin/id -u paperless)"
-      echo "USERMAP_GID=$(${pkgs.coreutils}/bin/id -g paperless)"
-    } > ${envFile}
-    ${pkgs.coreutils}/bin/chmod 0400 ${envFile}
+  # v3 made PAPERLESS_SECRET_KEY mandatory: with the image default it aborts init-migrations
+  # ("ImproperlyConfigured: PAPERLESS_SECRET_KEY is not set or is the default 'change-me'
+  # value", hp 2026-10-31 00:13 - s6 treats a failed init as fatal, so the container
+  # crash-looped). It signs cookies and tokens, so it must be STABLE - generated once on
+  # the host and persisted next to the data it signs (znapzend snapshots cover both; a
+  # restore that pairs data with a different key silently invalidates every session and
+  # API token). Read from the host by the unit's `docker run --env-file` as root, so the
+  # 0400-root mode is fine; the container process never touches the file itself.
+  secretEnvFile = "${dataDir}/secret.env";
+  secretEnvScript = pkgs.writeShellScript "paperless-secret-env" ''
+    set -u
+    if [ ! -s ${secretEnvFile} ]; then
+      umask 0177
+      key=$(${pkgs.openssl}/bin/openssl rand -base64 96 | ${pkgs.gnused}/bin/sed 's/[^A-Za-z0-9_-]//g' | ${pkgs.coreutils}/bin/head -c 64)
+      printf 'PAPERLESS_SECRET_KEY=%s\n' "$key" > ${secretEnvFile}
+      chmod 0400 ${secretEnvFile}
+    fi
   '';
+
+  # Pinned, not nixpkgs-allocated, because the container starts ROOTLESS (`user` below) and
+  # `oci-containers` resolves the uid:gid string at eval time: the host's /etc/passwd pair
+  # and the ownership of every bind mount must be these numbers, everywhere, forever.
+  # 952:949 is what hp's allocator first gave the paperless user (2026-10-30) - and pinning
+  # is NOT retargeting: measured the same night, NixOS never usermods/groups a DIFFERENT
+  # number onto an existing account (a `groupmod -g 952` even fails outright here, because
+  # the `mas` group holds gid 952). So this module adopts the ids hp already has rather
+  # than demanding new ones; the pair is a module-level constant, and a future host that
+  # cannot create it fails loudly at tmpfiles time, not silently at container start.
+  paperlessUid = 952;
+  paperlessGid = 949;
 in {
   options.MODULES.services.paperless = {
     enable = mkEnableOption ''
@@ -71,7 +83,9 @@ in {
         Languages passed to PAPERLESS_OCR_LANGUAGE (joined with "+"). Same default the
         hermes-agent tool set ships for tesseract; a document scanned in a language that
         is not listed here OCRs to empty text and stays unsearchable forever, so this is
-        a policy list, not a tuning knob.
+        a policy list, not a tuning knob. Every entry must have its
+        `tesseract-ocr-<lang>` pack BAKED into the image: the s6 init only installs
+        missing packs via apt-get, which the rootless container cannot do.
       '';
     };
 
@@ -106,9 +120,10 @@ in {
         ETAPI token): open https://paperless.<host>, create the superuser on the
         first-run page, then mint the token
 
-            docker exec -u paperless paperless python3 manage.py drf_create_token <username>
+            docker exec paperless python3 manage.py drf_create_token <username>
 
-        (or in the UI: Administration -> Auth tokens) and store it with
+        (no `-u` needed - the container already runs as the pinned paperless uid; or in
+        the UI: Administration -> Auth tokens) and store it with
 
             sops set sops/secrets.yaml '["paperless"]["api_token"]' --value-stdin <<< '"<token>"'
 
@@ -129,16 +144,17 @@ in {
       virtualisation.docker.enable = true;
       virtualisation.oci-containers.backend = "docker";
 
-      users.groups.paperless = {};
+      users.groups.paperless.gid = paperlessGid;
       users.users.paperless = {
+        uid = paperlessUid;
         isSystemUser = true;
         group = "paperless";
         home = dataDir;
       };
 
       systemd.tmpfiles.rules = [
-        # container.env lives in the parent, hence root's own 0700 like the siblings;
-        # the app trees belong to the user the container remaps to.
+        # The parent stays root's 0700: it holds root's secret.env as well as the app
+        # trees, which belong to the pinned uid the rootless container runs as.
         "d ${dataDir} 0700 root root - -"
         "d ${dataDir}/data 0750 paperless paperless - -"
         "d ${dataDir}/media 0750 paperless paperless - -"
@@ -164,7 +180,13 @@ in {
           ""
         ];
 
-        extraOptions = ["--network=host"];
+        # No healthCheck option exists in oci-containers, and extraOptions entries are
+        # rendered as individually shell-quoted argv words (verified in hp's trilium-start
+        # script), so the value keeps its spaces and docker runs it as a CMD-SHELL.
+        extraOptions = [
+          "--network=host"
+          "--health-cmd=valkey-cli -h 127.0.0.1 -p ${toString config.PORTS.paperlessBroker} ping | grep -q PONG"
+        ];
       };
 
       virtualisation.oci-containers.containers.paperless = {
@@ -173,6 +195,21 @@ in {
         serviceName = "paperless";
 
         dependsOn = ["paperless-broker"];
+
+        # ROOTLESS start, and that is load-bearing, not hygiene. Started as root, the s6
+        # init "fixes" the image's 1000:1000 paperless to USERMAP_UID by running
+        # `usermod --non-unique --uid <n> paperless` - which chowns EVERY file the image
+        # owns, and the image's HOME is /usr/src/paperless, i.e. the whole Django tree
+        # plus the bind-mounted data/media/consume (hp, 2026-10-30: init stalled ~5 min
+        # in that recursive chown on every single start; `unhealthy` long after the
+        # migrations were done). Run as a non-root uid instead and the image takes its
+        # supported non-root path everywhere (its own scripts say so): init-modify-user
+        # exits early, init-folders warns instead of chowning, svc-*/run exec their
+        # daemon directly instead of through s6-setuidgid, and the Dockerfile pre-sets
+        # /run 1777 and strips s6-overlay-suexec's setgid bit "for rootless
+        # operation/compat". The host uid must therefore be PINNED and pre-own the trees
+        # (tmpfiles above), since nothing inside the container can chown anything.
+        user = "${toString paperlessUid}:${toString paperlessGid}";
 
         volumes = [
           "${dataDir}/data:/usr/src/paperless/data"
@@ -197,20 +234,25 @@ in {
           PAPERLESS_OCR_LANGUAGE = builtins.concatStringsSep "+" cfg.ocrLanguages;
         };
 
-        environmentFiles = [envFile];
+        environmentFiles = [secretEnvFile];
 
         # Host networking like omniroute/trilium/joplin (loopback binds need no published
-        # port). No --user: the s6 init must start as root to remap the image's paperless
-        # user to the host ids in container.env and to fix the bind mounts' ownership;
-        # every service then drops privileges itself (s6-setuidgid paperless), so unlike
-        # the root-behind `--user=0:0` containers there IS a stable host uid behind the
-        # processes - which is why the jail.nix row can already name it.
-        extraOptions = ["--network=host"];
+        # port). The image's own HEALTHCHECK curls localhost:8000 unconditionally - it does not
+        # follow PAPERLESS_PORT, so with granian on 8135 it would mark a perfectly
+        # serving container `unhealthy` forever. Check the real port. start-period
+        # covers first-boot migrations (the sqlite DB is created by init-migrations
+        # before the web server exists; measured under a minute on hp).
+        extraOptions = [
+          "--network=host"
+          "--health-cmd=curl --fail --silent http://127.0.0.1:${toString config.PORTS.paperless}/ >/dev/null"
+          "--health-interval=30s"
+          "--health-start-period=3m"
+        ];
       };
 
-      # mkAfter puts this behind the module's own pre-start; ExecStartPre runs before the
-      # unit's `docker run`, so the file exists on the very first start.
-      systemd.services.paperless.serviceConfig.ExecStartPre = mkAfter ["+${containerEnvScript}"];
+      # mkAfter keeps this behind the module's own pull-time pre-start; ExecStartPre runs
+      # before the unit's `docker run`, so the key exists on the very first start.
+      systemd.services.paperless.serviceConfig.ExecStartPre = mkAfter ["+${secretEnvScript}"];
 
       MODULES.networking.traefik.enable = true;
       MODULES.networking.traefik.services.paperless = "127.0.0.1:${toString config.PORTS.paperless}";

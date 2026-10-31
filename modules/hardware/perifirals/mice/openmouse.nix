@@ -38,7 +38,15 @@
     src = pkgs.fetchFromGitHub {
       owner = "OpenMouse-Project";
       repo = "Desktop";
-      tag = "v${finalAttrs.version}";
+      # Pinned by commit, not tag: upstream deleted every tag/release and reset `main` to
+      # their native-GPUI rewrite on 2026-10-30, so `refs/tags/v0.0.29` 404s (measured:
+      # legion5 switch failure that night). 963eada is what v0.0.29 pointed at - recovered
+      # from refs/tags/v0.0.29 on forks DEERSTUDIO101/ydw1904, and verified byte-for-byte
+      # against the source hash below. GitHub serves archives by SHA as long as any fork
+      # network holds the object, which survives tag deletion; the Tauri-era code is gone
+      # from every branch upstream, so do NOT "upgrade" this to a main-branch rev - it
+      # would point at the different GPUI layout this build cannot consume (no src-tauri).
+      rev = "963eada388f3bca744d21c1e54096bea52c71667";
       hash = "sha256-C1IAUqmKSgxLlGrobeFy69pZky+JCdv1k7LnOhX9gaQ=";
     };
 

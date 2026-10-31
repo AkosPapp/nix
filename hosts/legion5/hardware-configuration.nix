@@ -18,6 +18,14 @@
           efiSupport = true;
           device = "nodev";
           useOSProber = true;
+          # measured 2026-10-31: /boot is a 1 GiB vfat ESP and GRUB copies every
+          # generation's kernel+initrd into /boot/kernels (forced by install-grub.pl
+          # since / and /boot are separate); this filled it (31 gens x up to 191 MB
+          # initrd) and the boot-loader install died mid-copy, so its own cleanup
+          # of stale kernels never ran and switch could never recover. nixpkgs'
+          # default limit here is 100 ("all of them"). 4 gens ~= 4*(13 MB kernel +
+          # 191 MB initrd) = ~820 MB worst case, leaving headroom on the ESP.
+          configurationLimit = 4;
         };
         efi. canTouchEfiVariables = true;
       };
