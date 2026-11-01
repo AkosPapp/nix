@@ -9,10 +9,12 @@
 # - public backups, in strict order: the configured publicServers
 # - AirLab's DNS only for its zone (the DHCP-provided servers are otherwise ignored)
 # - Tailscale's MagicDNS and the other hosts' Traefik zones only while tailscale is connected
-# - robo4you.at via netbird's r4uai01 (100.124.160.88) only while wt0 is up, the route to it
-#   leaves through wt0, and it answers the zone. netbird's DNS client is disabled in
-#   users/akos.nix.
-# dnsmasq is restarted only when the generated include actually changes.
+# - netbird's zone via its DNS server (MODULES...splitDns.netbird.dnsServer) only while wt0 is
+#   up, the route to it leaves through wt0, and it answers the zone. netbird's DNS client is
+#   disabled in users/akos.nix.
+# dnsmasq is restarted only when the generated include actually changes, and every *change* of
+# the tailscale/netbird verdict is logged by the updater (see the verdict block below), because a
+# suppressed forward is otherwise invisible from the client.
 {
   config,
   lib,
@@ -42,9 +44,10 @@
   # host's zone and tailnet FQDN resolve to that host's tailscale IP - including the search-
   # qualified form glibc tries first - and MagicDNS is only a fallback for unknown peers. The
   # labForward block is emitted per its options (see splitDns.script placement below).
-  # robo4you.at points at r4uai01's netbird IP only while its route leaves through wt0 and it
+  # netbird's zone points at its DNS server only while its route leaves through wt0 and it
   # answers the zone; otherwise none of those lines exist and dnsmasq falls through to the public
-  # servers. The file is only replaced (and dnsmasq restarted) when its contents change.
+  # servers. The file is only replaced (and dnsmasq restarted) when its contents change, and each
+  # change of the tailscale/netbird verdict is logged so a suppressed forward is diagnosable.
   splitDns = pkgs.writeShellScript "split-dns" ''
     export PATH="${lib.makeBinPath [
       config.systemd.package
@@ -55,18 +58,23 @@
       pkgs.iproute2
       pkgs.dnsutils
       pkgs.diffutils
+      pkgs.util-linux
     ]}"
 
     conf=/run/dnsmasq.d/split.conf
+    # Last logged verdict, so the journal gets one line per *change* instead of one per poll.
+    verdict_file=/run/split-dns.state
     mkdir -p "$(dirname "$conf")"
 
-    netbird_dns=100.124.160.88
-    netbird_zone=robo4you.at
+    netbird_dns="${cfg.netbird.dnsServer}"
+    netbird_zone="${cfg.netbird.zone}"
 
     # tailscale0 survives `tailscale down`, so ask the backend instead of the interface.
     tailscale_up=0
+    tailscale_verdict=no-interface
     if ip link show dev tailscale0 up >/dev/null 2>&1; then
       state=$(timeout 2 tailscale status --json 2>/dev/null | jq -r '.BackendState // empty') || state=
+      tailscale_verdict=''${state:-no-backend}
       if [ "$state" = "Running" ]; then
         tailscale_up=1
       fi
@@ -76,35 +84,72 @@
     # interface left in place, and every query dnsmasq forwards into it blackholes - including
     # netbird's own lookup of its management host, which turns one dropout into a permanent
     # lockout. Ask the daemon instead: connected to Signal AND at least one relay available or
-    # one peer connected (peers legitimately sit Idle on a lazy mesh, so relays carry most of
-    # the "data plane alive" vote). Only then the zone probe still has to answer.
+    # one peer connected (peers legitimately sit Idle on a lazy mesh, so relays carry most of the
+    # "data plane alive" vote). Only then the zone probe still has to answer.
+    #
+    # That vote is deliberately weak, and measured on legion5 2026-11-01, is not enough on its
+    # own: netbird reported Management/Signal Connected and 3/3 relays available with
+    # peers.connected=1 while the one connected peer was an unrelated home Pi and the DNS server's
+    # own peer sat in Connecting - so every gate above passed and only the probe (rightly)
+    # suppressed the forward, for 17 minutes, silently, while robo4you.at fell through to
+    # Cloudflare's public answers. The DNS peer's own state is therefore carried into the verdict
+    # log below: "which peer is not up" is the first question every incident here asks.
     netbird_up=0
+    netbird_verdict=wt0-down
     if ip link show dev wt0 up >/dev/null 2>&1; then
-      nb=$(timeout 3 netbird status --json 2>/dev/null | jq -r \
-        '[.signal.connected // false, (.relays.available // 0), (.peers.connected // 0)] | @tsv') || nb=
-      case "$nb" in
-        true*)
-          route=$(ip route get "$netbird_dns" 2>/dev/null) || route=
-          case " $route " in
-            *" dev wt0 "*)
-              relays=$(cut -f2 <<<"$nb")
-              peers=$(cut -f3 <<<"$nb")
-              if [ "$relays" -gt 0 ] 2>/dev/null || [ "$peers" -gt 0 ] 2>/dev/null; then
-                # The zone probe has to see an actual SOA answer line. dig prints its
-                # ";; communications error ..." / ";; no servers could be reached" block on
-                # *stdout* even under +short, so a plain non-empty test is vacuously true:
-                # measured on legion5 2026-10-30, the probe "answered" for hours while
-                # tailscale's ts-input CGNAT drop ate every reply, and the black-holed
-                # forward this guard exists to prevent sat in the conf the whole time.
-                answer=$(dig +noall +answer +time=1 +tries=3 "@$netbird_dns" "$netbird_zone" SOA 2>/dev/null) || answer=
+      nb=$(timeout 3 netbird status --json 2>/dev/null | jq -r --arg ip "$netbird_dns" \
+        '[ .signal.connected // false, (.relays.available // 0), (.peers.connected // 0),
+           ((.peers.details[]? | select(.netbirdIp == $ip) | .status) // "absent") ] | @tsv') || nb=
+      if [ -z "$nb" ]; then
+        netbird_verdict=daemon-unreachable
+      elif [ "$(cut -f1 <<<"$nb")" != true ]; then
+        netbird_verdict=signal-down
+      else
+        relays=$(cut -f2 <<<"$nb")
+        peers=$(cut -f3 <<<"$nb")
+        peer_state=$(cut -f4 <<<"$nb")
+        route=$(ip route get "$netbird_dns" 2>/dev/null) || route=
+        case " $route " in
+          *" dev wt0 "*)
+            if [ "$relays" -gt 0 ] 2>/dev/null || [ "$peers" -gt 0 ] 2>/dev/null; then
+              # The zone probe has to see an actual SOA answer line. dig prints its
+              # ";; communications error ..." / ";; no servers could be reached" block on
+              # *stdout* even under +short, so a plain non-empty test is vacuously true: measured
+              # on legion5 2026-10-30, the probe "answered" for hours while tailscale's ts-input
+              # CGNAT drop ate every reply, and the black-holed forward this guard exists to
+              # prevent sat in the conf the whole time.
+              #
+              # One attempt, retried across a few seconds instead of `+tries=3`: while a lazy peer
+              # has no WireGuard endpoint yet, the kernel refuses the *send* (EKEYEXPIRED, "ping:
+              # sendmsg: Required key not available"), so dig's three tries all fail inside ~0ms
+              # and a session that lands a moment later is missed by the run that woke it. The
+              # query doubles as the wake-up poke (a packet that dies in wg_xmit still drives
+              # netbird to dial: measured 2026-11-01, one ping moved an Idle peer to Connecting),
+              # so it has to keep being sent even when the peer is Idle - and now waits long
+              # enough in the same run to notice the dial it just caused. The retry pause is an
+              # `if`, not `&&`, so the loop body's last command cannot fail the run if this
+              # script ever grows `set -e`.
+              netbird_verdict="peer=$peer_state probe=no-answer"
+              attempt=0
+              while [ "$attempt" -lt 3 ]; do
+                answer=$(dig +noall +answer +time=1 +tries=1 "@$netbird_dns" "$netbird_zone" SOA 2>/dev/null) || answer=
                 case "$answer" in
-                  "$netbird_zone."*SOA*) netbird_up=1 ;;
+                  "$netbird_zone."*SOA*)
+                    netbird_up=1
+                    netbird_verdict="peer=$peer_state probe=answered"
+                    break
+                    ;;
                 esac
-              fi
-              ;;
-          esac
-          ;;
-      esac
+                attempt=$((attempt + 1))
+                if [ "$attempt" -lt 3 ]; then sleep 2; fi
+              done
+            else
+              netbird_verdict="peer=$peer_state no-relay-no-peer"
+            fi
+            ;;
+          *) netbird_verdict="peer=$peer_state route-not-via-wt0" ;;
+        esac
+      fi
     fi
 
     {
@@ -140,16 +185,33 @@
         *"inet ${cfg.labForward.addressPrefix}"*) echo "server=/${cfg.labForward.zone}/${cfg.labForward.server}" ;;
       esac
     ''}
+      ${lib.optionalString cfg.netbird.enable ''
       if [ "$netbird_up" = 1 ]; then
         echo "server=/$netbird_zone/$netbird_dns"
       fi
-      # The tunnel must never have to resolve its own front door: robo4you.at routes into
-      # netbird, so netbird.robo4you.at gets a permanent longest-match exception to the public
-      # resolvers - emitted whether or not the zone line is present, so netbird's bootstrap
-      # lookup can never depend on the connection it needs that lookup to establish.
-      echo "server=/netbird.$netbird_zone/9.9.9.9"
-      echo "server=/netbird.$netbird_zone/1.1.1.1"
+      # The tunnel must never have to resolve its own front door: ${cfg.netbird.zone} routes into
+      # netbird, so ${cfg.netbird.bootstrapHost} gets a permanent longest-match exception to the
+      # public resolvers - emitted whether or not the zone line is present, so netbird's bootstrap
+      # lookup can never depend on the connection it needs that lookup to establish. The two
+      # servers are deliberately literal, not cfg.publicServers: a host that points its public
+      # fallback at something inside the tunnel would deadlock its own bootstrap.
+      echo "server=/${cfg.netbird.bootstrapHost}/9.9.9.9"
+      echo "server=/${cfg.netbird.bootstrapHost}/1.1.1.1"
+    ''}
     } > "$conf.new"
+
+    # One journal line per *change* of verdict. Every incident this file has collected (the
+    # swallowed MagicDNS SERVFAIL, the ts-input CGNAT black hole, the lazy peer that took 17
+    # minutes to dial) was invisible from the client until someone hand-ran the gates, because a
+    # forward that is *correctly* suppressed leaves no trace: the resolver just answers from the
+    # public fallback, i.e. wrong-but-plausible answers instead of an error. The same string sits
+    # in $verdict_file (world-readable), so "why is my zone not in the conf" is answerable on a
+    # box whose journal needs root: `cat /run/split-dns.state`.
+    verdict="tailscale=$tailscale_verdict netbird=$netbird_verdict"
+    if [ "$verdict" != "$(cat "$verdict_file" 2>/dev/null)" ]; then
+      logger -t split-dns "$verdict"
+      printf '%s\n' "$verdict" > "$verdict_file"
+    fi
 
     if ! cmp -s "$conf.new" "$conf"; then
       mv "$conf.new" "$conf"
@@ -266,6 +328,44 @@ in {
         type = types.str;
         default = "10.50.";
         description = "IPv4 prefix that marks a lab address on `interface`.";
+      };
+    };
+
+    netbird = {
+      enable = mkOption {
+        type = types.bool;
+        default = true;
+        description = ''
+          Probe the netbird DNS server and forward `zone` to it while it really answers. The
+          wt0 INPUT guard is a separate switch (netbirdInputGuard).
+        '';
+      };
+
+      zone = mkOption {
+        type = types.str;
+        default = "robo4you.at";
+        description = "Netbird-private zone to forward.";
+      };
+
+      dnsServer = mkOption {
+        type = types.str;
+        default = "100.124.160.88";
+        description = ''
+          The netbird peer that serves `zone`, by overlay address (r4uai01). It is also the
+          address the probe queries and the peer whose netbird connection state is reported in
+          the verdict log, so it has to be the peer's own `netbirdIp`, not a behind-it route:
+          the probe deliberately tests reaching that machine, not reaching a network.
+        '';
+      };
+
+      bootstrapHost = mkOption {
+        type = types.str;
+        default = "netbird.${cfg.netbird.zone}";
+        description = ''
+          Host that fronts the netbird control plane (signal, relay, management). It always gets
+          a longest-match exception to the public resolvers, so the tunnel can resolve the door
+          it has to walk through to come up.
+        '';
       };
     };
 
