@@ -146,7 +146,7 @@
       rclone
       # ad-hoc transfer to a machine that isn't a host in this fleet (its own relay
       # otherwise, `--relay`/`--noc` to point it at one of ours over the tailnet).
-      croc
+      pkgs-unstable.croc
       sops
       immich-go
       immich-cli
