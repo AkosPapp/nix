@@ -464,6 +464,18 @@
         memHigh = "32M";
         memMax = "64M";
       };
+      tuvpn = {
+        when = c: (c.MODULES.networking.tuvpn.server.enable or false);
+        units = ["tuvpn"];
+        tasks = 64;
+        # >100% on purpose: the whole reason the tunnel exists is bulk throughput for the
+        # tailnet's TU-bound traffic, and the AnyConnect datachannel is single-threaded TLS
+        # on one core - the rest is the vpnc-script/oathtool fork bursts at dial time.
+        cpu = "200%";
+        memHigh = "64M";
+        memMax = "128M";
+        note = "openconnect idles ~20M; the on-demand start (MODULES.networking.tuvpn.server) means this row is only active while someone is actually tunneled.";
+      };
       firefly = {
         when = c: (c.services.firefly-iii.enable or false);
         units = [

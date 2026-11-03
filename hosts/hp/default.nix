@@ -10,6 +10,19 @@
   # hp runs unattended (no physical access path except tailscale): restart tailscaled
   # when it hangs offline (4 probes * 90 s), so a wedged session can't orphan it again.
   MODULES.networking.tailscale.watchdog.enable = true;
+  # The fleet's TU Wien VPN gateway (modules/networking/tuvpn.nix): this box physically
+  # sits in the lab, i.e. LAN-adjacent to the TU gateway, which is the one place a
+  # TCP-datachannel AnyConnect session cannot collapse - legion5 running openconnect
+  # itself from far away is the slow path the module header explains. On-demand: the
+  # laptop's tuvpn-via-hp toggle ssh-starts tuvpn.service here, the tunnel advertises the
+  # TU prefixes as tailnet subnet routes and MASQUERADEs the transit; hp's own traffic
+  # never enters it (split profile, no default route). No akos uid here, so the secrets
+  # mount root:root (same secretOwner pattern as the opencode module below).
+  MODULES.networking.tuvpn = {
+    server.enable = true;
+    secretOwner = "root";
+    secretGroup = "root";
+  };
   # Nightly: pull litellm/omniroute/trilium images, recreate a container only when its
   # image actually changed (docker-images-update.nix).
   MODULES.virtualisation.docker-images-update.enable = true;

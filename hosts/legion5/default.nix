@@ -275,11 +275,22 @@ in {
   # resolver, tailnet zones only while tailscale runs, robo4you.at only while netbird really
   # works, public servers as the fallback. This box roams, so the /airlab forward is the
   # interface-gated one - it only exists while wlo1 holds a lab address. No exit node here.
+  # The split-DNS tailnet routes are the tuvpn-via-hp toggle's lever: OFF is the
+  # declarative state (tailscaled restarts re-apply it, so the toggle has to have started
+  # hp's tunnel first, and a reboot lands back on "direct"), tuvpn-via-hp on flips
+  # `tailscale set --accept-routes=true` at runtime. Side effect to remember: this flag
+  # accepts EVERY advertised tailnet subnet route, so anything the fleet advertises later
+  # (microVMs?) only reaches this laptop while the toggle is on.
   MODULES.networking.dns.splitDns = {
     enable = true;
     labForward = {
       enable = true;
       interface = "wlo1";
     };
+    acceptRoutes = false;
   };
+  # The TU VPN's fast path from afar: hp terminates openconnect inside the lab (LAN-adjacent
+  # to the gateway, no TCP-in-TCP collapse) and the tailnet carries the transit; the local
+  # wofi tuvpn-connect (users/akos.nix) stays the on-campus path. Menu entry: "TU VPN via hp".
+  MODULES.networking.tuvpn.viaHost = "hp";
 }
