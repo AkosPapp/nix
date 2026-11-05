@@ -239,6 +239,19 @@
         _: m: lib.nameValuePair m.directName (piModelFromCatalog m)
       ) (lib.filterAttrs (_: m: m.directName != null) catalog);
     };
+    # The subscription bypass: OmniRoute direct (see modules/services/omniroute.nix - hosted
+    # subscription logins are its job, and its dashboard-managed codex OAuth connection
+    # answers "codex/<model>" here, i.e. pi shows "omniroute/codex/<model>" with the module's
+    # display-name spelling). Nothing statically pinned - OmniRoute's provider set moves -
+    # the discovery extension lists it; same no-filter caveat as litellm above (its /v1/models
+    # inventory includes OmniRoute's free-tier image providers, e.g. aihorde/*).
+    omniroute = {
+      displayName = "OmniRoute (hp)";
+      baseUrl = "https://omniroute.hp/v1";
+      apiKeySecret = "omniroute_api_key";
+      discoverModels = true;
+      models = {};
+    };
   };
 
   # One configured model as pi wants it. `name` carries the fully-qualified

@@ -100,13 +100,20 @@
     nixosConfigurations.${cfg.viaHost} or {}
   );
   viaIP = viaTarget.config.MODULES.networking.tailscale.hostIP or null;
+  viaHostKeys = viaTarget.config.MODULES.networking.tuvpn.server.hostKeys or [];
 
   tuvpn-via = pkgs.writeShellScriptBin "tuvpn-via-${cfg.viaHost}" ''
     set -uo pipefail
 
     TS="${tsBin}/bin/tailscale"
     JQ="${pkgs.jq}/bin/jq"
-    SSH="${pkgs.openssh}/bin/ssh -o BatchMode=yes -o ConnectTimeout=6 root@${viaIP}"
+    # The host key comes from the declaratively-pinned /etc file (server.hostKeys on the
+    # target), NOT from any user's known_hosts - the toggle runs from the desktop menu on a
+    # box where nobody has ever interactively ssh'd to the tailnet IP, and BatchMode answers
+    # "are you sure you want to continue connecting?" with exactly one "Host key
+    # verification failed". GlobalKnownHostsFile is neutralised for the same reason:
+    # deterministic auth or a clear error, never a per-host-state surprise.
+    SSH="${pkgs.openssh}/bin/ssh -o BatchMode=yes -o ConnectTimeout=6 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/etc/tuvpn/ssh-known-hosts -o GlobalKnownHostsFile=/dev/null -o ForwardX11=no root@${viaIP}"
     VIA="${cfg.viaHost}"
 
     # Accept-state proxy: SecondaryRoutes[].Enabled is false while --accept-routes is off,
@@ -121,7 +128,7 @@
         # tunnel is up and the routes are advertised), the laptop accepts second. Accepting
         # before the tunnel exists would blackhole TU-bound packets into a dead next-hop.
         if ! $SSH systemctl start tuvpn; then
-          echo "could not start tuvpn on $VIA (needs tailnet ssh root@$VIA with a key)" >&2
+          echo "could not start tuvpn on $VIA - needs key-auth root ssh over the tailnet AND /etc/tuvpn/ssh-known-hosts matching $VIA's current host keys (MODULES.networking.tuvpn.server.hostKeys)" >&2
           exit 1
         fi
         sudo $TS set --accept-routes=true
@@ -412,6 +419,20 @@ in {
             also reaches these prefixes. Narrow to per-host /32s to forbid that.
           '';
         };
+
+        hostKeys = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [];
+          example = ["100.92.36.52 ssh-ed25519 AAAAC3..."];
+          description = ''
+            This host's SSH public host keys as known_hosts lines, keyed by its Tailscale
+            IP (the address the tuvpn-via-* scripts connect to). Set on the SERVER host;
+            clients read it across the flake and pin it in /etc/tuvpn/ssh-known-hosts, so
+            the toggle authenticates the tunnel host without any user ever having
+            interactively ssh'd there. Public material, safe to commit; refresh after any
+            ssh host-key regeneration (ssh-keyscan <tailnet-ip> over the tailnet).
+          '';
+        };
       };
     };
   };
@@ -469,7 +490,16 @@ in {
           assertion = viaIP != null;
           message = "MODULES.networking.tuvpn.viaHost = \"${cfg.viaHost}\" but that host has no MODULES.networking.tailscale.hostIP - the toggle script bakes its tailnet address in.";
         }
+        {
+          assertion = viaHostKeys != [];
+          message = "MODULES.networking.tuvpn.viaHost = \"${cfg.viaHost}\" but ${cfg.viaHost} declares no MODULES.networking.tuvpn.server.hostKeys - the toggle would have nothing to pin and every ssh would die at host key verification.";
+        }
       ];
+
+      # Public host keys of the tunnel host, pinned for the toggle's ssh. Read from the
+      # flake (syncthing.deviceID's pattern): the key is the server's own fact, declared
+      # once there, and clients never restate it.
+      environment.etc."tuvpn/ssh-known-hosts".text = lib.concatStringsSep "\n" viaHostKeys + "\n";
 
       environment.systemPackages = [
         tuvpn-via

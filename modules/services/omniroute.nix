@@ -1,3 +1,39 @@
+# OmniRoute - the fleet's UI-managed AI gateway.
+#
+# Doctrine change (owner decision 2026-11-05): OmniRoute is the long-term single gateway;
+# LiteLLM (litellm.nix) is being phased out behind it. Phase 1 is live: the harness
+# modules (opencode.nix, pi.nix) carry an `omniroute` provider that talks to this instance
+# DIRECTLY (bypassing LiteLLM) and discovers its model inventory, so the ChatGPT Plus
+# subscription is reachable as "omniroute/codex/<model>" from every harness. Later phases
+# repoint the service consumers (open-webui, trilium, paperless, joplin, hermes, paseo)
+# here and then delete litellm.nix, its Postgres, and its ports/limits/service-graph rows.
+#
+# The provider list below lives in OmniRoute's dashboard/SQLite, NOT in this repo - the
+# accepted cost of the decision (a wiped /var/lib/omniroute means re-clicking this list, so
+# keep the dataset in znapzend's replication set). Seeded state, hp instance:
+#
+#   * codex        - ChatGPT Plus via dashboard OAuth (Connections → Codex → Connect with
+#                    OAuth). Model ids are codex/<model>; bare names misroute to "openai",
+#                    so harnesses must keep the codex/ prefix.
+#   * openai       - platform.openai.com API key (same key as the openai_api_key sops
+#                    secret; LiteLLM's openai/* wildcard used it until the phase-out).
+#   * openrouter   - native provider, key = the openrouter_api_key sops secret.
+#   * ollama (hp)  - Local/Ollama provider at http://127.0.0.1:11434 (the container is on
+#                    host networking, so loopback reaches the host's own ollama; carries
+#                    hp's aliases: coder, gpt-oss, heretic, small-text, qwen3.5).
+#   * ollama (legion5) - second Ollama provider at http://100.126.232.60:11434 (tailscale).
+#                    Distinguish the two by the provider's display name; ids collide
+#                    otherwise (both servers run the same alias names).
+#   * futurelab    - custom OpenAI-compatible provider at
+#                    https://futurelab.robo4you.at/v1 (Aqueduct; key = futurelab_api_key
+#                    sops secret, same one litellm.nix/opencode.nix use).
+#   * harness key  - Dashboard → API Keys → one key for the workstations; its value goes
+#                    into sops as omniroute_api_key (sops edit sops/secrets.yaml; the
+#                    modules mount it as /run/secrets/omniroute_api_key for pi + opencode).
+#
+# After seeding, LiteLLM's existing omniroute/* wildcard picks the new inventory up by
+# itself (check_provider_endpoint), so both spellings (litellm/omniroute/codex/... and
+# omniroute/codex/...) work until the phase-out removes the first one.
 {
   config,
   lib,
@@ -14,11 +50,10 @@ in {
   options.MODULES.services.omniroute = {
     enable = mkEnableOption ''
       OmniRoute, an OpenAI-compatible AI gateway with a dashboard: providers, combos (fallback
-      chains across them), API keys and usage tracking. A sibling of the LiteLLM gateway
-      (litellm.nix) rather than a replacement - LiteLLM stays the declarative router over this
-      flake's own Ollama hosts, and OmniRoute is where hosted subscriptions and free tiers
-      are managed from its UI. Point it at LiteLLM (http://127.0.0.1:${toString config.PORTS.litellm}/v1)
-      as a custom OpenAI-compatible provider to reach the local models through it
+      chains across them), API keys and usage tracking. The fleet's UI-managed gateway and the
+      designated replacement for LiteLLM (litellm.nix, being phased out - see this file's header
+      for the phase plan and the dashboard seed list). Harnesses (opencode.nix, pi.nix) mount it
+      directly as their `omniroute` provider
     '';
 
     image = mkOption {

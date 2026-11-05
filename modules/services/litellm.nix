@@ -160,11 +160,35 @@
     };
   };
 
+  # Same wildcard shape again, fourth upstream, this time OpenAI's own API: a caller asks for
+  # "openai/<model>" (anything the key can see on https://platform.openai.com/docs/models) and
+  # LiteLLM forwards it with its native OpenAI provider. Unlike the omniroute/ and futurelab/
+  # deployments above - which reuse `model = "openai/*"` only as the OpenAI-compatible
+  # *protocol* against someone else's server - this one deliberately sets no api_base, so
+  # LiteLLM talks to api.openai.com itself. (ChatGPT *subscription* access deliberately lives
+  # on OmniRoute's dashboard-managed codex provider instead of here, per the omniroute.nix
+  # split: this flake's LiteLLM is the declarative router, hosted subscription logins are
+  # OmniRoute's job.)
+  openaiDeployments = lib.optional cfg.openaiEnable {
+    model_name = "openai/*";
+    litellm_params = {
+      model = "openai/*";
+      # Resolved from the container's environment at startup - see the openaiApiKeySecret option
+      # below.
+      api_key = "os.environ/OPENAI_API_KEY";
+    };
+    model_info = {
+      id = "openai-wildcard";
+      host = "openai";
+    };
+  };
+
   deployments =
     lib.concatMap ollamaDeploymentsFor ollamaHosts
     ++ openrouterDeployments
     ++ omnirouteDeployments
-    ++ futurelabDeployments;
+    ++ futurelabDeployments
+    ++ openaiDeployments;
 
   # The aggregate "local/<name>" names only - deliberately excludes the host-pinned
   # "local/<host>/<name>" deployments above, which are meant to bypass fallback/replica
@@ -233,14 +257,15 @@
         drop_params = true;
         set_verbose = false;
       }
-      // lib.optionalAttrs (cfg.omnirouteEnable || cfg.futurelabEnable) {
+      // lib.optionalAttrs (cfg.omnirouteEnable || cfg.futurelabEnable || cfg.openaiEnable) {
         # How an "openai/*" wildcard is expanded for /v1/models and the UI. Left off, LiteLLM
         # fills it from its built-in catalogue of OpenAI's own models (gpt-4o, o3, ...), so the
         # omniroute/ and futurelab/ wildcards advertised dozens of models neither gateway serves
         # and none of the ones they do. On, it asks each wildcard's api_base for /v1/models with
-        # that deployment's key instead. Global rather than per deployment, but harmless to the
-        # openrouter/* wildcard: LiteLLM has no model-listing client for that provider and keeps
-        # using its static list there.
+        # that deployment's key instead - for the openai/* wildcard that is api.openai.com's
+        # default base, so it lists exactly what its own key can see. Global rather than per
+        # deployment, but harmless to the openrouter/* wildcard: LiteLLM has no model-listing
+        # client for that provider and keeps using its static list there.
         check_provider_endpoint = true;
       }
       // lib.optionalAttrs (cfg.metrics || (config.MODULES.services.coroot.enable or false)) {
@@ -461,6 +486,37 @@ in {
       '';
     };
 
+    openaiEnable = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Proxy OpenAI's own API through this gateway as a wildcard deployment, the same shape as
+        `openrouterEnable`: a client requests any model at "openai/<model>" and LiteLLM forwards
+        it verbatim to api.openai.com, using its native OpenAI provider. There is no api_base to
+        point elsewhere - see openaiDeployments - and no third-party dashboard: the models are
+        whatever the key can see on OpenAI's own /v1/models. It is one upstream over the
+        internet, with no replica/weight/fallback behaviour of its own. ChatGPT *subscription*
+        logins are not this option's job - they belong to OmniRoute's codex provider, whose
+        dashboard runs the OAuth flow for you (see omniroute.nix).
+
+        Requires `openaiApiKeySecret` to be set.
+      '';
+    };
+
+    openaiApiKeySecret = mkOption {
+      type = types.nullOr types.str;
+      default =
+        if config.MODULES.security.sops.enable
+        then "openai_api_key"
+        else null;
+      defaultText = lib.literalExpression ''if MODULES.security.sops.enable then "openai_api_key" else null'';
+      description = ''
+        Name of the sops secret holding the bare OpenAI API key (from
+        https://platform.openai.com/api-keys), rendered into the service's environment as
+        OPENAI_API_KEY. Only read when `openaiEnable` is set.
+      '';
+    };
+
     metrics = mkOption {
       type = types.bool;
       default = config.MODULES.services.prometheus.enable;
@@ -597,12 +653,12 @@ in {
         '';
       }
       {
-        assertion = backendHosts != [] || cfg.openrouterEnable || cfg.omnirouteEnable || cfg.futurelabEnable;
+        assertion = backendHosts != [] || cfg.openrouterEnable || cfg.omnirouteEnable || cfg.futurelabEnable || cfg.openaiEnable;
         message = ''
           MODULES.services.litellm.enable is set but no host in the flake has
           MODULES.services.ollama.enable, and none of
-          openrouterEnable, omnirouteEnable and futurelabEnable is set - the proxy would start
-          with an empty model list and answer 400 to everything.
+          openrouterEnable, omnirouteEnable, futurelabEnable and openaiEnable is set - the proxy
+          would start with an empty model list and answer 400 to everything.
         '';
       }
       {
@@ -635,6 +691,14 @@ in {
           Aqueduct would reject every request for lack of a virtual key. Create one at
           https://futurelab.robo4you.at/aqueduct/management/tokens/ and put it in sops under that
           name.
+        '';
+      }
+      {
+        assertion = !cfg.openaiEnable || cfg.openaiApiKeySecret != null;
+        message = ''
+          MODULES.services.litellm.openaiEnable is set but openaiApiKeySecret is null - OpenAI
+          would reject every request for lack of an API key. Create one at
+          https://platform.openai.com/api-keys and put it in sops under that name.
         '';
       }
       {
@@ -722,7 +786,7 @@ in {
         };
 
       environmentFiles =
-        lib.optional (cfg.masterKeySecret != null || cfg.openrouterApiKeySecret != null || cfg.omnirouteApiKeySecret != null || cfg.futurelabApiKeySecret != null) config.sops.templates."litellm.env".path
+        lib.optional (cfg.masterKeySecret != null || cfg.openrouterApiKeySecret != null || cfg.omnirouteApiKeySecret != null || cfg.futurelabApiKeySecret != null || cfg.openaiApiKeySecret != null) config.sops.templates."litellm.env".path
         ++ lib.optional (cfg.environmentFile != null) cfg.environmentFile;
 
       # Host networking: the Ollama backends are on this host's loopback and on other hosts'
@@ -777,12 +841,15 @@ in {
       (lib.mkIf (cfg.futurelabApiKeySecret != null) {
         ${cfg.futurelabApiKeySecret} = {};
       })
+      (lib.mkIf (cfg.openaiApiKeySecret != null) {
+        ${cfg.openaiApiKeySecret} = {};
+      })
     ];
 
     # The secrets are bare values, but --env-file wants KEY=value lines, so they're wrapped here.
     # Root-owned 0400 is enough: the docker CLI in the unit runs as root and reads it before the
     # container starts.
-    sops.templates."litellm.env" = lib.mkIf (cfg.masterKeySecret != null || cfg.openrouterApiKeySecret != null || cfg.omnirouteApiKeySecret != null || cfg.futurelabApiKeySecret != null) {
+    sops.templates."litellm.env" = lib.mkIf (cfg.masterKeySecret != null || cfg.openrouterApiKeySecret != null || cfg.omnirouteApiKeySecret != null || cfg.futurelabApiKeySecret != null || cfg.openaiApiKeySecret != null) {
       content =
         lib.optionalString (cfg.masterKeySecret != null) ''
           LITELLM_MASTER_KEY=${config.sops.placeholder.${cfg.masterKeySecret}}
@@ -795,6 +862,9 @@ in {
         ''
         + lib.optionalString (cfg.futurelabApiKeySecret != null) ''
           FUTURELAB_API_KEY=${config.sops.placeholder.${cfg.futurelabApiKeySecret}}
+        ''
+        + lib.optionalString (cfg.openaiApiKeySecret != null) ''
+          OPENAI_API_KEY=${config.sops.placeholder.${cfg.openaiApiKeySecret}}
         '';
       restartUnits = ["litellm.service"];
     };

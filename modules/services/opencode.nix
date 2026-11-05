@@ -103,14 +103,78 @@
         '';
       };
 
+      discoverModels = mkOption {
+        type = types.bool;
+        default = false;
+        description = ''
+          Add this provider's full /v1/models inventory to its picker listing, via the
+          opencode-models-discovery plugin (rendered into the config's `plugin` list as soon
+          as any provider asks for discovery - the pi twin of modules/services/pi.nix's
+          option of the same name). Discovered models MERGE with the static `models` map
+          below: a static entry is applied recursively over its discovered counterpart, so
+          the catalogue's limits and thinking `variants` stay authoritative for named
+          models while everything else the gateway serves appears automatically
+          (verified against opencode 2.2.1 and litellm.hp 2026-11-05). Three runtime quirks
+          to know: the plugin package is npm-installed into ~/.cache/opencode on each user's
+          first boot (model requests inside that ~20 s window answer "Location plugins did
+          not finish activating" - retry); injection is lazy and a gateway with ~1000 models
+          takes up to a minute after the first request to appear (measured 2026-11-05 with
+          modelInfoFormat litellm - the picker fills itself in live as the model.updated
+          event lands, no restart needed); and after a nix switch REMOVES a modelsDiscovery
+          key, a running background TUI needs `opencode service restart` (opencode merges
+          provider settings in memory; added or changed keys apply live, deletions do not).
+        '';
+      };
+
+      discoverModelInfoFormat = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        example = "litellm";
+        description = ''
+          The plugin's `modelInfoFormat`: enrich discovered models with per-model limits,
+          modalities, costs and reasoning variants from the provider's own metadata
+          (litellm: its /v1/model/info endpoint; omniroute: inline fields in /v1/models;
+          see the plugin's configuration doc for the other formats). null injects ids and
+          display names only, leaving limits at opencode's defaults.
+        '';
+      };
+
+      discoverFilterNonChat = mkOption {
+        type = types.bool;
+        default = true;
+        description = ''
+          The plugin's `filterNonChat`: drop models whose model_info.mode is not "chat" when
+          metadata is available. Only turn this off for a gateway whose text models LACK a
+          mode field - the litellm wildcard deployments discovered from OmniRoute carry no
+          mode at all, so filtering there would drop the text inventory along with the
+          image models (measured on litellm.hp 2026-11-05: 320 of 1066 entries have mode
+          set); name the non-chat families in `discoverExcludeIds` instead.
+        '';
+      };
+
+      discoverExcludeIds = mkOption {
+        type = types.listOf types.str;
+        default = [];
+        example = [
+          "^omniroute/(aihorde|veo)"
+          "embedding|transcribe|tts"
+        ];
+        description = ''
+          Regexes (JavaScript `new RegExp` semantics, matched against the raw model id) for
+          models discovery must not inject, rendered as the plugin's `models.excludeBy`
+          rules. Static `models` entries are never filtered - only discovered ones.
+        '';
+      };
+
       models = mkOption {
         type = types.attrsOf (types.submodule modelSubmodule);
         default = {};
         description = ''
           Catalogue entries to offer for this provider, keyed by the model name it expects on the
           wire (e.g. a LiteLLM model_name like "local/coder" or "futurelab/qwen3.8-flash-next").
-          opencode has no way to discover a custom provider's models on its own - anything left
-          out here simply does not show up in the picker.
+          Without `discoverModels`, anything left out here does not show up in the picker; with
+          it, the gateway's own inventory is injected and these entries override the discovered
+          ones for the models they name.
         '';
       };
     };
@@ -153,11 +217,42 @@
   defaultProviders = {
     # Primary: this fleet's LiteLLM gateway on hp - see litellm.nix for what is behind it.
     # Catalogue keys are the LiteLLM spellings, so the provider map is the catalogue as-is.
+    # Discovery adds the gateway's whole inventory (new deployments appear without a config
+    # edit here) with limits/variants enriched from litellm's own /v1/model/info; the static
+    # catalogue entries above still override the discovered versions of the named models.
+    # filterNonChat is off per its option's measured note, so the junk the gateway's
+    # omniroute/* wildcard pulls in (aihorde image models, veo video, embeddings & friends)
+    # is excluded by id instead.
     litellm = {
       displayName = "LiteLLM (hp)";
       baseURL = "https://litellm.hp/v1";
       apiKeySecret = "opencode/litellm_api_key";
+      discoverModels = true;
+      discoverModelInfoFormat = "litellm";
+      discoverFilterNonChat = false;
+      discoverExcludeIds = [
+        "^omniroute/(aihorde|veo)"
+        "embedding|transcribe|tts|dall|whisper|moderation|rerank|speech"
+      ];
       models = lib.mapAttrs' (_: m: lib.nameValuePair m.litellmName (ocModel m)) catalog;
+    };
+    # The subscription bypass: OmniRoute direct (litellm.nix stays the declarative router,
+    # hosted subscription logins are OmniRoute's job - see omniroute.nix). Model ids are
+    # OmniRoute's own "<connection>/<model>" spellings, so the ChatGPT Plus codex connection
+    # you sign into from its dashboard answers as "omniroute/codex/<model>" here. Discovery
+    # with the omniroute format reads limits/capabilities from OmniRoute's inline /v1/models
+    # fields; nothing is pinned statically - OmniRoute's provider set moves.
+    omniroute = {
+      displayName = "OmniRoute (hp)";
+      baseURL = "https://omniroute.hp/v1";
+      apiKeySecret = "omniroute_api_key";
+      discoverModels = true;
+      discoverModelInfoFormat = "omniroute";
+      discoverExcludeIds = [
+        "^aihorde/"
+        "^veo"
+      ];
+      models = {};
     };
     # Backup for when hp is down: the same models straight from their own gateways (for
     # futurelab, the Aqueduct endpoint litellm.nix's futurelabEnable wildcard proxies on hp).
@@ -173,6 +268,9 @@
         (lib.filterAttrs (_: m: m.directName != null) catalog);
     };
   };
+
+  # The discovery plugin is only worth loading when something asks for it.
+  anyDiscovery = lib.any (p: p.discoverModels) (lib.attrValues cfg.providers);
 in {
   options.MODULES.services.opencode = {
     enable = mkEnableOption "opencode (the terminal coding agent) with a declarative provider/model catalogue";
@@ -197,18 +295,29 @@ in {
     providers = mkOption {
       type = types.attrsOf (types.submodule providerSubmodule);
       default = defaultProviders;
-      defaultText = literalExpression "the fleet's shared gateway catalogue (litellm + futurelab)";
+      defaultText = literalExpression "the fleet's shared gateway catalogue (litellm + omniroute + futurelab)";
       description = ''
         opencode providers, keyed by the id opencode uses for it - also the "<provider>" half of
         defaultModel/smallModel and of any model's full name.
 
-        Defaults to the fleet's shared catalogue (this fleet's LiteLLM gateway plus the
-        futurelab Aqueduct gateway, both serving qwen3.8-flash-next). Since these are option
-        defaults, a consumer just ADDS its own `providers.<id> = {...}` to reach more gateways,
-        and `lib.mkForce` replaces or empties the whole catalogue. The default also means
-        enabling this module pulls the two gateways' sops secrets
-        (opencode/litellm_api_key, futurelab_api_key) onto the host - only for providers
-        actually configured, so a mkForce-d `{}` pulls nothing.
+        Defaults to the fleet's shared catalogue (this fleet's LiteLLM gateway, OmniRoute
+        direct for the hosted subscriptions, and the futurelab Aqueduct gateway). Since these
+        are option defaults, a consumer just ADDS its own `providers.<id> = {...}` to reach
+        more gateways, and `lib.mkForce` replaces or empties the whole catalogue. The default
+        also means enabling this module pulls the gateways' sops secrets
+        (opencode/litellm_api_key, omniroute_api_key, futurelab_api_key) onto the host - only
+        for providers actually configured, so a mkForce-d `{}` pulls nothing.
+      '';
+    };
+
+    discoveryPluginVersion = mkOption {
+      type = types.str;
+      default = "2.1.1";
+      description = ''
+        Version of opencode-models-discovery pinned into the rendered `plugin` list (only
+        rendered when some provider sets discoverModels). Pinned because each version
+        re-installs into ~/.cache/opencode on first boot; bump deliberately. 2.1.1 is what
+        was verified against opencode 2.2.1 and litellm.hp on 2026-11-05.
       '';
     };
 
@@ -333,6 +442,30 @@ in {
               {inherit (p) baseURL;}
               // lib.optionalAttrs (p.apiKeySecret != null) {
                 apiKey = "{file:${config.sops.secrets.${p.apiKeySecret}.path}}";
+              }
+              # The plugin reads its per-provider config off this block (its V1 path;
+              # opencode 2.2.1 still feeds legacy `provider` options to plugins - verified
+              # end-to-end 2026-11-05). timeoutMs above the plugin's 5 s default because
+              # the gateway's 1000-model /v1/models list does not reliably answer inside it,
+              # and the plugin's config hook wait budget rises with this value.
+              // lib.optionalAttrs p.discoverModels {
+                modelsDiscovery =
+                  {
+                    enabled = true;
+                    timeoutMs = 15000;
+                    filterNonChat = p.discoverFilterNonChat;
+                  }
+                  // lib.optionalAttrs (p.discoverModelInfoFormat != null) {
+                    modelInfoFormat = p.discoverModelInfoFormat;
+                  }
+                  // lib.optionalAttrs (p.discoverExcludeIds != []) {
+                    models.excludeBy =
+                      map (re: {
+                        field = "id";
+                        match = re;
+                      })
+                      p.discoverExcludeIds;
+                  };
               };
           in {
             inherit (p) npm;
@@ -364,6 +497,12 @@ in {
             p.models;
           })
           cfg.providers;
+      }
+      // lib.optionalAttrs anyDiscovery {
+        # Legacy plugin key (opencode 2.2.1 registers either key and the plugin reads the
+        # legacy per-provider path above; see the discoverModels option for the runtime
+        # quirks around first-boot install and settings hot-merge).
+        plugin = ["opencode-models-discovery@${cfg.discoveryPluginVersion}"];
       }
       // lib.optionalAttrs (cfg.defaultModel != null) {model = cfg.defaultModel;}
       // lib.optionalAttrs (cfg.smallModel != null) {small_model = cfg.smallModel;}

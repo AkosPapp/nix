@@ -194,10 +194,15 @@
         units = ["litellm"];
         dockerName = "litellm";
         tasks = 256;
-        cpu = "150%";
-        memHigh = "512M";
-        memMax = "768M";
-        note = "uvicorn workers, no threads concern.";
+        cpu = "200%";
+        memHigh = "768M";
+        memMax = "1G";
+        note = ''
+          uvicorn workers, no threads concern. 2026-11-05: owner raised from 150%/512M/768M -
+          this proxy is on the hot path of every harness request (the openai/* wildcard landed
+          the same week), and one core throttled request JSON/token handling against a whole
+          box's worth of callers. 200% renders as --cpus=2 via cpusFromQuota.
+        '';
       };
       traefik = {
         when = c: (c.services.traefik.enable or false);
@@ -303,9 +308,12 @@
         units = ["omniroute"];
         dockerName = "omniroute";
         tasks = 128;
-        cpu = "100%";
-        memHigh = "384M";
-        memMax = "512M";
+        cpu = "150%";
+        memHigh = "512M";
+        memMax = "768M";
+        # 2026-11-05: owner raised from 100%/384M/512M with the litellm row - it now also fronts
+        # the hosted-subscription traffic (codex OAuth connection), so streaming responses sit
+        # behind this cap too.
       };
       trilium = {
         when = c: (c.MODULES.services.trilium.enable or false);

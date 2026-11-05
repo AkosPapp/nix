@@ -22,6 +22,15 @@
     server.enable = true;
     secretOwner = "root";
     secretGroup = "root";
+    # Public SSH host keys (safe to commit), keyed by the tailnet IP the tuvpn-via-* clients
+    # dial. Cross-checked 2026-11-03: keyscan over tailscale0 == the `hp` entries in akos's
+    # known_hosts, i.e. verified identity, not a blind TOFU grab. Legion5 pins these in
+    # /etc/tuvpn/ssh-known-hosts; a mismatch there is a loud auth error, never a silent
+    # accept. Regenerate with `ssh-keyscan 100.92.36.52` if /etc/ssh/ssh_host_* ever change.
+    server.hostKeys = [
+      "100.92.36.52 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILHoBUmI+TbSwChT7XI8JAHTiHrELZTuSiNKrAnELMhT"
+      "100.92.36.52 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDD0c6to6DpnSsrVvYihDzwDKarnQ5wvJkq+OrVTr6eVFGtU8N8QrDgO4+UcB990rYA19E0Kjsg7gjhutWj/2Y5zGPxW+t2rTm99jDPXfa/8iP9gUHNM8pQh7EQwV3UkIKkvJVzckBrzdUTPXwBNBAASyK2kB4yDcKl7T9XVJnLyW5911dyMIAJ8SFYbtAciFtsrsfJM2iNK0FLy7fi8c/Z9rVoAgWvu4jrG49i3vZEe7DGBQ7D+gRjGKab//FfUtOEpG8yWvMij0w36DkEarTEujWTX5GZPqN4edOkoxO93wR3Dp6UFpYxFFRPk5RhN7rZGLdF5Rm8drRfBk0hBkdQuL15RY7C+spdNDkSpHFIx3VKuB5VInj/KBdsU0CzjRx9jX5z8CX6h/7+n0SP3UeN0sE+ap3BLDtSpIL3mBmKMq2umo4CcZRfgqAHp/ivJ3IyKg7iDDdJOn+KMTR124tFNUy5n5Algh2wR0n6m33xWHbbNnIuAPbqORjtzXyPhhDE8zJioUV1bXvdBCtDiYfIJ4Dzgh7C9aVLubYXxYTbqmBoNs7sCZ2qCto/f+UxcBoK8hrd1EPYe34ACyl0P12WyrJvH9E9aQ22wqsWA6Xvc9+fBpXJyYCadQYShLXPXcx750f748JTp9++K7vKEEEMxCUh74rINBEOTYBUWP4tUw=="
+    ];
   };
   # Nightly: pull litellm/omniroute/trilium images, recreate a container only when its
   # image actually changed (docker-images-update.nix).
@@ -145,6 +154,12 @@
   # since it sits behind the gateway's own login and nothing here can mint one - the same
   # manual-step situation omniroute's key is in.
   MODULES.services.litellm.futurelabEnable = true;
+  # OpenAI's own API, the fourth upstream and wildcarded the same way: "openai/<model>" is
+  # forwarded verbatim to api.openai.com - see openaiDeployments in litellm.nix. openai_api_key
+  # is a plain key from https://platform.openai.com/api-keys kept in sops under that name.
+  # (ChatGPT Plus itself rides OmniRoute's dashboard-managed codex OAuth connection instead -
+  # that is the hosted-subscription side of the fleet split, reached as "omniroute/codex/<model>".)
+  MODULES.services.litellm.openaiEnable = true;
   # The gateway itself, on the internet: https://hp.tail546fb.ts.net:8443/litellm/v1 through the
   # shared Funnel origin (see RUNBOOK-public.md). It exists for the Paseo installers - the machines
   # they install deliberately have no Tailscale, so https://litellm.hp is not an address they can

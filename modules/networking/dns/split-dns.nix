@@ -13,8 +13,10 @@
 #   up, the route to it leaves through wt0, and it answers the zone. netbird's DNS client is
 #   disabled in users/akos.nix.
 # dnsmasq is restarted only when the generated include actually changes, and every *change* of
-# the tailscale/netbird verdict is logged by the updater (see the verdict block below), because a
-# suppressed forward is otherwise invisible from the client.
+# the tailscale/netbird/dnsmasq-forwarding verdict is logged by the updater (see the verdict
+# block below), because a suppressed forward is otherwise invisible from the client - and so is
+# a dnsmasq that answers its static records just fine while every forwarded query dies on its
+# way out (the forwarding-liveness probe below).
 {
   config,
   lib,
@@ -26,6 +28,9 @@
   inherit (lib) mkEnableOption mkForce mkIf mkOption types;
 
   cfg = config.MODULES.networking.dns.splitDns;
+
+  # The forwarding-liveness probe cross-checks dnsmasq against this server (see splitDns).
+  firstPublic = assert cfg.publicServers != []; lib.head cfg.publicServers;
 
   # Other hosts' Traefik zones (by default their host name: hp, legion5, akos01, ...) and the
   # Tailscale IP behind each. Generated from the flake, so a new host needs no edit anywhere.
@@ -46,8 +51,10 @@
   # labForward block is emitted per its options (see splitDns.script placement below).
   # netbird's zone points at its DNS server only while its route leaves through wt0 and it
   # answers the zone; otherwise none of those lines exist and dnsmasq falls through to the public
-  # servers. The file is only replaced (and dnsmasq restarted) when its contents change, and each
-  # change of the tailscale/netbird verdict is logged so a suppressed forward is diagnosable.
+  # servers. The file is only replaced (and dnsmasq restarted) when its contents change, each
+  # change of the tailscale/netbird/dnsmasq verdict is logged so a suppressed forward is
+  # diagnosable, and a dnsmasq whose forwarding path has died restarts itself after three dead
+  # probes (see the forwarding-liveness block at the end of the script).
   splitDns = pkgs.writeShellScript "split-dns" ''
     export PATH="${lib.makeBinPath [
       config.systemd.package
@@ -64,6 +71,8 @@
     conf=/run/dnsmasq.d/split.conf
     # Last logged verdict, so the journal gets one line per *change* instead of one per poll.
     verdict_file=/run/split-dns.state
+    # Consecutive dead forwarding probes, persisted across runs (see the probe below).
+    fails_file=/run/split-dns.fails
     mkdir -p "$(dirname "$conf")"
 
     netbird_dns="${cfg.netbird.dnsServer}"
@@ -200,24 +209,77 @@
     ''}
     } > "$conf.new"
 
-    # One journal line per *change* of verdict. Every incident this file has collected (the
-    # swallowed MagicDNS SERVFAIL, the ts-input CGNAT black hole, the lazy peer that took 17
-    # minutes to dial) was invisible from the client until someone hand-ran the gates, because a
-    # forward that is *correctly* suppressed leaves no trace: the resolver just answers from the
-    # public fallback, i.e. wrong-but-plausible answers instead of an error. The same string sits
-    # in $verdict_file (world-readable), so "why is my zone not in the conf" is answerable on a
-    # box whose journal needs root: `cat /run/split-dns.state`.
-    verdict="tailscale=$tailscale_verdict netbird=$netbird_verdict"
-    if [ "$verdict" != "$(cat "$verdict_file" 2>/dev/null)" ]; then
-      logger -t split-dns "$verdict"
-      printf '%s\n' "$verdict" > "$verdict_file"
-    fi
-
     if ! cmp -s "$conf.new" "$conf"; then
       mv "$conf.new" "$conf"
       systemctl restart dnsmasq
+      restarted=1
     else
       rm -f "$conf.new"
+      restarted=0
+    fi
+
+    # Forwarding-liveness probe. The whole point of the verdict log is that a *correctly*
+    # suppressed forward is invisible from the client; its evil twin - dnsmasq alive but no
+    # longer able to send ANY query upstream - is worse, because the static address= records
+    # keep answering and the box looks perfectly healthy. Measured on legion5 2026-11-03: the
+    # running dnsmasq's fd table had grown 64 -> 1024 (its soft limit) inside 2.5 h of a roaming
+    # session, so when its periodic query-source-port rotation closed the old socket, the
+    # replacement socket() hit EMFILE (the leaker itself was never confirmed - the journal said
+    # what it could not do, not what filled the table) - and from that moment every forwarded
+    # query, public servers included, was dropped in silence while `address=` lookups still
+    # answered and systemctl still reported active(running). `dig @9.9.9.9` answered in 6 ms the
+    # entire time.
+    #
+    # So: ask dnsmasq itself for a unique name under .invalid (RFC 6761 - guaranteed upstream
+    # round trip, never cached, matches none of our zones), and accept ANY reply status
+    # (NXDOMAIN, NOERROR, even SERVFAIL or a captive portal's lie) as proof the
+    # send/rotate/receive cycle works. Silence counts against dnsmasq only when the same query
+    # reaches ${firstPublic} directly - while the network itself is down the restart would be
+    # pointless and the tailscale/netbird verdicts already say what is up. The restart fires on
+    # the third consecutive dead probe (3 x 10 s poll) so a transient stall cannot knock the
+    # resolver off live clients, and a run that just restarted dnsmasq for a conf change skips
+    # the probe - that restart already cleared whatever state the probe would find.
+    if [ "$restarted" = 1 ]; then
+      dnsmasq_verdict=just-restarted
+    else
+      probe_name="split-dns-probe-$(date +%s)-$RANDOM.invalid"
+      probe_status=$(dig +noall +comments +time=1 +tries=2 "@127.0.0.1" "$probe_name" A 2>/dev/null \
+        | sed -n 's/.*status: \([A-Z]*\).*/\1/p' | head -n1) || probe_status=
+      if [ -n "$probe_status" ]; then
+        dnsmasq_verdict=forwarding-ok
+        printf '0' > "$fails_file"
+      else
+        up_status=$(dig +noall +comments +time=1 +tries=1 "$first_public" "$probe_name" A 2>/dev/null \
+          | sed -n 's/.*status: \([A-Z]*\).*/\1/p' | head -n1) || up_status=
+        if [ -z "$up_status" ]; then
+          # Cannot blame dnsmasq; keep the fail count frozen across the outage.
+          dnsmasq_verdict=probe-timeout-upstream-unreachable
+        else
+          fails=$(( $(cat "$fails_file" 2>/dev/null || printf '0') + 1 ))
+          if [ "$fails" -ge 3 ]; then
+            dnsmasq_verdict="forward-dead restarted-after-$fails-fails"
+            systemctl restart dnsmasq
+            fails=0
+          else
+            dnsmasq_verdict="forward-dead fails=$fails"
+          fi
+          printf '%s' "$fails" > "$fails_file"
+        fi
+      fi
+    fi
+
+    # One journal line per *change* of verdict. Every incident this file has collected (the
+    # swallowed MagicDNS SERVFAIL, the ts-input CGNAT black hole, the lazy peer that took 17
+    # minutes to dial, the fd-leaked resolver that stopped forwarding) was invisible from the
+    # client until someone hand-ran the gates, because a forward that is *correctly* suppressed
+    # leaves no trace: the resolver just answers from the public fallback, i.e. wrong-but-
+    # plausible answers instead of an error. The same string sits in $verdict_file
+    # (world-readable), so "why is my zone not in the conf" and "is my resolver even forwarding"
+    # are answerable on a box whose journal needs root: `cat /run/split-dns.state`.
+    verdict="tailscale=$tailscale_verdict netbird=$netbird_verdict dnsmasq=$dnsmasq_verdict"
+    if [ "$verdict" != "$(cat "$verdict_file" 2>/dev/null)" ]; then
+      logger -t split-dns "$verdict"
+      printf '%s\n' "$verdict" > "$verdict_file"
     fi
   '';
 
