@@ -60,8 +60,8 @@
     PROFILE="''${1:-}"
     DAEMON=""
     if [[ -z "$PROFILE" ]]; then
-      PROFILE=$(printf "1_TU_getunnelt\n2_Alles_getunnelt\n3_TU_ohne_fixe_Adresse\nDisconnect\n" | \
-        ${pkgs.wofi}/bin/wofi --dmenu --prompt="Select VPN profile" --lines=4)
+      PROFILE=$(printf "1_TU_getunnelt\n2_Alles_getunnelt\nDisconnect\n" | \
+        ${pkgs.wofi}/bin/wofi --dmenu --prompt="Select VPN profile" --lines=3)
 
       if [[ -z "$PROFILE" ]]; then
         echo "No profile selected, aborting." >&2
@@ -141,7 +141,6 @@
     set -uo pipefail
 
     TS="${tsBin}/bin/tailscale"
-    JQ="${pkgs.jq}/bin/jq"
     # The host key comes from the declaratively-pinned /etc file (server.hostKeys on the
     # target), NOT from any user's known_hosts - the toggle runs from the desktop menu on a
     # box where nobody has ever interactively ssh'd to the tailnet IP, and BatchMode answers
@@ -210,13 +209,13 @@
           [ "$(routed-count)" -gt 0 ] && break
           sleep 5
         done
-        echo "TU VPN via $VIA: ON - TU prefixes route through $VIA's tunnel now."
+        echo "ON - TU routes via $VIA"
         ;;
       off)
         # Mirror order: stop accepting first, then tear the tunnel down.
         sudo $TS set --accept-routes=false
         $SSH systemctl stop tuvpn >/dev/null 2>&1 || true
-        echo "TU VPN via $VIA: OFF"
+        echo "OFF"
         ;;
       toggle)
         if [ "''${ENABLED:-0}" -gt 0 ]; then
@@ -232,21 +231,29 @@
         echo "tuvpn on $VIA restarted (fresh dial, ~5s until the tunnel answers again)."
         ;;
       status)
+        # ONE compact line: <state> <routed>/<total> <detail>. The menu turns state into
+        # a colored notification; the CLI gets the same line. The old verbose per-prefix
+        # prose made the notification 5x taller than the screen for information nobody
+        # acts on (legion5 2026-11-06: "make it shorter"). routed-one already IS the
+        # per-prefix answer, so a count says everything; the only case where prefixes
+        # differ from each other is a partial tailnet flap, which self-heals.
         HP=$($SSH systemctl is-active tuvpn 2>/dev/null) || HP="''${HP:-ssh-unreachable}"
-        echo "$VIA tuvpn.service: $HP"
-        # Routes the control plane has APPROVED on $VIA (unapproved advertisements
-        # never reach this map - that gap is what autoApprovers.routes closes).
-        OFFERED=$(sudo $TS status --json 2>/dev/null | $JQ -r --arg v "$VIA" \
-          '[.Peer[]? | select(.HostName == $v) | .PrimaryRoutes[]?][]')
-        OUT=""
+        N=0; T=0
         for p in $PREFIXES; do
-          if routed-one "$p"; then s="routed via $VIA"
-          elif echo "$OFFERED" | $GREP -qx "$p"; then s="offered, not accepted (toggle is ON for $VIA but this box is not routing it)"
-          else s="not offered (tuvpn down on $VIA, or its route is not approved on the tailnet control plane)"
-          fi
-          OUT="$OUT''${OUT:+, }$p ($s)"
+          T=$((T+1))
+          routed-one "$p" && N=$((N+1))
         done
-        echo "TU routes: $OUT"
+        if [ "$N" -gt 0 ]; then
+          echo "routed $N/$T on $VIA"
+        elif [ "$HP" = "ssh-unreachable" ]; then
+          echo "ssh-unreachable 0/$T (no tailnet ssh to $VIA)"
+        elif [ "$HP" != "active" ]; then
+          echo "down 0/$T ($VIA unit: $HP)"
+        else
+          # unit up but nothing routed: either accept-routes is off or the control plane
+          # has not approved $VIA's advertisement - the two things `on` / autoApprovers fix.
+          echo "not-accepted 0/$T ($VIA up, routes not installed)"
+        fi
         ;;
       *)
         echo "usage: tuvpn-via-$VIA {on|off|toggle|restart|status}" >&2
@@ -272,56 +279,64 @@
   # would pin a phantom terminal forever with terminal=false. tuvpn-menu itself takes
   # the choice as $1 too, which makes the contract scriptable (and testable).
   tuvpn-menu = pkgs.writeShellScriptBin "tuvpn-menu" ''
-        set -uo pipefail
+            set -uo pipefail
 
-        CONNECT="${tuvpn-connect}/bin/tuvpn-connect"
-        VIA="${tuvpn-via}/bin/tuvpn-via-${cfg.viaHost}"
+            CONNECT="${tuvpn-connect}/bin/tuvpn-connect"
+            VIA="${tuvpn-via}/bin/tuvpn-via-${cfg.viaHost}"
 
-        # $1 skips wofi with the exact menu label - the same script drives terminal use and
-        # testing, and wofi stays the interactive default.
-        CHOICE="''${1:-}"
-        if [ -z "$CHOICE" ]; then
-          CHOICE=$(printf "1_TU_getunnelt (direct)\n2_Alles_getunnelt (direct)\n3_TU_ohne_fixe_Adresse (direct)\nVia ${cfg.viaHost} (tailnet transit)\nStatus\nDisconnect\n" | \
-            ${pkgs.wofi}/bin/wofi --dmenu --prompt="TU VPN" --lines=6) || exit 1
-        fi
+            # $1 skips wofi with the exact menu label - the same script drives terminal use and
+            # testing, and wofi stays the interactive default.
+            CHOICE="''${1:-}"
+            if [ -z "$CHOICE" ]; then
+              CHOICE=$(printf "1_TU_getunnelt (direct)\n2_Alles_getunnelt (direct)\nVia ${cfg.viaHost} (tailnet transit)\nStatus\nDisconnect\n" | \
+                ${pkgs.wofi}/bin/wofi --dmenu --prompt="TU VPN" --lines=5) || exit 1
+            fi
 
-        teardown-all() {
-          # Order: tailnet accept first (kills the blackhole-into-dead-hp window), then the
-          # remote unit, then any local openconnect. All idempotent.
-          $VIA off >/dev/null 2>&1 || true
-          $CONNECT Disconnect >/dev/null 2>&1 || true
-        }
+            teardown-all() {
+              # Order: tailnet accept first (kills the blackhole-into-dead-hp window), then the
+              # remote unit, then any local openconnect. All idempotent.
+              $VIA off >/dev/null 2>&1 || true
+              $CONNECT Disconnect >/dev/null 2>&1 || true
+            }
 
-        case "$CHOICE" in
-          *" (direct)")
-            PROFILE="''${CHOICE% (direct)}"
-            teardown-all
-            OUT=$($CONNECT "$PROFILE" 2>&1) && RESULT="direct '$PROFILE' CONNECTED" || RESULT="direct '$PROFILE' FAILED: $OUT"
-            ;;
-          "Via ${cfg.viaHost} (tailnet transit)")
-            teardown-all
-            OUT=$($VIA on 2>&1) && RESULT="via ${cfg.viaHost} CONNECTED" || RESULT="via ${cfg.viaHost} FAILED: $OUT"
-            ;;
-          "Status")
-            PID=$(${pkgs.procps}/bin/pgrep -x openconnect 2>/dev/null | head -1)
-            if [ -n "$PID" ]; then DIRECT="direct: CONNECTED (pid $PID)"; else DIRECT="direct: off"; fi
-            OUT="$DIRECT
-    $($VIA status 2>&1)"
-            RESULT="status"
-            ;;
-          "Disconnect")
-            teardown-all
-            OUT=""
-            RESULT="both modes OFF"
-            ;;
-          *)
-            exit 1
-            ;;
-        esac
+            # Every branch sets ICON+LINE (and BODY only when there is something left to
+            # say). Emoji carry the color: quickshell's notification daemon ignores markup,
+            # and \033 codes render as garbage - a colored dot is the only "color" that is
+            # guaranteed to survive to the screen. Body is ONE short line; the old format
+            # stacked status prose three deep for information nobody acts on.
+            case "$CHOICE" in
+              *" (direct)")
+                PROFILE="''${CHOICE% (direct)}"
+                teardown-all
+                OUT=$($CONNECT "$PROFILE" 2>&1) && { ICON="🟢"; LINE="direct VPN up ($PROFILE)"; } || { ICON="🔴"; LINE="direct VPN failed"; BODY=$(echo "$OUT" | ${pkgs.coreutils}/bin/tail -1); }
+                ;;
+              "Via ${cfg.viaHost} (tailnet transit)")
+                teardown-all
+                OUT=$($VIA on 2>&1) && { ICON="🟢"; LINE="VPN up via ${cfg.viaHost}"; } || { ICON="🔴"; LINE="via ${cfg.viaHost} failed"; BODY=$(echo "$OUT" | ${pkgs.coreutils}/bin/tail -1); }
+                ;;
+              "Status")
+                ${pkgs.procps}/bin/pgrep -x openconnect >/dev/null 2>&1 && D="🟢 direct" || D="⚪ direct"
+                HP=$($VIA status 2>&1)
+                set -- $HP   # $1=state word ($2=routed-count) of the toggle's one-line status
+                case "$HP" in
+                  routed*)       ICON="🟢"; V="🟢 via ${cfg.viaHost} ($2 routed)" ;;
+                  not-accepted*) ICON="🟡"; V="🟡 via ${cfg.viaHost} (up, not accepted)" ;;
+                  *)             ICON="⚪"; V="⚪ via ${cfg.viaHost} ($1)" ;;
+                esac
+                LINE="$D  |  $V"
+                ;;
+              "Disconnect")
+                teardown-all
+                ICON="⚪"; LINE="all VPNs down"
+                ;;
+              *)
+                exit 1
+                ;;
+            esac
 
-        echo "$RESULT''${OUT:+
-    $OUT}"
-        ${pkgs.libnotify}/bin/notify-send -t 6000 "TU VPN: $RESULT" "$OUT" || true
+            echo "$ICON $LINE''${BODY:+ - $BODY}"
+            ${pkgs.libnotify}/bin/notify-send -t 6000 "$ICON TU VPN" "$LINE''${BODY:+
+    $BODY}" || true
   '';
 
   tuvpn-menu-desktop = pkgs.makeDesktopItem {
@@ -666,17 +681,15 @@ in {
         tuvpn-menu-desktop
       ];
 
-      # Exact-command rules (the repo's sudo pattern): the tailscale socket is root-only,
-      # so even the status read needs sudo; the toggle script calls precisely these
-      # argument spellings.
+      # Exact-command rules (the repo's sudo pattern): the tailscaled socket is root-only,
+      # so flipping accept-routes goes through sudo; the toggle script calls precisely
+      # these argument spellings. (The old `tailscale status --json` rule died with the
+      # SecondaryRoutes probe - the kernel routing table replaced it and needs no sudo,
+      # 2026-11-06.)
       security.sudo.extraRules = [
         {
           users = ["akos"];
           commands = [
-            {
-              command = "${tsBin}/bin/tailscale status --json";
-              options = ["NOPASSWD"];
-            }
             {
               command = "${tsBin}/bin/tailscale set --accept-routes=true";
               options = ["NOPASSWD"];
