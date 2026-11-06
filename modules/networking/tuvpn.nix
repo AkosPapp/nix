@@ -2,7 +2,12 @@
 #
 #   client   (cfg.enable)              - the interactive wofi helper + sudo rules. Lives on the
 #                                        desktop (legion5) and stays the fastest path while
-#                                        physically on/near campus.
+#                                        physically on/near campus. With viaHost set, the
+#                                        SINGLE "TU VPN" wofi entry is tuvpn-menu: it offers
+#                                        both paths, and every selection tears down BOTH
+#                                        (local openconnect + the remote unit + accept-routes)
+#                                        before connecting the chosen one, so exactly one
+#                                        path is ever live.
 #   server   (server.enable)           - openconnect as a root systemd unit + the transit
 #                                        plumbing, on a box LAN-adjacent to the TU gateway.
 #                                        hp is that box: it physically sits in the AirLab, so
@@ -43,20 +48,34 @@
   tsBin = config.services.tailscale.package;
 
   # ------------------------------------------------------------------ client --------------
+  # The profile may be passed as $1 (tuvpn-menu's non-interactive path: then openconnect
+  # --backgrounds and the script returns with the dial's exit code, so the menu can notify
+  # and close instead of owning a foreground VPN forever). No argument keeps the original
+  # interactive wofi picker for terminal/desktop use.
   tuvpn-connect = pkgs.writeShellScriptBin "tuvpn-connect" ''
     set -euo pipefail
 
     VPN_HOST="vpn.tuwien.ac.at"
 
-    PROFILE=$(printf "1_TU_getunnelt\n2_Alles_getunnelt\n3_TU_ohne_fixe_Adresse\nDisconnect\n" | \
-      ${pkgs.wofi}/bin/wofi --dmenu --prompt="Select VPN profile" --lines=4)
-
+    PROFILE="''${1:-}"
+    DAEMON=""
     if [[ -z "$PROFILE" ]]; then
-      echo "No profile selected, aborting." >&2
-      exit 1
+      PROFILE=$(printf "1_TU_getunnelt\n2_Alles_getunnelt\n3_TU_ohne_fixe_Adresse\nDisconnect\n" | \
+        ${pkgs.wofi}/bin/wofi --dmenu --prompt="Select VPN profile" --lines=4)
+
+      if [[ -z "$PROFILE" ]]; then
+        echo "No profile selected, aborting." >&2
+        exit 1
+      fi
+    else
+      DAEMON="--background"
     fi
 
-    sudo ${pkgs.psmisc}/bin/killall openconnect || true
+    # Kill ANY local openconnect first, including a stale foreground one from the desktop
+    # entry - this is also the menu's "disconnect" path (tuvpn-connect Disconnect).
+    # stderr silenced: "no process found" is the common case (nothing was up) and would
+    # otherwise leak into the menu's captured OUT as scary noise.
+    sudo ${pkgs.psmisc}/bin/killall openconnect 2>/dev/null || true
 
     if [[ "$PROFILE" == "Disconnect" ]]; then
       echo "Disconnected from $VPN_HOST."
@@ -71,15 +90,28 @@
 
     echo "Connecting to $VPN_HOST with profile '$PROFILE'..."
 
-    printf '%s\n%s\n' "$PASS" "$OTP" | \
-      sudo ${pkgs.openconnect}/bin/openconnect \
-        --protocol=anyconnect \
-        --no-dtls \
-        --no-external-auth \
-        --authgroup="$PROFILE" \
-        --user="$USER" \
-        --passwd-on-stdin \
-        "$VPN_HOST"
+    # --background daemonizes, but the DAEMON keeps writing its session log to stdout -
+    # left attached it pins any caller's pipe open (the menu's $(...) capture hung forever
+    # while the tunnel was actually up, legion5 2026-11-06). In $1/daemon mode detach the
+    # log into a per-user file; the interactive foreground path keeps the terminal.
+    oc-dial() {
+      printf '%s\n%s\n' "$PASS" "$OTP" | \
+        sudo ${pkgs.openconnect}/bin/openconnect \
+          --protocol=anyconnect \
+          --no-dtls \
+          --no-external-auth \
+          --authgroup="$PROFILE" \
+          --user="$USER" \
+          --passwd-on-stdin \
+          $DAEMON \
+          "$VPN_HOST"
+    }
+
+    if [[ -n "$DAEMON" ]]; then
+      oc-dial >>"/tmp/tuvpn-$(id -u).log" 2>&1
+    else
+      oc-dial
+    fi
   '';
 
   tuvpn-connect-desktop = pkgs.makeDesktopItem {
@@ -101,6 +133,9 @@
   );
   viaIP = viaTarget.config.MODULES.networking.tailscale.hostIP or null;
   viaHostKeys = viaTarget.config.MODULES.networking.tuvpn.server.hostKeys or [];
+  # Same cross-flake read as viaIP/viaHostKeys: the toggle's state probe needs to know
+  # WHICH prefixes to look for in the local routing table (see ENABLED below).
+  viaTuPrefixes = viaTarget.config.MODULES.networking.tuvpn.server.tuPrefixes or [];
 
   tuvpn-via = pkgs.writeShellScriptBin "tuvpn-via-${cfg.viaHost}" ''
     set -uo pipefail
@@ -115,24 +150,67 @@
     # deterministic auth or a clear error, never a per-host-state surprise.
     SSH="${pkgs.openssh}/bin/ssh -o BatchMode=yes -o ConnectTimeout=6 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/etc/tuvpn/ssh-known-hosts -o GlobalKnownHostsFile=/dev/null -o ForwardX11=no root@${viaIP}"
     VIA="${cfg.viaHost}"
+    IP="${pkgs.iproute2}/bin/ip"
+    GREP="${pkgs.gnugrep}/bin/grep"
+    # The prefixes whose transit this toggle owns, baked from the target's config.
+    PREFIXES="${lib.concatStringsSep " " viaTuPrefixes}"
 
-    # Accept-state proxy: SecondaryRoutes[].Enabled is false while --accept-routes is off,
-    # so it doubles as the toggle's memory. (tailscale's own status --json carries no flat
-    # accept-routes field worth grepping.) The tailscaled socket is root-only, so even the
-    # read goes through the exact-command sudo rule.
-    ENABLED=$(sudo $TS status --json 2>/dev/null | $JQ '[.SecondaryRoutes[]? | select(.Enabled)] | length')
+    # Accept-state proxy = the KERNEL routing table, not tailscale's status JSON:
+    # measured 2026-11-06 on legion5 (tailscale 1.104.4) that SecondaryRoutes is
+    # ABSENT and Self.AcceptRoutes null even with accept-routes ON and the routes
+    # installed - the old SecondaryRoutes[].Enabled probe therefore printed
+    # "none advertised" (and left `toggle` permanently seeing OFF) while pings
+    # answered through the tunnel. `ip route get` asks the kernel the same question
+    # a ping answers (which device would this packet leave on), so it cannot desync
+    # from reality; tailscaled installs accepted secondary routes there and pulls
+    # them on --accept-routes=false (both directions verified). Needs no sudo. The
+    # .1 host inside each prefix hits the route without needing a live target.
+    routed-one() {
+      probe="''${1%%/*}"
+      probe="''${probe%.*}.1"
+      $IP route get "$probe" 2>/dev/null | $GREP -q 'dev tailscale0'
+    }
+    routed-count() {
+      n=0
+      for p in $PREFIXES; do
+        routed-one "$p" && n=$((n+1))
+      done
+      echo $n
+    }
+    ENABLED=$(routed-count)
 
     case "''${1:-status}" in
       on)
         # Order is load-bearing: hp starts first (its ExecStartPost returns only once the
         # tunnel is up and the routes are advertised), the laptop accepts second. Accepting
         # before the tunnel exists would blackhole TU-bound packets into a dead next-hop.
-        if ! $SSH systemctl start tuvpn; then
-          echo "could not start tuvpn on $VIA - needs key-auth root ssh over the tailnet AND /etc/tuvpn/ssh-known-hosts matching $VIA's current host keys (MODULES.networking.tuvpn.server.hostKeys)" >&2
+        # A failed FIRST start is not fatal: TU allows max 3 concurrent sessions per user,
+        # and the gateway holds the slot for tens of seconds after a killall/teardown, so
+        # switching modes (the combined menu's disconnect-both-then-connect path, measured
+        # 2026-11-06) reliably loses the first dial to "Es sind maximal 3 gleichzeitige
+        # VPN-Verbindungen" - while hp's Restart=always re-dials ~10s later and wins. Poll
+        # is-active through that window instead of aborting on the first return.
+        STARTED=0
+        $SSH systemctl start tuvpn >/dev/null 2>&1 && STARTED=1
+        if [ "$STARTED" -eq 0 ]; then
+          for i in $(seq 1 12); do
+            sleep 5
+            if [ "$($SSH systemctl is-active tuvpn 2>/dev/null)" = "active" ]; then STARTED=1; break; fi
+          done
+        fi
+        if [ "$STARTED" -eq 0 ]; then
+          echo "could not start tuvpn on $VIA - TU may be holding your session slots (max 3 concurrent, https://nix.kom.tuwien.ac.at/vpn-sessions), or the unit fails for another reason: ssh root@$VIA journalctl -u tuvpn -b | tail -20" >&2
           exit 1
         fi
         sudo $TS set --accept-routes=true
-        echo "TU VPN via $VIA: ON - TU prefixes route through hp's tunnel now."
+        # The ExecStartPost gate advertises asynchronously after Type=simple's start job
+        # can already report success in edge cases; wait for the routes to actually ride
+        # the tailnet so "ON" never means "blackhole".
+        for i in $(seq 1 24); do
+          [ "$(routed-count)" -gt 0 ] && break
+          sleep 5
+        done
+        echo "TU VPN via $VIA: ON - TU prefixes route through $VIA's tunnel now."
         ;;
       off)
         # Mirror order: stop accepting first, then tear the tunnel down.
@@ -156,8 +234,19 @@
       status)
         HP=$($SSH systemctl is-active tuvpn 2>/dev/null) || HP="''${HP:-ssh-unreachable}"
         echo "$VIA tuvpn.service: $HP"
-        sudo $TS status --json 2>/dev/null | $JQ -r \
-          '"tailnet routes: " + (if ([.SecondaryRoutes[]?] | length) > 0 then ([.SecondaryRoutes[] | .Route + (if .Enabled then " (enabled)" else " (not accepted)" end)] | join(", ")) else "none advertised" end)'
+        # Routes the control plane has APPROVED on $VIA (unapproved advertisements
+        # never reach this map - that gap is what autoApprovers.routes closes).
+        OFFERED=$(sudo $TS status --json 2>/dev/null | $JQ -r --arg v "$VIA" \
+          '[.Peer[]? | select(.HostName == $v) | .PrimaryRoutes[]?][]')
+        OUT=""
+        for p in $PREFIXES; do
+          if routed-one "$p"; then s="routed via $VIA"
+          elif echo "$OFFERED" | $GREP -qx "$p"; then s="offered, not accepted (toggle is ON for $VIA but this box is not routing it)"
+          else s="not offered (tuvpn down on $VIA, or its route is not approved on the tailnet control plane)"
+          fi
+          OUT="$OUT''${OUT:+, }$p ($s)"
+        done
+        echo "TU routes: $OUT"
         ;;
       *)
         echo "usage: tuvpn-via-$VIA {on|off|toggle|restart|status}" >&2
@@ -166,35 +255,81 @@
     esac
   '';
 
-  # wofi front for the desktop entry - mirrors the tuvpn-connect UX (pick an action, no
-  # terminal), result comes back as a notification because terminal=false has nowhere to
-  # print to.
-  tuvpn-via-menu = pkgs.writeShellScriptBin "tuvpn-via-${cfg.viaHost}-menu" ''
-    set -uo pipefail
+  # (The old tuvpn-via-<host>-menu and its desktop entry were replaced 2026-11-06 by the
+  # single tuvpn-menu below, which owns both paths; tuvpn-connect lost its own desktop
+  # entry for the same reason - one "TU VPN" launcher, not three that fight each other.)
 
-    CHOICE=$(printf "Connect via ${cfg.viaHost}\nDisconnect\nStatus\nRestart tunnel on ${cfg.viaHost}\n" | \
-      ${pkgs.wofi}/bin/wofi --dmenu --prompt="TU VPN via ${cfg.viaHost}" --lines=4) || exit 1
+  # ------------------------------------------------------------- combined menu -------------
+  # One wofi entry holding BOTH paths (direct openconnect and via-<host> transit), added
+  # 2026-11-06 because juggling two desktop entries kept leaving the other mode half-live:
+  # a direct tunnel running while accept-routes pointed at hp blackholed nothing only by
+  # luck (the local tun stole the default-ish TU routes first), and nobody remembered
+  # which knob was up. Contract: EVERY selection tears down BOTH modes first
+  # (killall openconnect + tuvpn-via off), then connects the chosen one - so exactly
+  # one path is ever active, and "Disconnect" is the same teardown with nothing after.
+  # Local connects run openconnect --background (tuvpn-connect's non-interactive $1
+  # mode) so the menu can report the result via notify and exit; a foreground VPN
+  # would pin a phantom terminal forever with terminal=false. tuvpn-menu itself takes
+  # the choice as $1 too, which makes the contract scriptable (and testable).
+  tuvpn-menu = pkgs.writeShellScriptBin "tuvpn-menu" ''
+        set -uo pipefail
 
-    case "$CHOICE" in
-      "Connect via ${cfg.viaHost}") ACTION=on ;;
-      "Disconnect") ACTION=off ;;
-      "Status") ACTION=status ;;
-      "Restart tunnel on ${cfg.viaHost}") ACTION=restart ;;
-      *) exit 1 ;;
-    esac
+        CONNECT="${tuvpn-connect}/bin/tuvpn-connect"
+        VIA="${tuvpn-via}/bin/tuvpn-via-${cfg.viaHost}"
 
-    OUT=$(${tuvpn-via}/bin/tuvpn-via-${cfg.viaHost} "$ACTION" 2>&1)
-    RC=$?
-    ${pkgs.libnotify}/bin/notify-send -t 6000 "TU VPN via ${cfg.viaHost}" "$OUT" || true
-    exit $RC
+        # $1 skips wofi with the exact menu label - the same script drives terminal use and
+        # testing, and wofi stays the interactive default.
+        CHOICE="''${1:-}"
+        if [ -z "$CHOICE" ]; then
+          CHOICE=$(printf "1_TU_getunnelt (direct)\n2_Alles_getunnelt (direct)\n3_TU_ohne_fixe_Adresse (direct)\nVia ${cfg.viaHost} (tailnet transit)\nStatus\nDisconnect\n" | \
+            ${pkgs.wofi}/bin/wofi --dmenu --prompt="TU VPN" --lines=6) || exit 1
+        fi
+
+        teardown-all() {
+          # Order: tailnet accept first (kills the blackhole-into-dead-hp window), then the
+          # remote unit, then any local openconnect. All idempotent.
+          $VIA off >/dev/null 2>&1 || true
+          $CONNECT Disconnect >/dev/null 2>&1 || true
+        }
+
+        case "$CHOICE" in
+          *" (direct)")
+            PROFILE="''${CHOICE% (direct)}"
+            teardown-all
+            OUT=$($CONNECT "$PROFILE" 2>&1) && RESULT="direct '$PROFILE' CONNECTED" || RESULT="direct '$PROFILE' FAILED: $OUT"
+            ;;
+          "Via ${cfg.viaHost} (tailnet transit)")
+            teardown-all
+            OUT=$($VIA on 2>&1) && RESULT="via ${cfg.viaHost} CONNECTED" || RESULT="via ${cfg.viaHost} FAILED: $OUT"
+            ;;
+          "Status")
+            PID=$(${pkgs.procps}/bin/pgrep -x openconnect 2>/dev/null | head -1)
+            if [ -n "$PID" ]; then DIRECT="direct: CONNECTED (pid $PID)"; else DIRECT="direct: off"; fi
+            OUT="$DIRECT
+    $($VIA status 2>&1)"
+            RESULT="status"
+            ;;
+          "Disconnect")
+            teardown-all
+            OUT=""
+            RESULT="both modes OFF"
+            ;;
+          *)
+            exit 1
+            ;;
+        esac
+
+        echo "$RESULT''${OUT:+
+    $OUT}"
+        ${pkgs.libnotify}/bin/notify-send -t 6000 "TU VPN: $RESULT" "$OUT" || true
   '';
 
-  tuvpn-via-desktop = pkgs.makeDesktopItem {
-    name = "tuvpn-via-${cfg.viaHost}";
-    desktopName = "TU VPN via ${cfg.viaHost}";
-    comment = "Route the TU Wien VPN through ${cfg.viaHost}'s tunnel (tailscale subnet routes)";
+  tuvpn-menu-desktop = pkgs.makeDesktopItem {
+    name = "tuvpn-menu";
+    desktopName = "TU VPN";
+    comment = "TU Wien VPN - direct or via ${cfg.viaHost} (selecting either disconnects both first)";
     icon = "network-vpn";
-    exec = "${tuvpn-via-menu}/bin/tuvpn-via-${cfg.viaHost}-menu";
+    exec = "${tuvpn-menu}/bin/tuvpn-menu";
     terminal = false;
     categories = ["Network"];
   };
@@ -227,8 +362,7 @@
       --protocol=anyconnect \
       ${lib.optionalString cfg.server.noDtls "--no-dtls"} \
       --no-external-auth \
-      --tun-device=${cfg.server.tunDevice} \
-      --keepalive=30 \
+      --interface=${cfg.server.tunDevice} \
       --script ${tuvpn-vpnc-script} \
       --authgroup=${lib.escapeShellArg cfg.server.profile} \
       --user="$(cat ${config.sops.secrets."tu/vpn/user".path})" \
@@ -241,9 +375,11 @@
   # GATE for `systemctl start`: returns only once the tunnel carries routes AND the tailnet
   # has been told about them. The tailscale-up poll copies modules/networking/tailscale.nix
   # (tailscaled goes "active" long before it has a tailnet IP; `tailscale set` before that
-  # just fails).
+  # just fails). PATH must name every binary the script uses - including grep: systemd gives
+  # ExecStartPost no useful default PATH, and a bare `grep` here once spun the poll loop on
+  # "command not found" (hp 2026-11-06) until the gate exit-1'd on "never carried routes".
   tuvpn-advertise = pkgs.writeShellScript "tuvpn-advertise" ''
-    export PATH="${lib.makeBinPath [tsBin pkgs.iproute2 pkgs.coreutils pkgs.util-linux]}"
+    export PATH="${lib.makeBinPath [tsBin pkgs.iproute2 pkgs.coreutils pkgs.util-linux pkgs.gnugrep]}"
     for i in $(seq 1 30); do
       ip route show dev ${cfg.server.tunDevice} 2>/dev/null | grep -q . && break
       sleep 1
@@ -375,7 +511,7 @@ in {
         tunDevice = lib.mkOption {
           type = lib.types.str;
           default = "tun0";
-          description = "Tunnel device name (pinned via --tun-device so the FORWARD/NAT rules and the advertise gate name it exactly).";
+          description = "Tunnel device name (pinned via --interface so the FORWARD/NAT rules and the advertise gate name it exactly; this openconnect has no --tun-device - hp 2026-11-06 usage error).";
         };
 
         startAtBoot = lib.mkOption {
@@ -391,21 +527,32 @@ in {
         tuPrefixes = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           default = [
-            # TU Wien's registered aggregate. SOURCE OF TRUTH is the split-include the
-            # gateway actually pushes: on first bring-up run `ip route show dev tun0` on
-            # the server host and extend this list (as an option value - the litmus-test
-            # location for the fact is here, it is a TU fact, not an hp fact). The VPN
-            # profile is named "TU_getunnelt" precisely because it pushes TU's own
-            # space; the public remainder of 128.130/16 is reachable from the lab WAN
-            # anyway, forwarding just falls through to it.
-            "128.130.0.0/16"
+            # TU's split-include exactly as the gateway pushes it (measured on hp
+            # 2026-11-06, profile 1_TU_getunnelt, `ip route show dev tun0`):
+            #   128.130.0.0/15  - TU's whole 128.130+128.131 space, which also
+            #                     contains the 128.131.236.0/22 pool the gateway
+            #                     hands VPN addresses from (hp's tun0 today:
+            #                     128.131.237.235)
+            #   193.170.72.0/21 - TU's other internal aggregate
+            # Advertise exactly this set: the gateway only routes what it pushes,
+            # so anything wider blackholes at TU's side, and the old 128.130.0.0/16
+            # guess silently missed 128.131 + 193.170.72/21 transit (hp 2026-11-06).
+            # SOURCE OF TRUTH stays the push - re-measure `ip route show dev tun0`
+            # after any TU policy change (the private-collision caveat below still
+            # applies).
+            "128.130.0.0/15"
+            "193.170.72.0/21"
           ];
           description = ''
             CIDRs advertised to the tailnet as subnet routes while the tunnel is up, and
             nothing else (tailscale rejects prefixes overlapping 100.64.0.0/10, so a
             private range from the split-include that collides must be rewritten, not
             advertised). This is the whole forwarding contract: clients accept these
-            routes, transit them here, and they leave with the VPN address.
+            routes, transit them here, and they leave with the VPN address. Every prefix
+            new here must also be APPROVED on the tailnet control plane (admin console
+            "Approve routes" or ACL autoApprovers.routes) - an advertised-but-unapproved
+            route is exactly the "none advertised" a client sees while `systemctl show
+            tuvpn` says active.
           '';
         };
 
@@ -461,10 +608,13 @@ in {
 
     # ---------------------------------------------------------------- client ----------------
     (lib.mkIf cfg.enable {
-      environment.systemPackages = [
-        tuvpn-connect
-        tuvpn-connect-desktop
-      ];
+      # tuvpn-connect stays the CLI (and the menu's direct-path driver). Its standalone
+      # desktop entry only ships when there is NO viaHost: with one configured, tuvpn-menu
+      # below is the single "TU VPN" launcher and a second identically-named entry would be
+      # pure confusion.
+      environment.systemPackages =
+        [tuvpn-connect]
+        ++ lib.optionals (cfg.viaHost == null) [tuvpn-connect-desktop];
 
       security.sudo.extraRules = [
         {
@@ -494,6 +644,13 @@ in {
           assertion = viaHostKeys != [];
           message = "MODULES.networking.tuvpn.viaHost = \"${cfg.viaHost}\" but ${cfg.viaHost} declares no MODULES.networking.tuvpn.server.hostKeys - the toggle would have nothing to pin and every ssh would die at host key verification.";
         }
+        {
+          # The combined menu's direct path (and the tailscale sudo rules) live in the
+          # client branch; a viaHost-only host would render a menu whose entries 1-3 die
+          # on missing secrets and sudo rules.
+          assertion = cfg.enable;
+          message = "MODULES.networking.tuvpn.viaHost needs MODULES.networking.tuvpn.enable = true: the combined menu's direct path and the tailscale sudo rules live in the client branch.";
+        }
       ];
 
       # Public host keys of the tunnel host, pinned for the toggle's ssh. Read from the
@@ -501,10 +658,12 @@ in {
       # once there, and clients never restate it.
       environment.etc."tuvpn/ssh-known-hosts".text = lib.concatStringsSep "\n" viaHostKeys + "\n";
 
+      # One launcher for both paths (the menu also drives tuvpn-connect's direct mode,
+      # whose sudo rules live in the client branch above - asserted).
       environment.systemPackages = [
         tuvpn-via
-        tuvpn-via-menu
-        tuvpn-via-desktop
+        tuvpn-menu
+        tuvpn-menu-desktop
       ];
 
       # Exact-command rules (the repo's sudo pattern): the tailscale socket is root-only,

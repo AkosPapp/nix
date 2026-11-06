@@ -290,7 +290,9 @@ in {
     acceptRoutes = false;
   };
   # The TU VPN's fast path from afar: hp terminates openconnect inside the lab (LAN-adjacent
-  # to the gateway, no TCP-in-TCP collapse) and the tailnet carries the transit; the local
-  # wofi tuvpn-connect (users/akos.nix) stays the on-campus path. Menu entry: "TU VPN via hp".
+  # to the gateway, no TCP-in-TCP collapse) and the tailnet carries the transit; the direct
+  # openconnect path stays the on-campus one. Both live in ONE wofi entry "TU VPN"
+  # (tuvpn-menu, modules/networking/tuvpn.nix), which disconnects both modes before
+  # connecting whichever you pick.
   MODULES.networking.tuvpn.viaHost = "hp";
 }

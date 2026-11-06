@@ -215,33 +215,18 @@
   catalog = config.MODULES.services.modelCatalog.models;
 
   defaultProviders = {
-    # Primary: this fleet's LiteLLM gateway on hp - see litellm.nix for what is behind it.
-    # Catalogue keys are the LiteLLM spellings, so the provider map is the catalogue as-is.
-    # Discovery adds the gateway's whole inventory (new deployments appear without a config
-    # edit here) with limits/variants enriched from litellm's own /v1/model/info; the static
-    # catalogue entries above still override the discovered versions of the named models.
-    # filterNonChat is off per its option's measured note, so the junk the gateway's
-    # omniroute/* wildcard pulls in (aihorde image models, veo video, embeddings & friends)
-    # is excluded by id instead.
-    litellm = {
-      displayName = "LiteLLM (hp)";
-      baseURL = "https://litellm.hp/v1";
-      apiKeySecret = "opencode/litellm_api_key";
-      discoverModels = true;
-      discoverModelInfoFormat = "litellm";
-      discoverFilterNonChat = false;
-      discoverExcludeIds = [
-        "^omniroute/(aihorde|veo)"
-        "embedding|transcribe|tts|dall|whisper|moderation|rerank|speech"
-      ];
-      models = lib.mapAttrs' (_: m: lib.nameValuePair m.litellmName (ocModel m)) catalog;
-    };
-    # The subscription bypass: OmniRoute direct (litellm.nix stays the declarative router,
-    # hosted subscription logins are OmniRoute's job - see omniroute.nix). Model ids are
-    # OmniRoute's own "<connection>/<model>" spellings, so the ChatGPT Plus codex connection
-    # you sign into from its dashboard answers as "omniroute/codex/<model>" here. Discovery
-    # with the omniroute format reads limits/capabilities from OmniRoute's inline /v1/models
-    # fields; nothing is pinned statically - OmniRoute's provider set moves.
+    # Primary catalogue: OmniRoute direct - hosted subscription logins are its job (see
+    # omniroute.nix) and it is the harnesses' gateway from 2026-11-05 on; this module's
+    # LiteLLM-gateway provider was dropped in phase 2 of that replacement (litellm.nix
+    # stays for service consumers until phase 3, and a consumer that still wants it adds
+    # its own `providers.litellm = {...}`). Model ids are
+    # OmniRoute's own "<connection-slug>/<model>" spellings (its /v1/models namespaces every
+    # route by connection - codex/, github/, cline/, kilocode/, the auto/ combos, plus short
+    # aliases like gh/ for some connections), so the picker reads
+    # "omniroute/codex/gpt-6-astra" and models from the ollama/openai/futurelab connections
+    # carry their own segment once seeded in the dashboard. Discovery with the omniroute
+    # format reads limits/capabilities from OmniRoute's inline /v1/models fields; nothing is
+    # pinned statically - OmniRoute's provider set moves.
     omniroute = {
       displayName = "OmniRoute (hp)";
       baseURL = "https://omniroute.hp/v1";
@@ -251,14 +236,20 @@
       discoverExcludeIds = [
         "^aihorde/"
         "^veo"
+        # Drop ids WITHOUT a connection segment so every offered model states its provider
+        # (and cannot misroute: OmniRoute answers bare names on the openai connection).
+        # Bare duplicates beside the qualified spelling are OmniRoute's dual-id prefix mode
+        # (measured 2026-11-05: 6 such ids, all codex models).
+        "^[^/]+$"
       ];
       models = {};
     };
-    # Backup for when hp is down: the same models straight from their own gateways (for
-    # futurelab, the Aqueduct endpoint litellm.nix's futurelabEnable wildcard proxies on hp).
-    # No automatic failover in opencode - pick them by hand in the model selector. Keyed by
-    # directName: the vendor prefix only exists in LiteLLM's wildcard spelling, and only models
-    # that list one appear here.
+    # The Aqueduct endpoint direct. OmniRoute has no futurelab connection yet, so since
+    # the litellm harness provider was dropped (2026-11-05) this - not any gateway id -
+    # is how futurelab models are reached; seed a futurelab connection in OmniRoute and
+    # it starts showing up under omniroute/. Keyed by directName: the "futurelab/" vendor
+    # prefix was only ever LiteLLM's wildcard spelling, and only models that list a
+    # directName appear here.
     futurelab = {
       displayName = "FutureLab (Aqueduct)";
       baseURL = "https://futurelab.robo4you.at/v1";
@@ -295,17 +286,17 @@ in {
     providers = mkOption {
       type = types.attrsOf (types.submodule providerSubmodule);
       default = defaultProviders;
-      defaultText = literalExpression "the fleet's shared gateway catalogue (litellm + omniroute + futurelab)";
+      defaultText = literalExpression "the fleet's shared gateway catalogue (omniroute + futurelab)";
       description = ''
         opencode providers, keyed by the id opencode uses for it - also the "<provider>" half of
         defaultModel/smallModel and of any model's full name.
 
-        Defaults to the fleet's shared catalogue (this fleet's LiteLLM gateway, OmniRoute
-        direct for the hosted subscriptions, and the futurelab Aqueduct gateway). Since these
+        Defaults to the fleet's shared catalogue (OmniRoute direct for the hosted
+        subscriptions, and the futurelab Aqueduct endpoint). Since these
         are option defaults, a consumer just ADDS its own `providers.<id> = {...}` to reach
         more gateways, and `lib.mkForce` replaces or empties the whole catalogue. The default
         also means enabling this module pulls the gateways' sops secrets
-        (opencode/litellm_api_key, omniroute_api_key, futurelab_api_key) onto the host - only
+        (omniroute_api_key, futurelab_api_key) onto the host - only
         for providers actually configured, so a mkForce-d `{}` pulls nothing.
       '';
     };
@@ -477,7 +468,7 @@ in {
             # Fully-qualified display name ("<provider>/<id>", the same spelling as the
             # config `model` value and pi's model names in modules/services/pi.nix):
             # opencode shows `name` in its picker where pi shows "<id> [provider]", and
-            # the two gateways differ only in that prefix (litellm/futurelab/... via the
+            # the gateways differ only in that prefix (omniroute/openrouter/... via the
             # gateway vs futurelab/... direct). ids stay the wire spelling.
             models = lib.mapAttrs (mname: m:
               {name = "${pname}/${mname}";}

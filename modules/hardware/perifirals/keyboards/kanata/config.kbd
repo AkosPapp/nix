@@ -3,8 +3,10 @@
   process-unmapped-keys yes
 )
 
+;; lctl/rctl join only so (input real ...) can see them physically pressed for the
+;; hrm toggle below; they pass through unmapped in every layer.
 (defsrc
-  caps a s d f j k l ;
+  caps a s d f j k l ; lctl rctl
 )
 (defvar
   tap-time 100
@@ -13,6 +15,19 @@
 
 (defalias
   escctrl (tap-hold 100 100 esc lctl)
+  ;; Ctrl+Caps toggles the home row mods (either physical Ctrl). The switch runs at
+  ;; press: with Ctrl held it persistently layer-switches between base and hrm-off,
+  ;; keyed on the active layer; otherwise caps keeps its tap=esc / hold=ctrl
+  ;; behaviour untouched. (input real ...) reads physical defsrc inputs, so caps' own
+  ;; ctrl OUTPUT never counts as the combo.
+  ;; Pitfall (legion5 2026-11-05): do NOT use layer-toggle here - in kanata it is
+  ;; merely an alias for layer-while-held (momentary), so the "toggle" reverted the
+  ;; instant caps was released and nothing appeared to happen.
+  hrm-toggle (switch
+    ((and (layer hrm-off) (or (input real lctl) (input real rctl)))) (layer-switch base) break
+    ((and (layer base) (or (input real lctl) (input real rctl)))) (layer-switch hrm-off) break
+    () @escctrl break
+  )
   a (tap-hold $tap-time $hold-time a lmet)
   s (tap-hold $tap-time $hold-time s lalt)
   d (tap-hold $tap-time $hold-time d lsft)
@@ -24,5 +39,11 @@
 )
 
 (deflayer base
-  @escctrl @a @s @d @f @j @k @l @;
+  @hrm-toggle @a @s @d @f @j @k @l @; lctl rctl
+)
+
+;; Identical except the home row types plain keys. Caps keeps esc/hold-ctrl here too
+;; (and with it the toggle back); only the mods are meant to go away.
+(deflayer hrm-off
+  @hrm-toggle a s d f j k l ; lctl rctl
 )

@@ -92,23 +92,66 @@
       system.pipewire.enable = true;
       security.sops.enable = true;
       # The module's default provider catalogue (rendered from
-      # modules/services/model-catalog.nix) is exactly what this user wants - the
-      # LiteLLM gateway on hp plus the futurelab Aqueduct gateway as backup - so
-      # only the model choices are named here.
+      # modules/services/model-catalog.nix) is exactly what this user wants since
+      # 2026-11-05: OmniRoute direct for the hosted subscriptions plus the futurelab
+      # Aqueduct endpoint - the LiteLLM-gateway provider was dropped from the
+      # harnesses then, so only the model choices are named here.
       services.opencode = {
         enable = true;
-        defaultModel = "litellm/futurelab/qwen3.8-flash-next";
-        smallModel = "litellm/futurelab/qwen3.8-flash-next";
+        defaultModel = "futurelab/qwen3.8-flash-next";
+        smallModel = "futurelab/qwen3.8-flash-next";
       };
       # pi for interactive use, fully declarative (the module owns the package too):
-      # /etc/pi/models.json is symlinked into ~/.pi/agent with the API keys resolved at
-      # run time via pi's "!cat <sops path>" - nothing secret lands in the store or the
-      # home - and settings.json is deep-merged with the default model pinned to the
-      # litellm gateway (pi would otherwise boot on the alphabetically-first provider,
-      # which is the futurelab backup). Same catalogue and sops keys as
+      # /etc/pi/models.json is symlinked into ~/.pi/agent with the API keys rendered as
+      # $PI_* env references that the module's pi wrapper exports from the sops mounts at
+      # exec (the old "!cat" spelling killed discovery - see the module header) - nothing
+      # secret lands in the store or the home - and settings.json is deep-merged with the
+      # default model pinned to the futurelab endpoint (pi would otherwise boot on
+      # whatever attrsets order renders). Same catalogue and sops keys as
       # services.opencode above; replaces the paseo-machine daemon's home writes
-      # (legion5 2026-10-29).
+      # (legion5 2026-10-29, wrapper spelling 2026-11-05).
       services.pi = {
+        enable = true;
+        users = ["akos"];
+        # subagent orchestration (by nicobailon): teaches pi to fan work out to
+        # child pi processes and bundles a skill for it - loaded as an extension
+        # via settings.json packages, npm-installed on first pi run.
+        packages = ["npm:pi-subagents"];
+      };
+      # oh-my-pi (pi's fork, `omp`): the same gateway pair through ITS native
+      # models.yml - built-in discovery replaces pi's extension (openai-models-list
+      # reads omniroute's /v1/models), keys stay out of the store the same way
+      # (OMPI_<NAME>_API_KEY env exports by the module's omp wrapper), and the
+      # default model is pinned through a PI_CONFIG_FILES settings overlay so
+      # omp does not boot on "first model with a valid key" (pi.nix doctrine).
+      services.omp = {
+        enable = true;
+        users = ["akos"];
+      };
+      # Claude Code against OmniRoute's Anthropic wire (/v1/messages, probed live
+      # 2026-11-05): the wrapper exports ANTHROPIC_BASE_URL/AUTH_TOKEN (the sops
+      # key, never the store) plus the model pins the picker maps Opus/Sonnet/Haiku
+      # onto - the antigravity/dvgw ids answer /v1/messages today; bump if the
+      # gateway reshuffles. See modules/services/claude-code.nix.
+      services.claudeCode = {
+        enable = true;
+        users = ["akos"];
+      };
+      # Kilo Code CLI - OpenCode fork, so it reads the same two gateways in
+      # OpenCode provider shape from ~/.config/kilo/kilo.jsonc; {file:<sops>}
+      # apiKey references are global-config-only by design (see the module
+      # header). nixpkgs kilo is broken; the vendor binary ships in
+      # packages/kilo-cli.nix.
+      services.kilo = {
+        enable = true;
+        users = ["akos"];
+      };
+      # Cline CLI: providers.json gets one "openai-compatible" slot, so OmniRoute
+      # owns it (every subscription model answers there; the futurelab pin lives
+      # on for pi/omp/opencode/kilo). file:/ apiKey indirection keeps the key out
+      # of the store; a merge unit re-asserts the slot at activation without
+      # clobbering the user's own providers. See modules/services/cline.nix.
+      services.cline = {
         enable = true;
         users = ["akos"];
       };
@@ -207,7 +250,11 @@
       pkgs-unstable.jetbrains.idea
       pkgs-unstable.zed-editor
       pkgs-unstable.github-copilot-cli
-      pkgs-unstable.claude-code
+      # NO pkgs-unstable.claude-code here since 2026-11-05: MODULES.services.
+      # claudeCode ships a bin/claude WRAPPER (ANTHROPIC_BASE_URL/AUTH_TOKEN
+      # exports for the OmniRoute gateway), and a plain package in this user's
+      # profile would shadow it (home profile precedes the system one) - the
+      # stale entry made claude boot into its expired stored-OAuth path.
       pkgs-unstable.claude-agent-acp
       pkgs-unstable.claude-monitor
       pkgs-unstable.cursor-cli

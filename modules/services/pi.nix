@@ -6,13 +6,20 @@
 # Layout, and why each piece sits where it does:
 #   * models.json is a KEYLESS store file exposed as /etc/pi/models.json and symlinked
 #     into every configured user's ~/.pi/agent (tmpfiles L+, which also replaces the
-#     old plaintext-keyed regular file). pi resolves `"apiKey": "!cat <path>"` itself -
-#     resolve-config-value.js execs the command, trims stdout, caches per process - so
-#     the key lives only in the sops-nix-mounted file it points at, exactly the
-#     {file:...} trick opencode gets from modules/services/opencode.nix. pi has no
-#     system config dir (it reads ~/.pi/agent/models.json or nothing), so the symlink
-#     IS the declarative mechanism; a `pi update` that tried to rewrite the file would
-#     hit the read-only store and fail visibly rather than drift silently.
+#     old plaintext-keyed regular file). Provider keys render as "$PI_<NAME>_API_KEY"
+#     and the module's package wrapper (piWrapper below) exports them from the
+#     sops-nix-mounted files at exec time - so the key lives only in the mounted file
+#     and the pi process's own environment, never in the store. The wrapper exists
+#     because pi-models-discovery deliberately refuses to resolve "!command" apiKeys
+#     (its docs: only literals and $ENV interpolation are allowed in discovery
+#     requests; pi resolves !commands for CHAT only) - the old "!cat <path>" form
+#     made pi's own requests work but killed discovery for every provider
+#     (legion5 2026-11-05). pi's resolve-config-value.js interpolates $VAR natively,
+#     so chat follows the same mechanism; paseo-machine already runs pi on exactly
+#     this pattern ($PASEO_MODEL_API_KEY). pi has no system config dir (it reads
+#     ~/.pi/agent/models.json or nothing), so the symlink IS the declarative
+#     mechanism; a `pi update` that tried to rewrite the file would hit the read-only
+#     store and fail visibly rather than drift silently.
 #   * settings.json cannot be a symlink: pi and `pi install` write it (saved thinking
 #     levels, package declarations). A root oneshot deep-merges the declared fragment
 #     at activation instead - user keys survive, named keys are re-asserted on every
@@ -21,9 +28,10 @@
 #     root service; if a third copy ever appears, lift it to a shared helper).
 #   * defaultProvider/defaultModel MUST be pinned, not left to pi: pi's
 #     findInitialModel (dist/core/model-resolver.js) falls through to "first available
-#     model with a valid API key" and models.json is rendered from attrsets - the
-#     alphabetical provider map puts `futurelab` (the backup!) BEFORE `litellm`. An
-#     unpinned pi boots on the backup endpoint (measured on legion5 2026-10-29).
+#     model with a valid API key" and models.json is rendered from attrsets - provider
+#     order is then an accident of naming (measured on legion5 2026-10-29). The pin is
+#     the futurelab endpoint's first catalogue model since 2026-11-05; only a STATIC
+#     catalogue entry makes the default deterministic (omniroute is discovery-only).
 #
 # Model ids and display names: pi's footer shows only the model id and the /model
 # picker shows "<id> [provider]", so the fully-qualified "provider/id" spelling goes in
@@ -158,7 +166,7 @@
 
       baseUrl = mkOption {
         type = types.str;
-        example = "https://litellm.hp/v1";
+        example = "https://omniroute.hp/v1";
         description = "OpenAI-compatible endpoint this provider talks to.";
       };
 
@@ -170,11 +178,13 @@
 
       apiKeySecret = mkOption {
         type = types.str;
-        example = "opencode/litellm_api_key";
+        example = "omniroute_api_key";
         description = ''
-          sops key whose mounted file holds this provider's API key. models.json carries
-          it as "!cat <mounted path>" - pi execs that as the user running it, so the
-          secret must be owned by every cfg.users entry (see the module assertion).
+          sops key whose mounted file holds this provider's API key. models.json
+          references it as "$PI_<NAME>_API_KEY" and the module's piWrapper execs
+          `cat <mounted path>` into that env var at every pi start - so the secret must
+          be readable by every cfg.users entry (see the module assertion), and providers
+          added to cfg.providers get their export automatically.
         '';
       };
 
@@ -186,7 +196,18 @@
           pi-models-discovery extension (models.json `discoverModels`, plus the
           `packages` entry in settings.json that installs the extension). Discovered
           models replace the static entries by id - the thinking dialect survives via
-          modelOverrides below.
+          modelOverrides below. The extension resolves provider apiKeys only as
+          literals or $ENV_VAR interpolation (it never execs "!command" - pi does that
+          for chat requests only), which is why apiKey is rendered as a $PI_*-style
+          env reference fed by piWrapper; a provider that re-renders with "!cat" would
+          silently lose discovery while chatting still worked (legion5 2026-11-05).
+          Id shape: gateways namespace their own ids, so pi lists e.g.
+          "codex/gpt-6-astra [omniroute]" and selections read
+          "omniroute/codex/gpt-6-astra". The extension has NO exclude/filter option
+          (verified against 1.7.0), so unlike the opencode twin - which drops OmniRoute's
+          handful of prefix-less duplicate ids via discoverExcludeIds - pi also shows
+          those bare spellings; prefer the provider-qualified ones, as the gateway
+          routes bare names to its openai connection.
         '';
       };
 
@@ -214,22 +235,13 @@
     thinkingDefault = m.thinkingDefault;
   };
 
-  # The fleet's two gateways in pi dialect - the same endpoints/keys as
-  # MODULES.services.opencode.defaultProviders, spelled from the catalogue.
+  # The fleet's gateways in pi dialect - the same endpoints/keys as
+  # MODULES.services.opencode.defaultProviders, spelled from the catalogue. The harness
+  # provider for this fleet's LiteLLM gateway was dropped 2026-11-05 (phase 2 of the
+  # OmniRoute replacement; litellm.nix stays for service consumers until phase 3):
+  # subscriptions go through omniroute below, Aqueduct goes direct, and a consumer that
+  # still wants the old gateway adds its own `providers.litellm = {...}`.
   defaultProviders = {
-    litellm = {
-      displayName = "LiteLLM (hp)";
-      baseUrl = "https://litellm.hp/v1";
-      apiKeySecret = "opencode/litellm_api_key";
-      # The gateway's inventory grows without a config edit here; the static catalogue
-      # entry remains authoritative for THIS model through modelOverrides.
-      discoverModels = true;
-      models =
-        lib.mapAttrs' (
-          _: m: lib.nameValuePair m.litellmName (piModelFromCatalog m)
-        )
-        catalog;
-    };
     futurelab = {
       displayName = "FutureLab (Aqueduct)";
       baseUrl = "https://futurelab.robo4you.at/v1";
@@ -243,8 +255,9 @@
     # subscription logins are its job, and its dashboard-managed codex OAuth connection
     # answers "codex/<model>" here, i.e. pi shows "omniroute/codex/<model>" with the module's
     # display-name spelling). Nothing statically pinned - OmniRoute's provider set moves -
-    # the discovery extension lists it; same no-filter caveat as litellm above (its /v1/models
-    # inventory includes OmniRoute's free-tier image providers, e.g. aihorde/*).
+    # the discovery extension lists it, and that extension has NO exclude/filter option
+    # (pi-models-discovery 1.7.0), so OmniRoute's free-tier image providers (aihorde/* and
+    # friends) show up too.
     omniroute = {
       displayName = "OmniRoute (hp)";
       baseUrl = "https://omniroute.hp/v1";
@@ -256,8 +269,8 @@
 
   # One configured model as pi wants it. `name` carries the fully-qualified
   # "<provider>/<id>" spelling because pi's footer/picker render only the raw id, and
-  # the point of the two-gateway catalogue is that "litellm/futurelab/..." and
-  # "futurelab/..." are distinguishable strings.
+  # the point of the multi-gateway catalogue is that "omniroute/openrouter/anthropic/..."
+  # and "futurelab/..." are distinguishable strings.
   piModel = pname: mname: m:
     {
       id = mname;
@@ -276,6 +289,10 @@
       compat = piChatTemplateCompat;
     };
 
+  # The env var name piWrapper exports each provider's key under, and which the
+  # models.json apiKey fields reference (see the header's wrapper rationale).
+  piEnvName = pname: "PI_" + lib.toUpper (lib.replaceStrings ["-"] ["_"] pname) + "_API_KEY";
+
   piProvider = pname: p:
     {
       name =
@@ -284,7 +301,12 @@
         else pname;
       baseUrl = p.baseUrl;
       api = p.api;
-      apiKey = "!cat ${config.sops.secrets.${p.apiKeySecret}.path}";
+      # Resolved by pi (resolve-config-value.js) and by pi-models-discovery alike; the
+      # values come from the mounted sops files via piWrapper, NOT "!cat <path>" - the
+      # discovery extension refuses !command apiKeys outright (see header). Built by
+      # concatenation on purpose: in a plain Nix string "$${expr}" is the ESCAPE for a
+      # literal ${expr}, so the interpolation-shaped spelling rendered dead text here.
+      apiKey = "$" + piEnvName pname;
       models = lib.mapAttrsToList (piModel pname) p.models;
     }
     // lib.optionalAttrs p.discoverModels {
@@ -306,15 +328,47 @@
       ) (lib.filterAttrs (_: m: m.thinkingLevels != []) p.models);
     };
 
-  # Resolve "provider/id" for settings.json. The derived default prefers the litellm
-  # provider deliberately: the raw attrNames-first pick would be `futurelab`, i.e. the
-  # backup endpoint (alphabetical order in the rendered providers map), and an unpinned
-  # or mis-pinned pi silently boots there.
+  # The `pi` on PATH: exports every provider's API key from its sops-nix-mounted file
+  # (files read at exec, so no secret ever lands in the store or in world-readable env),
+  # defaults the pi-extensions-i18n locale to English - that sidecar (a hard
+  # dependency of pi-models-discovery, loaded because pi loads every extension-shaped
+  # package in its npm store) prints Chinese startup/diagnostic messages unless
+  # PI_EXTENSIONS_LOCALE or its agent-dir config overrides its zh-CN default
+  # (legion5 2026-11-05). The :- form keeps a user-set value authoritative. It also
+  # puts nodejs's bin dir on PATH: pi self-installs settings.json packages by
+  # spawning a bare `npm install --prefix ~/.pi/agent/npm` on first run, and a NixOS
+  # box without the nodejs package anywhere has no `npm` to find - pi died with
+  # `spawn npm ENOENT` (legion5 2026-11-05). Same nodejs derivation pi-coding-agent
+  # itself depends on, so the npm matches pi's node.
+  piWrapper = pkgs.writeShellScriptBin "pi" (
+    ''
+      export PI_EXTENSIONS_LOCALE="''${PI_EXTENSIONS_LOCALE:-en}"
+      export PATH="${pkgs-unstable.nodejs}/bin:''${PATH}"
+    ''
+    + lib.concatMapStringsSep "\n" (
+      pname: let
+        path = config.sops.secrets.${cfg.providers.${pname}.apiKeySecret}.path;
+      in ''
+        if [ -r ${path} ]; then
+          export ${piEnvName pname}="$(cat ${path})"
+        fi
+      ''
+    ) (lib.attrNames cfg.providers)
+    + ''
+      exec ${pkgs-unstable.pi-coding-agent}/bin/pi "$@"
+    ''
+  );
+
+  # Resolve "provider/id" for settings.json. The derived default pins the futurelab
+  # provider deliberately: it is the only one with STATIC entries, so its first catalogue
+  # model is a deterministic boot choice; pi's findInitialModel would otherwise boot on
+  # whatever attrsets order renders first (measured on legion5 2026-10-29, when the pin
+  # still named the litellm gateway - that harness provider was dropped 2026-11-05).
   defaultRef =
     if cfg.defaultModel != null
     then cfg.defaultModel
-    else if cfg.providers ? litellm && cfg.providers.litellm.models != {}
-    then "litellm/${builtins.head (builtins.attrNames cfg.providers.litellm.models)}"
+    else if cfg.providers ? futurelab && cfg.providers.futurelab.models != {}
+    then "futurelab/${builtins.head (builtins.attrNames cfg.providers.futurelab.models)}"
     else "${builtins.head (builtins.attrNames cfg.providers)}/${builtins.head (
       builtins.attrNames cfg.providers.${builtins.head (builtins.attrNames cfg.providers)}.models
     )}";
@@ -324,6 +378,14 @@
   defaultModelId = lib.concatStringsSep "/" (builtins.tail defaultParts);
 
   defaultModelEntry = cfg.providers.${defaultProviderName}.models.${defaultModelId} or null;
+
+  # settings.json `packages`: pi npm-installs these into each managed ~/.pi/agent on
+  # first run. pi-models-discovery joins automatically whenever any provider uses
+  # discoverModels (it IS the discovery implementer); cfg.packages adds further
+  # `pi install`-syntax sources.
+  packageSources =
+    lib.optionals (lib.any (p: p.discoverModels) (lib.attrValues cfg.providers)) ["npm:pi-models-discovery"]
+    ++ cfg.packages;
 
   # The settings.json fragment: deep-merged at activation; user-written keys survive.
   settingsFragment = pkgs.writeText "pi-settings.json" (builtins.toJSON (
@@ -336,8 +398,8 @@
     ) {
       modelThinkingLevels = {"${defaultRef}" = defaultModelEntry.thinkingDefault;};
     }
-    // lib.optionalAttrs (lib.any (p: p.discoverModels) (lib.attrValues cfg.providers)) {
-      packages = [{source = "npm:pi-models-discovery";}];
+    // lib.optionalAttrs (packageSources != []) {
+      packages = map (source: {inherit source;}) packageSources;
     }
   ));
 
@@ -390,10 +452,24 @@ in {
       description = "Users whose ~/.pi/agent this manages. models.json lands as a symlink to /etc/pi/models.json; settings.json is deep-merged, never replaced wholesale.";
     };
 
+    packages = mkOption {
+      type = types.listOf types.str;
+      default = [];
+      example = ["npm:pi-subagents" "git:github.com/user/pi-extension"];
+      description = ''
+        Extra pi packages loaded into every managed ~/.pi/agent, in `pi install`
+        source syntax (`npm:<pkg>`, `git:<owner>/<repo>`, ...). They join the
+        settings.json `packages` list alongside pi-models-discovery, which the module
+        adds on its own whenever a provider sets discoverModels. pi installs entries
+        from this list on first run; the activation merge appends to (never replaces)
+        packages the user installed interactively.
+      '';
+    };
+
     providers = mkOption {
       type = types.attrsOf (types.submodule providerSubmodule);
       default = defaultProviders;
-      defaultText = literalExpression "the fleet's shared gateway catalogue (litellm + futurelab), rendered from MODULES.services.modelCatalog";
+      defaultText = literalExpression "the fleet's shared gateway catalogue (futurelab + omniroute), rendered from MODULES.services.modelCatalog";
       description = ''
         pi providers, keyed by the provider id pi uses (also the "<provider>" half of
         defaultModel and of every model's fully-qualified name). Option defaults mean a
@@ -406,8 +482,8 @@ in {
     defaultModel = mkOption {
       type = types.nullOr types.str;
       default = null;
-      example = "litellm/futurelab/qwen3.8-flash-next";
-      defaultText = literalExpression "the litellm provider's first catalogue model (never the alphabetical first, which would be the futurelab backup)";
+      example = "omniroute/codex/gpt-6-astra";
+      defaultText = literalExpression "the futurelab provider's first catalogue model (the only static provider; discovery-only omniroute cannot give a deterministic default)";
       description = ''
         "provider/id" pi starts with, written as settings.json defaultProvider +
         defaultModel (the split is at the FIRST slash, so a LiteLLM model id that itself
@@ -502,7 +578,8 @@ in {
         group = cfg.secretGroup;
       });
 
-    environment.systemPackages = [pkgs-unstable.pi-coding-agent];
+    # The wrapped pi (env exports + locale default; see piWrapper).
+    environment.systemPackages = [piWrapper];
 
     # The keyless catalogue, world-readable: it names secret PATHS, never secrets.
     environment.etc."pi/models.json".text = builtins.toJSON {

@@ -111,7 +111,7 @@ in {
         # chat_template_kwargs dialect both fronts pass through unchanged.
         "futurelab/qwen3.8-flash-next" = {
           directName = "qwen3.8-flash-next";
-          contextLength = 262144;
+          contextLength = 524288;
           outputLength = 32768;
           thinkingLevels = ["low" "medium" "xhigh"];
           thinkingDefault = "xhigh";

@@ -303,8 +303,8 @@
     enable = true;
     secretOwner = "root";
     secretGroup = "root";
-    defaultModel = "litellm/futurelab/qwen3.8-flash-next";
-    smallModel = "litellm/futurelab/qwen3.8-flash-next";
+    defaultModel = "futurelab/qwen3.8-flash-next";
+    smallModel = "futurelab/qwen3.8-flash-next";
   };
 
   # Personal agent stack - see RUNBOOK-hermes.md next to this file for the manual steps (sops
