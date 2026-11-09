@@ -13,6 +13,15 @@
     MODULES.networking.tailscale.hostIP = "100.83.255.5";
     # Nightly: pull the fastdds discovery-server image (docker-images-update.nix).
     MODULES.virtualisation.docker-images-update.enable = true;
+    # herdr (herdr.dev): binaries only, same reasoning as hp - no normal user account here
+    # (no USERS.akos), so no per-user state and no GUI. hc on PATH is what lets this box be
+    # an `hc machine add akos01` target; installApp = false keeps vulkan/mesa out of a VM
+    # with no display server. See modules/services/herdr.nix for why the servers themselves
+    # stay unmanaged (herdr-core spawns its own transient systemd --user units).
+    MODULES.services.herdr = {
+      enable = true;
+      installApp = false;
+    };
     MODULES.services.syncthing.deviceID = "ZNMNOF4-NH6MXMO-VCFTEPL-4CUQ2DC-Y7VR6WI-NHFOUKS-OK2GXAR-A7SVWQ2";
     MODULES.networking.traefik.enable = true;
     MODULES.services.vaultwarden.enable = true;

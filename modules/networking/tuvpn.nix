@@ -114,11 +114,33 @@
     fi
   '';
 
+  # ------------------------------------------------------------------ icon ----------------
+  # TU VPN neon logo, background removed at the source (modules/networking/tuvpn.png):
+  # the white corners and the dark square around the disc are flood-keyed transparent,
+  # the disc's own dark interior stays (it is part of the logo). makeDesktopItem's `icon` is just the Icon= string,
+  # so it gets an ABSOLUTE store path - a themed name would need a desktop-file-utils
+  # cache refresh nothing guarantees, a path always resolves. Multi-size hicolor tree
+  # because the master is 512px and shrinking it per size keeps small menus crisp;
+  # no .ico - freedesktop menus never read it (user request 2026-11-06).
+  tuvpn-icon =
+    pkgs.runCommand "tuvpn-icon" {
+      src = ./tuvpn.png;
+      nativeBuildInputs = [pkgs.imagemagick];
+    } ''
+      mkdir -p $out/share/icons/hicolor
+      for s in 16 24 32 48 64 128 256 512; do
+        d=$out/share/icons/hicolor/''${s}x''${s}/apps
+        mkdir -p $d
+        magick "$src" -resize "''${s}x''${s}" "$d/tuvpn.png"
+      done
+    '';
+  tuvpn-icon-file = "${tuvpn-icon}/share/icons/hicolor/256x256/apps/tuvpn.png";
+
   tuvpn-connect-desktop = pkgs.makeDesktopItem {
     name = "tuvpn-connect";
     desktopName = "TU VPN";
     comment = "Connect to or disconnect from the TU Wien VPN";
-    icon = "network-vpn";
+    icon = tuvpn-icon-file;
     exec = "${tuvpn-connect}/bin/tuvpn-connect";
     terminal = false;
     categories = ["Network"];
@@ -343,7 +365,7 @@
     name = "tuvpn-menu";
     desktopName = "TU VPN";
     comment = "TU Wien VPN - direct or via ${cfg.viaHost} (selecting either disconnects both first)";
-    icon = "network-vpn";
+    icon = tuvpn-icon-file;
     exec = "${tuvpn-menu}/bin/tuvpn-menu";
     terminal = false;
     categories = ["Network"];
@@ -628,7 +650,7 @@ in {
       # below is the single "TU VPN" launcher and a second identically-named entry would be
       # pure confusion.
       environment.systemPackages =
-        [tuvpn-connect]
+        [tuvpn-connect tuvpn-icon]
         ++ lib.optionals (cfg.viaHost == null) [tuvpn-connect-desktop];
 
       security.sudo.extraRules = [

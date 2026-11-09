@@ -45,8 +45,11 @@
 #                    Distinguish the two by the provider's display name; ids collide
 #                    otherwise (both servers run the same alias names).
 #   * futurelab    - custom OpenAI-compatible provider at
-#                    https://futurelab.robo4you.at/v1 (Aqueduct; key = futurelab_api_key
-#                    sops secret, same one litellm.nix/opencode.nix use). NIX-SEEDED:
+#                    https://futurelab.robo4you.at/v1 (Aqueduct; keys = the futurelab_api_key1/
+#                    2/3 sops secrets - key1 is the connection's primary, 2/3 ride
+#                    extraApiKeySecrets into providerSpecificData.extraApiKeys, which
+#                    OmniRoute's apiKeyRotator round-robins per request and cooldowns
+#                    per key on 429). NIX-SEEDED:
 #                    custom endpoints live as provider NODES (/api/provider-nodes carrying
 #                    the baseUrl; the connection then uses the node id as its provider), so
 #                    the unit adopts-or-creates the "futurelab" node, connects to it, and
@@ -150,6 +153,21 @@
         '';
       };
 
+      extraApiKeySecrets = mkOption {
+        type = types.listOf types.str;
+        default = [];
+        example = ["futurelab_api_key2" "futurelab_api_key3"];
+        description = ''
+          Additional sops keys for the SAME upstream endpoint. The seed unit PATCHes them
+          into the connection as providerSpecificData.extraApiKeys, which OmniRoute's
+          apiKeyRotator round-robins per request alongside apiKeySecret's primary key -
+          that is how one endpoint's quota gets spread over several keys evenly without
+          a combo. Per-key health applies (a key that fails auth twice is skipped, a 429
+          cools a key until Retry-After). Empty leaves the field untouched: the unit never
+          clears extras it did not set (same no-delete doctrine as connections).
+        '';
+      };
+
       extraSettings = mkOption {
         type = types.attrs;
         default = {};
@@ -158,7 +176,9 @@
         };
         description = ''
           JSON merged LAST into the create/update body (ProviderConnectionCreate fields
-          beyond provider/url/name/apiKey/isActive, e.g. per-provider specifics).
+          beyond provider/url/name/apiKey/isActive, e.g. per-provider specifics). Merged
+          DEEP under extraApiKeySecrets' providerSpecificData.extraApiKeys, so a host
+          setting both keeps them both.
         '';
       };
 
@@ -222,7 +242,11 @@
     futurelab = {
       prefix = "futurelab";
       url = "https://futurelab.robo4you.at/v1";
-      apiKeySecret = "futurelab_api_key";
+      apiKeySecret = "futurelab_api_key1";
+      # The Aqueduct tokens page hands out one quota per key, so the fleet's three
+      # virtual keys ride one connection: OmniRoute rotates them per request
+      # (extraApiKeySecrets above) instead of pinning all traffic to a single quota.
+      extraApiKeySecrets = ["futurelab_api_key2" "futurelab_api_key3"];
       seedModels = ["futurelab/qwen3.8-flash-next"];
     };
   };
@@ -301,6 +325,12 @@
     url = nonNullOr (o.url or null) (d.url or null);
     displayName = nonNullOr (o.displayName or null) (nonNullOr (d.displayName or null) name);
     apiKeySecret = nonNullOr (o.apiKeySecret or null) (d.apiKeySecret or null);
+    # Lists have a [] default, so a submodule instance the host did not touch carries
+    # [] - non-empty-or-builtins, same reading as nonEmptyOr gives `provider`.
+    extraApiKeySecrets =
+      if (o.extraApiKeySecrets or []) != []
+      then o.extraApiKeySecrets
+      else d.extraApiKeySecrets or [];
     seedModels = nonNullOr (o.seedModels or null) (d.seedModels or []);
     extraSettings = o.extraSettings or d.extraSettings or {};
   };
@@ -363,11 +393,11 @@ in {
           field-wise over the module's built-in set (currently openrouter and futurelab,
           see seedConnectionsBuiltins in the source) - adding one entry here never drops
           the built-ins (deliberate: the attrsOf default trap in AGENTS.md). provider/url/
-          displayName/apiKeySecret/extraSettings (+ prefix/apiType/seedModels for custom
-          endpoints, whose provider NODE the unit adopts-or-creates and whose manual model
-          rows it rewrites from MODULES.services.modelCatalog); the unit matches existing
-          connections by name then provider id, adopts them, and re-PATCHes key and
-          isActive every switch.
+          displayName/apiKeySecret/extraApiKeySecrets/extraSettings (+ prefix/apiType/
+          seedModels for custom endpoints, whose provider NODE the unit adopts-or-creates
+          and whose manual model rows it rewrites from MODULES.services.modelCatalog);
+          the unit matches existing connections by name then provider id, adopts them,
+          and re-PATCHes key(s) and isActive every switch.
         '';
       };
     };
@@ -470,6 +500,17 @@ in {
             key = c.apiKeySecret;
           })
         (lib.filter (c: c.apiKeySecret != null) managedSeedConns)
+      )
+      // lib.listToAttrs (
+        lib.concatMap
+        (c:
+          lib.imap1
+          (i: s:
+            lib.nameValuePair "omniroute-seed-${c.name}-api-key-${toString i}" {
+              key = s;
+            })
+          c.extraApiKeySecrets)
+        managedSeedConns
       )
     );
 
@@ -579,7 +620,8 @@ in {
           }
           ensure_conn() {
             local n="$1" provider="$2" dname="$3" url="$4" keyfile="$5" extra="$6" prefix="$7" apiType="$8" models="$9"
-            local key="" existing code body target_prefix
+            local keyfiles="''${10:-}"
+            local key="" existing code body patch_body extras_json target_prefix
             if [ -n "$prefix" ]; then
               provider=$(ensure_node "$n" "$prefix" "$apiType" "$url") || { fail=1; return; }
               target_prefix="$prefix"
@@ -593,6 +635,23 @@ in {
                + (if $url != "" then {url:$url} else {} end)
                + (if $key != "" then {apiKey:$key} else {} end)
                + $extra')
+            # The PATCH additionally carries the extra keys as
+            # providerSpecificData.extraApiKeys - the field OmniRoute's apiKeyRotator
+            # round-robins per request across [primary, extras...] and per-key
+            # health/cooldowns (upstream open-sse/services/apiKeyRotator.ts). `*`
+            # deep-merges so extraSettings' providerSpecificData survives beside it.
+            # An EMPTY list omits the field: the route merges psd per-key, so
+            # re-sending [] would clear extras nix never declared (no-delete doctrine).
+            patch_body="$body"
+            if [ -n "$keyfiles" ]; then
+              extras_json=$(for f in $keyfiles; do
+                [ -r "$f" ] && jq -Rs 'rtrimstr("\n")' "$f"
+              done | jq -sc 'map(select(. != ""))')
+              if [ "$extras_json" != "[]" ]; then
+                patch_body=$(jq -c --argjson extras "$extras_json" \
+                  '. * {providerSpecificData:{extraApiKeys:$extras}}' <<<"$body")
+              fi
+            fi
             # adopt an exact-name connection first, else the first connection of this
             # provider (a hand-clicked one), else create. First-match wins when several
             # connections share a provider - name future multi-connection providers so
@@ -614,9 +673,11 @@ in {
             # Always PATCH, freshly-created connections included: a compatible-node
             # connection comes up isActive:false on POST no matter the body (measured
             # 2026-11-05), and an inactive connection's models are invisible in
-            # /v1/models; the PATCH is also what re-keys a rotated secret.
+            # /v1/models; the PATCH is also what re-keys a rotated secret. It carries
+            # the extras (the create body does not: /api/providers validates the plain
+            # ProviderConnectionCreate shape, and the PATCH follows immediately anyway).
             code=$(curl -sS -o /dev/null -w '%{http_code}' -X PATCH "$API/api/providers/$existing" \
-              -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d "$body")
+              -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d "$patch_body")
             case "$code" in
               20*) echo "omniroute-seed: $n reconciled ($existing)" ;;
               *) echo "omniroute-seed: $n update failed (HTTP $code)"; fail=1 ;;
@@ -642,7 +703,13 @@ in {
                 else config.sops.secrets."omniroute-seed-${c.name}-api-key".path
               }" ${lib.escapeShellArg (builtins.toJSON c.extraSettings)} "${strOrEmpty c.prefix}" "${c.apiType}" ${
                 lib.escapeShellArg (builtins.toJSON (map seedModelRow c.seedModels))
-              }
+              } ${lib.escapeShellArg (
+                lib.concatStringsSep " " (
+                  lib.imap1
+                  (i: _: config.sops.secrets."omniroute-seed-${c.name}-api-key-${toString i}".path)
+                  c.extraApiKeySecrets
+                )
+              )}
             ''
         )
         managedSeedConns

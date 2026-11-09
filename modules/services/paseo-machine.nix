@@ -700,7 +700,7 @@ in {
 
           apiKeySecret = mkOption {
             type = types.str;
-            example = "futurelab_api_key";
+            example = "futurelab_api_key2";
             description = ''
               sops secret holding the backup key, handed to the daemon through LoadCredential as
               PASEO_BACKUP_API_KEY and baked into the harness configs next to the primary key.
@@ -722,7 +722,7 @@ in {
       example = lib.literalExpression ''
         {
           baseUrl = "https://futurelab.robo4you.at/v1";
-          apiKeySecret = "futurelab_api_key";
+          apiKeySecret = "futurelab_api_key2";
         }
       '';
       description = ''

@@ -23,17 +23,22 @@
       url = "github:AkosPapp/nix_autobuild";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    # Upstream tracks nixos-unstable and builds its Python env with uv2nix against it, so it
-    # follows this flake's unstable pin rather than the 26.05 one the hosts run on.
     # PLAN.md §6: firecracker microVMs. Follows this flake's nixpkgs so VM guests and the
     # host share one package set (microvm's modules are overlays on stock NixOS options).
     microvm = {
       url = "github:microvm-nix/microvm.nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Upstream tracks nixos-unstable but their own flake.lock pins 02c087f3fe67; mirror
+    # that pin here (2026-11-09) rather than following ours or letting it re-resolve:
+    # nixpkgs-unstable f4a03c008967 carries the patchelf 0.19.2 -> 0.15.2 revert, and
+    # hermes' nix/pm-packages.nix patches patchelf 0.19.2's source with the unreleased
+    # NixOS/patchelf#672 fix - at 0.15.2 that patch fails 4/6 hunks, taking down every pm
+    # tool (ripgrep/node/pnpm/ffmpeg) and with them hp's /etc. Bump this rev together
+    # with `nix flake update hermes-agent` (take whatever THEIR flake.lock locks).
     hermes-agent = {
       url = "github:NousResearch/hermes-agent";
-      inputs.nixpkgs.follows = "nixpkgs-unstable";
+      inputs.nixpkgs.url = "github:NixOS/nixpkgs/02c087f3fe673c9e317f206a627cb6b910336dbe";
     };
     # gpu-unlock (tensor-core throttle removal) as of 2026-10-28 only carries Nix packaging in
     # the still-open PR #186, so this pins that PR's head branch, not a release of the repo.

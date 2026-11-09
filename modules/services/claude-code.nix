@@ -158,6 +158,28 @@ in {
       example = "root";
       description = "Group of the mounted API-key secret. The claude wrapper cats the mount AS THE INVOKING USER, so it must be group-readable by exactly those users (the pi/opencode mount group on this fleet).";
     };
+
+    mcp.servers = mkOption {
+      type = types.attrsOf types.attrs;
+      default = {};
+      example = {
+        blender = {
+          type = "stdio";
+          command = "mcp-for-blender";
+          args = ["--port" "9876"];
+          env = {};
+        };
+      };
+      description = ''
+        Claude Code's user-scope MCP servers, rendered as the top-level
+        `mcpServers` map of ~/.claude.json (the `claude mcp add --scope user`
+        location - verified against 2.1.312 2026-11-06). ~/.claude.json is
+        app-written (onboarding, project state), so a per-activation jq merge
+        re-asserts named servers without touching the rest; the entry shape
+        carries env:{} because claude's own writer does.
+        MODULES.services.blender-mcp feeds the blender entry.
+      '';
+    };
   };
 
   config = mkIf cfg.enable {
@@ -200,5 +222,58 @@ in {
         u: "f ${config.users.users.${u}.home}/.claude.json 0600 ${u} ${config.users.users.${u}.group} - ${onboardingSeed}"
       )
       cfg.users;
+
+    # ~/.claude.json belongs to the app (onboarding + per-project state), so
+    # no L+ symlink - pi.nix's merge doctrine instead: deep-merge the managed
+    # fragment, user keys survive, named servers re-asserted. /etc holds only
+    # the keyless fragment; the merge runs as root over the users' homes.
+    # mkIf'd on the VALUES (a top-level conditional attrset union would force
+    # cfg during the module system's key push-down - infinite recursion).
+    environment.etc."claude-code/mcp-managed.json".text = lib.mkIf (cfg.mcp.servers != {}) (builtins.toJSON {
+      mcpServers = cfg.mcp.servers;
+    });
+
+    systemd.services.claude-mcp-merge = lib.mkIf (cfg.mcp.servers != {}) {
+      description = "Merge declared Claude Code user-scope MCP servers (MODULES.services.claudeCode)";
+      after = ["local-fs.target" "systemd-tmpfiles-setup.service"];
+      wantedBy = ["multi-user.target"];
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = pkgs.writeShellScript "claude-mcp-merge" ''
+          set -eu
+          ${lib.concatMapStringsSep "\n" (
+              u: let
+                home = config.users.users.${u}.home;
+                group = config.users.users.${u}.group;
+                target = "${home}/.claude.json";
+              in ''
+                # ${u}
+                tmp="$(mktemp)"
+                if [ -s "${target}" ] && ! ${pkgs.jq}/bin/jq -e . "${target}" >/dev/null 2>&1; then
+                  # Unparseable is not ours to interpret - keep it, start from the fragment.
+                  cp -f "${target}" "${target}.claude-nixos-backup"
+                  cp /etc/claude-code/mcp-managed.json "$tmp"
+                elif [ -s "${target}" ] && ${pkgs.jq}/bin/jq -s '.[0] * .[1]' "${target}" /etc/claude-code/mcp-managed.json >"$tmp"; then
+                  :
+                else
+                  # No file yet (user never ran claude): the fragment alone is
+                  # a valid ~/.claude.json; the tmpfiles `f` onboarding seed
+                  # then no-ops, and claude merges in what it needs on first
+                  # run (a missing hasCompletedOnboarding just re-runs the
+                  # first-run prompt - the same state as before this unit).
+                  cp /etc/claude-code/mcp-managed.json "$tmp"
+                fi
+                if cmp -s "$tmp" "${target}" 2>/dev/null; then
+                  rm -f "$tmp"
+                else
+                  install -m 0600 -o ${u} -g ${group} "$tmp" "${target}"
+                fi
+                rm -f "$tmp"
+              ''
+            )
+            cfg.users}
+        '';
+      };
+    };
   };
 }

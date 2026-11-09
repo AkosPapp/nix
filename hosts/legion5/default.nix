@@ -133,6 +133,11 @@ in {
   MODULES.hardware.perifirals.mice.openmouse.enable = true;
   # ZED 2i capture camera: no USB runtime suspend (see modules/hardware/perifirals/zed.nix).
   MODULES.hardware.perifirals.zed.enable = true;
+  # RTL8153 USB NIC (and anything else listed in the module's `devices`) re-attaches to
+  # the dockur/windows VM on replug, via its QEMU monitor socket
+  # (modules/virtualization/windows-usb-hotplug.nix). Needs the compose file's
+  # MONITOR=/storage/monitor.sock + matching id= in ARGUMENTS.
+  MODULES.virtualisation.windowsUsbHotplug.enable = true;
   # Slurm on one node: srun/sbatch/salloc against this box's own GPU instead of hand-coordinating
   # with whatever else is holding the card (modules/services/slurm.nix). Loopback-only, so it is
   # invisible to the tailnet and needs no service-graph edge.
@@ -153,6 +158,47 @@ in {
     scratch.tmpDiskMB = 204800;
   };
   USERS.akos.enable = true;
+  # herdr (herdr.dev): the agent multiplexer. Both products, because they are two programs
+  # with two separate servers and do NOT share agents - the TUI (`herdr`) runs its own
+  # server, the desktop app (`herdr-app`) talks to herdr-core (`hc`) instead. The laptop is
+  # the one machine with a desktop session, so it is also the only one that gets the app.
+  # The servers start themselves on first use; what this module supplies is linger (so
+  # /run/user/<uid> exists at boot, where the core puts its socket) and the 0700 config/state
+  # dirs - herdr-core does not repair permissions on directories that already exist, and its
+  # state holds saved terminal screens where agent API keys end up on scroll.
+  # Cross-machine work needs no relay: `hc machine add hp` from here drives hp's core over
+  # SSH (which is why hp/akos01 carry the binaries too).
+  MODULES.services.herdr = {
+    enable = true;
+    # Explicit rather than left to the defaults (which install whatever the current
+    # nixpkgs-unstable pin happens to carry): legion5 is where the app is actually wanted,
+    # so a pin too old to have herdr-core/herdr-desktop should fail loudly with the one
+    # command that fixes it instead of quietly creating ~/.config/herdr-app for a GUI that
+    # is not installed.
+    installCore = true;
+    installApp = true;
+    users.akos = {
+      enable = true;
+      # Detached agents keep their conversations across a server restart; the 100 ms stagger
+      # is upstream's default and stays, so a restore of several panes does not fire every
+      # one of them at LiteLLM in the same instant.
+      cli = {
+        enable = true;
+        settings = {
+          resume_agents_on_restore = true;
+          startup_per_agent_delay_ms = 100;
+        };
+      };
+      # The app + its core backend. notes = false so hc stops typing its own status notes
+      # into a parent agent's input - the fleet's agents chain via MCP/Paseo already and the
+      # extra keystrokes are noise; nu stays out of it (akos's login shell is zsh, which is
+      # what hc gives new terminals by default).
+      app = {
+        enable = true;
+        coreConfig = {notes = false;};
+      };
+    };
+  };
   # Browser control from opencode shells: a Playwright MCP server driving Brave in its
   # own automation profile (module defaults - see mcp.playwright in
   # modules/services/opencode.nix). legion5-only for now: it opens a visible Brave,

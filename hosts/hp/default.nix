@@ -35,6 +35,22 @@
   # Nightly: pull litellm/omniroute/trilium images, recreate a container only when its
   # image actually changed (docker-images-update.nix).
   MODULES.virtualisation.docker-images-update.enable = true;
+  # herdr (herdr.dev): binaries only, no desktop app. hp has no normal user account (the
+  # akos module is opt-in and off here, and hermes is a system user), so there is nobody to
+  # lay out per-user state for and nothing to launch a GUI at. What hp still needs is hc on
+  # PATH in the non-login shell SSH gives an incoming client - that is what makes this box
+  # an `hc machine add hp` / `herdr --remote hp` target whose agents keep running after the
+  # SSH session ends, and hc is the whole reason to want herdr on a box you never sit at.
+  # installApp stays false: the GUI needs a display server and pulls the vulkan/mesa set
+  # into a headless host's closure for no benefit. The three install* options default to
+  # "whatever the nixpkgs-unstable pin carries", so once the pin moves past
+  # 1c89083e451e the herdr-core package this host is missing appears here by itself - no
+  # second edit. The no-users attrset is deliberate, not an oversight: with no managed user,
+  # MODULES.services.herdr.users stays {} and no linger is granted anywhere.
+  MODULES.services.herdr = {
+    enable = true;
+    installApp = false;
+  };
 
   # VPN-aware split DNS (modules/networking/dns/split-dns.nix): dnsmasq becomes the system
   # resolver, the tailnet/netbird forwards follow the VPNs' real state, and tailscaled stops
@@ -150,9 +166,11 @@
   # own /v1/models, i.e. whatever its dashboard
   # (https://futurelab.robo4you.at/aqueduct/management/) has configured.
   #
-  # futurelab_api_key has to be created by hand first, from the Tokens page of that dashboard,
-  # since it sits behind the gateway's own login and nothing here can mint one - the same
-  # manual-step situation omniroute's key is in.
+  # futurelab_api_key1/2/3 have to be created by hand first, from the Tokens page of that
+  # dashboard, since it sits behind the gateway's own login and nothing here can mint one - the
+  # same manual-step situation omniroute's key is in. All three are configured: litellm.nix
+  # registers one "futurelab/*" replica deployment per key, so simple-shuffle spreads requests
+  # over the three keys' separate Aqueduct quotas and a cooled-down key falls to its siblings.
   MODULES.services.litellm.futurelabEnable = true;
   # OpenAI's own API, the fourth upstream and wildcarded the same way: "openai/<model>" is
   # forwarded verbatim to api.openai.com - see openaiDeployments in litellm.nix. openai_api_key
@@ -527,5 +545,9 @@
   boot.kernel.sysctl = {
     "net.ipv6.conf.all.disable_ipv6" = 1;
   };
-  MODULES.nix.builders.airlab = true;
+  # Off 2026-11-09: r4unb02.airlab is unreachable from this box ("cannot build on
+  # ssh-ng://builder@r4unb02.airlab: failed to start SSH connection" during the deploy of
+  # that day), and nix just falls back to local builds anyway - the dead entry only added
+  # retries. Flip back to true once the builder is reachable again.
+  MODULES.nix.builders.airlab = false;
 }

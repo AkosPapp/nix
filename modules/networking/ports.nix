@@ -78,6 +78,12 @@ in {
     paperlessBroker = 8136;
     # Coroot (modules/services/coroot.nix) - server UI/API, loopback + tailscale0 only.
     coroot = 8080;
+    # The Blender addon's MCP socket (modules/services/blender-mcp.nix) - loopback only,
+    # owned by the desktop app, not a systemd service. 9876 is the addon's own default and
+    # the server's (BLENDER_PORT) default; the port lives here so the addon, the harness
+    # entries and any future override share one source. Named so a scene that moves the
+    # addon's port restates it once.
+    blenderMcp = 9876;
     # coroot-node-agent's own /metrics listener - loopback only; nothing connects to it.
     corootNodeAgent = 8141;
     # ClickHouse for Coroot - loopback only; 9000/8123 are unavailable here (PORTS.stepCa).

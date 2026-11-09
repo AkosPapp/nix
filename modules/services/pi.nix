@@ -245,7 +245,11 @@
     futurelab = {
       displayName = "FutureLab (Aqueduct)";
       baseUrl = "https://futurelab.robo4you.at/v1";
-      apiKeySecret = "futurelab_api_key";
+      # One of the three Aqueduct virtual keys (futurelab_api_key1/2/3), split per harness
+      # so direct-to-Aqueduct traffic doesn't stack on one quota: kilo 1, omp 2,
+      # opencode 3, pi 1. The gateways carry all three and rotate per request
+      # (litellm.nix's replica deployments, omniroute.nix's extraApiKeys).
+      apiKeySecret = "futurelab_api_key1";
       # One-model endpoint; nothing to discover.
       models = lib.mapAttrs' (
         _: m: lib.nameValuePair m.directName (piModelFromCatalog m)
@@ -403,6 +407,13 @@
     }
   ));
 
+  # pi's mcp.json is app-written too (`pi mcp add` lands there), so the same
+  # merge doctrine applies: user servers survive, declared ones are re-asserted
+  # on top. {} renders as an empty mcpServers map, which merges as a no-op.
+  mcpFragment = pkgs.writeText "pi-mcp.json" (builtins.toJSON {
+    mcpServers = cfg.mcp.servers;
+  });
+
   # settings.json belongs to pi (saved levels, `pi install` packages); models.json does
   # not (the /etc symlink owns it). One merge pass per user, as root, at activation.
   # The jq expression is paseo-machine's (prepare script) verbatim, including the
@@ -416,6 +427,7 @@
           group = config.users.users.${u}.group;
           dir = "${home}/.pi/agent";
           target = "${dir}/settings.json";
+          mcpTarget = "${dir}/mcp.json";
         in ''
           # ${u}
           mkdir -p "${dir}"
@@ -437,6 +449,24 @@
             install -m 0600 -o ${u} -g ${group} "$tmp" "${target}"
           fi
           rm -f "$tmp"
+          ${lib.optionalString (cfg.mcp.servers != {}) ''
+            # mcp.json: same doctrine, no list carve-out (mcpServers is a map).
+            tmp="$(mktemp)"
+            if [ -s "${mcpTarget}" ] && ! ${pkgs.jq}/bin/jq -e . "${mcpTarget}" >/dev/null 2>&1; then
+              cp -f "${mcpTarget}" "${mcpTarget}.pi-nixos-backup"
+              cp ${mcpFragment} "$tmp"
+            elif [ -s "${mcpTarget}" ] && ${pkgs.jq}/bin/jq -s '.[0] * .[1]' "${mcpTarget}" ${mcpFragment} >"$tmp"; then
+              :
+            else
+              cp ${mcpFragment} "$tmp"
+            fi
+            if cmp -s "$tmp" "${mcpTarget}" 2>/dev/null; then
+              rm -f "$tmp"
+            else
+              install -m 0600 -o ${u} -g ${group} "$tmp" "${mcpTarget}"
+            fi
+            rm -f "$tmp"
+          ''}
         ''
       )
       cfg.users}
@@ -463,6 +493,24 @@ in {
         adds on its own whenever a provider sets discoverModels. pi installs entries
         from this list on first run; the activation merge appends to (never replaces)
         packages the user installed interactively.
+      '';
+    };
+
+    mcp.servers = mkOption {
+      type = types.attrsOf types.attrs;
+      default = {};
+      example = {
+        blender = {
+          command = "mcp-for-blender";
+          args = ["--port" "9876"];
+        };
+      };
+      description = ''
+        pi's mcp.json dialect (command/args/env stdio entries, keyed by server
+        name): deep-merged into every managed ~/.pi/agent/mcp.json at
+        activation (jq *), so servers the user added with `pi mcp add` survive
+        and named entries are re-asserted. MODULES.services.blender-mcp feeds
+        the blender entry.
       '';
     };
 

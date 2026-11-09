@@ -108,6 +108,7 @@
           group = config.users.users.${u}.group;
           dir = "${home}/.cline/data/settings";
           target = "${dir}/providers.json";
+          mcpTarget = "${dir}/cline_mcp_settings.json";
         in ''
           # ${u}
           mkdir -p "${dir}"
@@ -133,12 +134,38 @@
             install -m 0600 -o ${u} -g ${group} "$tmp" "${target}"
           fi
           rm -f "$tmp"
+          ${lib.optionalString (cfg.mcp.servers != {}) ''
+            # cline_mcp_settings.json: same doctrine (the wizard owns this
+            # file; mcpServers is a map, so a plain * merge re-asserts named
+            # servers and leaves the user's own untouched).
+            tmp="$(mktemp)"
+            if [ -s "${mcpTarget}" ] && ! ${pkgs.jq}/bin/jq -e . "${mcpTarget}" >/dev/null 2>&1; then
+              cp -f "${mcpTarget}" "${mcpTarget}.cline-nixos-backup"
+              cp ${mcpSettingsFile} "$tmp"
+            elif [ -s "${mcpTarget}" ] && ${pkgs.jq}/bin/jq -s '.[0] * .[1]' "${mcpTarget}" ${mcpSettingsFile} >"$tmp"; then
+              :
+            else
+              cp ${mcpSettingsFile} "$tmp"
+            fi
+            if cmp -s "$tmp" "${mcpTarget}" 2>/dev/null; then
+              rm -f "$tmp"
+            else
+              install -m 0600 -o ${u} -g ${group} "$tmp" "${mcpTarget}"
+            fi
+            rm -f "$tmp"
+          ''}
         ''
       )
       cfg.users}
   '';
 
   settingsFile = pkgs.writeText "cline-providers.json" (builtins.toJSON settingsFragment);
+
+  # The declared MCP servers, merged into cline_mcp_settings.json per user
+  # (see the mcp.servers option). Only built when there is something to merge.
+  mcpSettingsFile = pkgs.writeText "cline-mcp.json" (builtins.toJSON {
+    mcpServers = cfg.mcp.servers;
+  });
 in {
   options.MODULES.services.cline = {
     enable = mkEnableOption ''
@@ -152,8 +179,24 @@ in {
 
     package = mkOption {
       type = types.package;
-      default = pkgs-unstable.cline;
-      defaultText = literalExpression "pkgs-unstable.cline";
+      # npm-deps hash correction (measured 2026-11-09): the cline 3.0.74 node_modules FOD
+      # pinned in nixpkgs-unstable f4a03c008967 says dVbQIed8... but the registry now hands
+      # out KJsV3HXT... (cache.nixos.org has no build of this rev either - 404 on the output
+      # path), i.e. floating deps in bun's resolve drifted since upstream computed it. Drop
+      # the override when the pin moves past an upstream hash refresh (then a plain
+      # pkgs-unstable.cline evaluates AND substitutes again).
+      default =
+        pkgs-unstable.cline.overrideAttrs
+        (
+          final: prev: {
+            node_modules = prev.node_modules.overrideAttrs (_: {
+              outputHash = "sha256-KJsV3HXT43LuhFikCXyRrKFgpI3NWOckQHT28s9qGZs=";
+            });
+          }
+        );
+      defaultText = literalExpression ''
+        pkgs-unstable.cline (node_modules outputHash overridden, see comment)
+      '';
       description = "cline package the wrapper execs.";
     };
 
@@ -200,6 +243,28 @@ in {
       example = "root";
       description = "Group of the mounted provider API-key secrets; see secretOwner.";
     };
+
+    mcp.servers = mkOption {
+      type = types.attrsOf types.attrs;
+      default = {};
+      example = {
+        blender = {
+          command = "mcp-for-blender";
+          args = ["--port" "9876"];
+          alwaysAllow = [];
+          disabled = false;
+        };
+      };
+      description = ''
+        Cline's MCP dialect: entries of the `mcpServers` map of
+        ~/.cline/data/settings/cline_mcp_settings.json (verified against the
+        CLI 2026-11-06: `cline config mcp` reads exactly that file; stdio keys
+        command/args/env plus its own alwaysAllow/disabled). The file is
+        app-written (the MCP wizard edits it), so the cline-settings merge
+        pass deep-merges it per user, exactly like providers.json.
+        MODULES.services.blender-mcp feeds the blender entry.
+      '';
+    };
   };
 
   config = mkIf cfg.enable {
@@ -230,6 +295,16 @@ in {
         message = "MODULES.services.cline.secretOwner must equal MODULES.services.opencode.secretOwner (both mount the gateway API-key secrets).";
       }
     ];
+
+    # The agent tool layer needs /bin/bash to exist. cline is the harness that
+    # drives coding agents, and the tool surface those agents call shells through
+    # hard-codes the FHS path, which NixOS does not provide - the failure is an
+    # ENOENT at posix_spawn before any command runs, so it looks like "no shell
+    # on this machine" rather than a missing path (legion5 2026-11-08).
+    # modules/system/bin_bash.nix owns the mechanism; it lives on here, not in a
+    # profile, because a host that runs no agent harness has no reason to grow
+    # the link.
+    MODULES.system.binBash.enable = true;
 
     sops.secrets.${cfg.apiKeySecret} = {
       owner = cfg.secretOwner;

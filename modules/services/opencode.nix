@@ -244,16 +244,18 @@
       ];
       models = {};
     };
-    # The Aqueduct endpoint direct. OmniRoute has no futurelab connection yet, so since
-    # the litellm harness provider was dropped (2026-11-05) this - not any gateway id -
-    # is how futurelab models are reached; seed a futurelab connection in OmniRoute and
-    # it starts showing up under omniroute/. Keyed by directName: the "futurelab/" vendor
+    # The Aqueduct endpoint direct, alongside the omniroute/futurelab/... discovery
+    # route: harnesses keep the direct provider because it answers even while the
+    # gateway is down. Keyed by directName: the "futurelab/" vendor
     # prefix was only ever LiteLLM's wildcard spelling, and only models that list a
     # directName appear here.
     futurelab = {
       displayName = "FutureLab (Aqueduct)";
       baseURL = "https://futurelab.robo4you.at/v1";
-      apiKeySecret = "futurelab_api_key";
+      # Aqueduct key 3 of 3; the per-harness key split is documented in pi.nix's
+      # defaultProviders comment (kilo 1, omp 2, opencode 3, pi 1; the gateways
+      # carry all three keys and rotate per request).
+      apiKeySecret = "futurelab_api_key3";
       models =
         lib.mapAttrs' (_: m: lib.nameValuePair m.directName (ocModel m))
         (lib.filterAttrs (_: m: m.directName != null) catalog);
@@ -296,7 +298,7 @@ in {
         are option defaults, a consumer just ADDS its own `providers.<id> = {...}` to reach
         more gateways, and `lib.mkForce` replaces or empties the whole catalogue. The default
         also means enabling this module pulls the gateways' sops secrets
-        (omniroute_api_key, futurelab_api_key) onto the host - only
+        (omniroute_api_key, one of futurelab_api_key1/2/3) onto the host - only
         for providers actually configured, so a mkForce-d `{}` pulls nothing.
       '';
     };
@@ -381,6 +383,25 @@ in {
         ];
         description = "Extra playwright-mcp CLI flags, appended verbatim to the rendered command.";
       };
+    };
+
+    mcp.servers = mkOption {
+      type = types.attrsOf types.attrs;
+      default = {};
+      example = {
+        blender = {
+          type = "local";
+          command = ["mcp-for-blender"];
+          enabled = true;
+        };
+      };
+      description = ''
+        Extra entries in the rendered `mcp` map (OpenCode MCP config dialect:
+        type local/remote, command list, enabled), keyed by server name; the
+        playwright entry is composed alongside them. Modules feed this instead
+        of growing bespoke options per server - MODULES.services.blender-mcp
+        adds the blender server from here.
+      '';
     };
   };
 
@@ -497,25 +518,32 @@ in {
       }
       // lib.optionalAttrs (cfg.defaultModel != null) {model = cfg.defaultModel;}
       // lib.optionalAttrs (cfg.smallModel != null) {small_model = cfg.smallModel;}
-      // lib.optionalAttrs cfg.mcp.playwright.enable {
-        # Store paths inline, so no PATH or node/npx at runtime; opencode spawns the
-        # stdio server itself and Playwright only starts the browser once a tool is
-        # called, so headless (e.g. paseo) sessions pay nothing for having it.
-        mcp.playwright = {
-          type = "local";
-          command =
-            [
-              "${lib.getExe cfg.mcp.playwright.package}"
-              "--browser"
-              "chromium"
-              "--executable-path"
-              "${lib.getExe cfg.mcp.playwright.browser}"
-              "--user-data-dir"
-              cfg.mcp.playwright.userDataDir
-            ]
-            ++ cfg.mcp.playwright.extraArgs;
-          enabled = true;
-        };
+      // lib.optionalAttrs (cfg.mcp.servers != {} || cfg.mcp.playwright.enable) {
+        # The generic map first; the playwright entry is composed below it and
+        # wins on a name clash (it's the more specific option). MODULES.services.blender-mcp
+        # contributes its `blender` entry through cfg.mcp.servers.
+        mcp =
+          cfg.mcp.servers
+          // lib.optionalAttrs cfg.mcp.playwright.enable {
+            # Store paths inline, so no PATH or node/npx at runtime; opencode spawns the
+            # stdio server itself and Playwright only starts the browser once a tool is
+            # called, so headless (e.g. paseo) sessions pay nothing for having it.
+            playwright = {
+              type = "local";
+              command =
+                [
+                  "${lib.getExe cfg.mcp.playwright.package}"
+                  "--browser"
+                  "chromium"
+                  "--executable-path"
+                  "${lib.getExe cfg.mcp.playwright.browser}"
+                  "--user-data-dir"
+                  cfg.mcp.playwright.userDataDir
+                ]
+                ++ cfg.mcp.playwright.extraArgs;
+              enabled = true;
+            };
+          };
       }
     );
 

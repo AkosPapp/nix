@@ -143,22 +143,32 @@
   # asks for is whatever that dashboard calls it. Reached over the public internet, not the tailnet.
   # What /v1/models lists under "futurelab/" comes from Aqueduct's own /v1/models - see
   # check_provider_endpoint in litellm_settings.
-  futurelabDeployments = lib.optional cfg.futurelabEnable {
-    model_name = "futurelab/*";
-    litellm_params = {
-      model = "openai/*";
-      api_base = "https://futurelab.robo4you.at/v1";
-      # Resolved from the container's environment at startup - see the futurelabApiKeySecret
-      # option below. Aqueduct checks the key against the virtual keys created in its dashboard's
-      # Tokens page (https://futurelab.robo4you.at/aqueduct/management/tokens/), which is the one
-      # piece of this setup that has to be made by hand before the host config can work.
-      api_key = "os.environ/FUTURELAB_API_KEY";
-    };
-    model_info = {
-      id = "futurelab-wildcard";
-      host = "futurelab";
-    };
-  };
+  #
+  # One deployment PER Aqueduct virtual key, all under the same model_name: that is exactly the
+  # replica shape the file's header comment describes for Ollama - the router treats them as
+  # interchangeable and simple-shuffles every request across them, which spreads the fleet's
+  # traffic over the three keys' separate quotas. A key that fails (429/401/5xx) cools down and
+  # the retry lands on one of its siblings, so the set doubles as its own fallback pool. The
+  # model_info.id stays unique per key so a cooldown hits the dead key only, never the endpoint.
+  futurelabDeployments =
+    lib.imap1
+    (i: secret: {
+      model_name = "futurelab/*";
+      litellm_params = {
+        model = "openai/*";
+        api_base = "https://futurelab.robo4you.at/v1";
+        # Resolved from the container's environment at startup - see the futurelabApiKeySecrets
+        # option below. Aqueduct checks the key against the virtual keys created in its dashboard's
+        # Tokens page (https://futurelab.robo4you.at/aqueduct/management/tokens/), which is the one
+        # piece of this setup that has to be made by hand before the host config can work.
+        api_key = "os.environ/FUTURELAB_API_KEY_${toString i}";
+      };
+      model_info = {
+        id = "futurelab-wildcard-${toString i}-${secret}";
+        host = "futurelab";
+      };
+    })
+    (lib.optionals cfg.futurelabEnable cfg.futurelabApiKeySecrets);
 
   # Same wildcard shape again, fourth upstream, this time OpenAI's own API: a caller asks for
   # "openai/<model>" (anything the key can see on https://platform.openai.com/docs/models) and
@@ -463,26 +473,35 @@ in {
         gateway's OpenAI-compatible endpoint on https://futurelab.robo4you.at/v1. The models
         listed under "futurelab/" are whatever Aqueduct's own /v1/models returns, so adding one
         in its dashboard (https://futurelab.robo4you.at/aqueduct/management/) is the only edit
-        needed. It is one upstream over the internet, with no replica/weight/fallback behaviour
-        of its own.
+        needed. It is one upstream over the internet, but `futurelabApiKeySecrets` carries
+        several keys and the router load-balances across one replica deployment per key, so a
+        quota on one virtual key degrades to the others instead of halting the fleet.
 
-        Requires `futurelabApiKeySecret`.
+        Requires a non-empty `futurelabApiKeySecrets`.
       '';
     };
 
-    futurelabApiKeySecret = mkOption {
-      type = types.nullOr types.str;
+    futurelabApiKeySecrets = mkOption {
+      type = types.listOf types.str;
       default =
         if config.MODULES.security.sops.enable
-        then "futurelab_api_key"
-        else null;
-      defaultText = lib.literalExpression ''if MODULES.security.sops.enable then "futurelab_api_key" else null'';
+        then ["futurelab_api_key1" "futurelab_api_key2" "futurelab_api_key3"]
+        else [];
+      defaultText = lib.literalExpression ''
+        if MODULES.security.sops.enable
+        then ["futurelab_api_key1" "futurelab_api_key2" "futurelab_api_key3"]
+        else []
+      '';
       description = ''
-        Name of the sops secret holding an Aqueduct virtual key from
-        https://futurelab.robo4you.at/aqueduct/management/tokens/, rendered into the service's
-        environment as FUTURELAB_API_KEY. That page is behind the gateway's own login, so the key
-        cannot be provisioned ahead of time: it is created there by hand and then added under this
-        name in sops. Only read when `futurelabEnable` is set.
+        Names of the sops secrets holding Aqueduct virtual keys from
+        https://futurelab.robo4you.at/aqueduct/management/tokens/, one replica deployment per
+        entry; each is rendered into the service's environment as FUTURELAB_API_KEY_<n> (1-based,
+        position in this list) and its deployment joins the "futurelab/*" model group, so
+        simple-shuffle spreads requests over all of them and a cooled-down key falls through to
+        its siblings. That page is behind the gateway's own login, so the keys cannot be
+        provisioned ahead of time: they are created there by hand and then added under these
+        names in sops. Only read when `futurelabEnable` is set (which then requires a non-empty
+        list; with sops off there is nothing to mount, hence the [] default).
       '';
     };
 
@@ -685,12 +704,14 @@ in {
         '';
       }
       {
-        assertion = !cfg.futurelabEnable || cfg.futurelabApiKeySecret != null;
+        assertion = !cfg.futurelabEnable || cfg.futurelabApiKeySecrets != [];
         message = ''
-          MODULES.services.litellm.futurelabEnable is set but futurelabApiKeySecret is null -
-          Aqueduct would reject every request for lack of a virtual key. Create one at
-          https://futurelab.robo4you.at/aqueduct/management/tokens/ and put it in sops under that
-          name.
+          MODULES.services.litellm.futurelabEnable is set but futurelabApiKeySecrets is empty -
+          the "futurelab/*" replicas authenticate with Aqueduct virtual keys, and with nothing to
+          render FUTURELAB_API_KEY_<n> from every request would 401. Create the keys at
+          https://futurelab.robo4you.at/aqueduct/management/tokens/, keep them in sops, and name
+          them in futurelabApiKeySecrets (the default does that for key1/2/3 once
+          MODULES.security.sops.enable is on).
         '';
       }
       {
@@ -786,7 +807,7 @@ in {
         };
 
       environmentFiles =
-        lib.optional (cfg.masterKeySecret != null || cfg.openrouterApiKeySecret != null || cfg.omnirouteApiKeySecret != null || cfg.futurelabApiKeySecret != null || cfg.openaiApiKeySecret != null) config.sops.templates."litellm.env".path
+        lib.optional (cfg.masterKeySecret != null || cfg.openrouterApiKeySecret != null || cfg.omnirouteApiKeySecret != null || cfg.futurelabApiKeySecrets != [] || cfg.openaiApiKeySecret != null) config.sops.templates."litellm.env".path
         ++ lib.optional (cfg.environmentFile != null) cfg.environmentFile;
 
       # Host networking: the Ollama backends are on this host's loopback and on other hosts'
@@ -838,9 +859,11 @@ in {
       (lib.mkIf (cfg.omnirouteApiKeySecret != null) {
         ${cfg.omnirouteApiKeySecret} = {};
       })
-      (lib.mkIf (cfg.futurelabApiKeySecret != null) {
-        ${cfg.futurelabApiKeySecret} = {};
-      })
+      (lib.mkIf (cfg.futurelabApiKeySecrets != []) (lib.listToAttrs (
+        map
+        (secret: lib.nameValuePair secret {})
+        (lib.unique cfg.futurelabApiKeySecrets)
+      )))
       (lib.mkIf (cfg.openaiApiKeySecret != null) {
         ${cfg.openaiApiKeySecret} = {};
       })
@@ -849,7 +872,7 @@ in {
     # The secrets are bare values, but --env-file wants KEY=value lines, so they're wrapped here.
     # Root-owned 0400 is enough: the docker CLI in the unit runs as root and reads it before the
     # container starts.
-    sops.templates."litellm.env" = lib.mkIf (cfg.masterKeySecret != null || cfg.openrouterApiKeySecret != null || cfg.omnirouteApiKeySecret != null || cfg.futurelabApiKeySecret != null || cfg.openaiApiKeySecret != null) {
+    sops.templates."litellm.env" = lib.mkIf (cfg.masterKeySecret != null || cfg.openrouterApiKeySecret != null || cfg.omnirouteApiKeySecret != null || cfg.futurelabApiKeySecrets != [] || cfg.openaiApiKeySecret != null) {
       content =
         lib.optionalString (cfg.masterKeySecret != null) ''
           LITELLM_MASTER_KEY=${config.sops.placeholder.${cfg.masterKeySecret}}
@@ -860,9 +883,10 @@ in {
         + lib.optionalString (cfg.omnirouteApiKeySecret != null) ''
           OMNIROUTE_API_KEY=${config.sops.placeholder.${cfg.omnirouteApiKeySecret}}
         ''
-        + lib.optionalString (cfg.futurelabApiKeySecret != null) ''
-          FUTURELAB_API_KEY=${config.sops.placeholder.${cfg.futurelabApiKeySecret}}
-        ''
+        + lib.concatMapStrings
+        (r: ''          FUTURELAB_API_KEY_${toString r.i}=${config.sops.placeholder.${r.secret}}
+        '')
+        (lib.imap1 (i: secret: {inherit i secret;}) cfg.futurelabApiKeySecrets)
         + lib.optionalString (cfg.openaiApiKeySecret != null) ''
           OPENAI_API_KEY=${config.sops.placeholder.${cfg.openaiApiKeySecret}}
         '';

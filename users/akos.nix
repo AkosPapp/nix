@@ -155,6 +155,16 @@
         enable = true;
         users = ["akos"];
       };
+      # Blender MCP: registers the mcp-for-blender stdio server with every
+      # harness above (opencode/kilo/pi/omp/claude-code/cline) and keeps the
+      # matching Blender add-on installed + enabled here, where blender is
+      # installed (cad block below). Off on hosts without the akos user, so
+      # the "blender installed" precondition holds by construction.
+      # See modules/services/blender-mcp.nix.
+      services.blenderMcp = {
+        enable = true;
+        users = ["akos"];
+      };
       virtualisation.docker.enable = true;
       virtualisation.virtualbox.enable = true;
       wm.niri.enable = true;

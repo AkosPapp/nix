@@ -68,7 +68,10 @@
     futurelab = {
       npm = "@ai-sdk/openai-compatible";
       baseUrl = "https://futurelab.robo4you.at/v1";
-      apiKeySecret = "futurelab_api_key";
+      # Aqueduct key 1 of 3; the per-harness key split is documented in pi.nix's
+      # defaultProviders comment (kilo 1, omp 2, opencode 3, pi 1; the gateways
+      # carry all three keys and rotate per request).
+      apiKeySecret = "futurelab_api_key1";
       # One-model endpoint; nothing to discover. Keyed by directName, facts
       # filled from the shared table at render time (AGENTS.md Rule 2).
       models = lib.mapAttrs' (
@@ -150,12 +153,22 @@
       p.models;
   };
 
-  settingsFragment = {
-    model = cfg.defaultModel;
-    small_model = cfg.smallModel;
-    provider = lib.mapAttrs providerPackage cfg.providers;
-    experimental.openTelemetry = cfg.telemetry;
-  };
+  settingsFragment =
+    {
+      model = cfg.defaultModel;
+      small_model = cfg.smallModel;
+      provider = lib.mapAttrs providerPackage cfg.providers;
+      experimental.openTelemetry = cfg.telemetry;
+    }
+    // lib.optionalAttrs (cfg.mcp.servers != {}) {
+      # kilo speaks the OpenCode config dialect for MCP (`mcp.<name> = {type =
+      # "local"; command = [ ... ]; enabled = true;}` - verified against 7.8.18's
+      # `kilo mcp list` 2026-11-06: a `mcp` block renders, a `mcpServers` block
+      # is ignored). The jq `*` merge deep-merges this map, so servers the user
+      # added with `kilo mcp add` survive; entries named here are re-asserted.
+      # MODULES.services.blender-mcp feeds the `blender` entry.
+      mcp = cfg.mcp.servers;
+    };
 
   settingsFile = pkgs.writeText "kilo-settings.json" (builtins.toJSON settingsFragment);
 
@@ -308,6 +321,24 @@ in {
       type = types.bool;
       default = false;
       description = "kilo's experimental.openTelemetry trace export. Off by default (fleet privacy posture); upstream ships it ON.";
+    };
+
+    mcp.servers = mkOption {
+      type = types.attrsOf types.attrs;
+      default = {};
+      example = {
+        blender = {
+          type = "local";
+          command = ["mcp-for-blender"];
+          enabled = true;
+        };
+      };
+      description = ''
+        Entries in the rendered `mcp` map (kilo speaks the OpenCode MCP
+        dialect; verified 2026-11-06). Deep-merged into kilo.jsonc at
+        activation, so user-added servers survive and named ones are
+        re-asserted. MODULES.services.blender-mcp adds the blender server.
+      '';
     };
 
     secretOwner = mkOption {

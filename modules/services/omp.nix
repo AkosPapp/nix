@@ -80,7 +80,10 @@
   defaultProviders = {
     futurelab = {
       baseUrl = "https://futurelab.robo4you.at/v1";
-      apiKeySecret = "futurelab_api_key";
+      # Aqueduct key 2 of 3; the per-harness key split is documented in pi.nix's
+      # defaultProviders comment (kilo 1, omp 2, opencode 3, pi 1; the gateways
+      # carry all three keys and rotate per request).
+      apiKeySecret = "futurelab_api_key2";
       api = "openai-completions";
       # One-model endpoint; nothing to discover. Keyed by directName: the
       # wire id at the Aqueduct front (the "futurelab/" prefix is only the
@@ -263,8 +266,28 @@ in {
 
     package = mkOption {
       type = types.package;
-      default = pkgs-unstable.omp;
-      defaultText = literalExpression "pkgs-unstable.omp";
+      # buildInputs fix (measured 2026-11-09 at nixpkgs-unstable f4a03c008967): omp's
+      # pi-natives cargo crate links zstd-sys and onig_sys against system libraries, and
+      # the nixpkgs expression omits both - the build dies in the first crate that probes
+      # pkg-config ("system library `libzstd` required by crate `zstd-sys` was not
+      # found", then oniguruma). cache.nixos.org had no omp build at this rev, so nobody
+      # upstream hit it. Drop the override once the pin's expression lists zstd +
+      # oniguruma (and substitutes come back).
+      default =
+        pkgs-unstable.omp.overrideAttrs
+        (
+          final: prev: {
+            buildInputs =
+              (prev.buildInputs or [])
+              ++ [
+                pkgs-unstable.zstd
+                pkgs-unstable.oniguruma
+              ];
+          }
+        );
+      defaultText = literalExpression ''
+        pkgs-unstable.omp (buildInputs += zstd + oniguruma, see comment)
+      '';
       description = "omp package the wrapper execs (nixpkgs-unstable; the nix store is read-only, so omp's own updater must stay off).";
     };
 
@@ -280,6 +303,25 @@ in {
       default = defaultProviders;
       defaultText = literalExpression "the fleet gateway set (futurelab direct + omniroute discovery), mirroring MODULES.services.pi";
       description = "Provider catalogue rendered as models.yml `providers:`.";
+    };
+
+    mcp.servers = mkOption {
+      type = types.attrsOf types.attrs;
+      default = {};
+      example = {
+        blender = {
+          type = "stdio";
+          command = "mcp-for-blender";
+          args = ["--port" "9876"];
+        };
+      };
+      description = ''
+        omp's mcp.json dialect (mcpServers stdio/remote entries, keyed by
+        server name): deep-merged into every managed ~/.omp/agent/mcp.json at
+        activation (jq *), so servers added with /mcp add survive and named
+        entries are re-asserted. MODULES.services.blender-mcp feeds the blender
+        entry.
+      '';
     };
 
     defaultApi = mkOption {
@@ -388,5 +430,55 @@ in {
       ])
       cfg.users
     );
+
+    # mcp.json is user-writable (/mcp add maintains it), so it gets pi.nix's
+    # merge doctrine, not L+: deep-merge, user servers survive, declared ones
+    # re-asserted. mkIf'd on the VALUES (a top-level conditional attrset
+    # union would force cfg during the module system's key push-down -
+    # infinite recursion; measured on legion5 2026-11-06).
+    environment.etc."omp/mcp-managed.json".text = lib.mkIf (cfg.mcp.servers != {}) (builtins.toJSON {
+      mcpServers = cfg.mcp.servers;
+    });
+
+    systemd.services.omp-mcp-merge = lib.mkIf (cfg.mcp.servers != {}) {
+      description = "Merge declared omp mcp.json servers (MODULES.services.omp)";
+      after = ["local-fs.target" "systemd-tmpfiles-setup.service"];
+      wantedBy = ["multi-user.target"];
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = pkgs.writeShellScript "omp-mcp-merge" ''
+          set -eu
+          ${lib.concatMapStringsSep "\n" (
+              u: let
+                home = config.users.users.${u}.home;
+                group = config.users.users.${u}.group;
+                target = "${home}/.omp/agent/mcp.json";
+              in ''
+                # ${u}
+                mkdir -p "${home}/.omp/agent"
+                chown ${u}:${group} "${home}/.omp" "${home}/.omp/agent"
+                chmod 0700 "${home}/.omp" "${home}/.omp/agent"
+                tmp="$(mktemp)"
+                if [ -s "${target}" ] && ! ${pkgs.jq}/bin/jq -e . "${target}" >/dev/null 2>&1; then
+                  # Unparseable is not ours to interpret - keep it, start from the fragment.
+                  cp -f "${target}" "${target}.omp-nixos-backup"
+                  cp /etc/omp/mcp-managed.json "$tmp"
+                elif [ -s "${target}" ] && ${pkgs.jq}/bin/jq -s '.[0] * .[1]' "${target}" /etc/omp/mcp-managed.json >"$tmp"; then
+                  :
+                else
+                  cp /etc/omp/mcp-managed.json "$tmp"
+                fi
+                if cmp -s "$tmp" "${target}" 2>/dev/null; then
+                  rm -f "$tmp"
+                else
+                  install -m 0600 -o ${u} -g ${group} "$tmp" "${target}"
+                fi
+                rm -f "$tmp"
+              ''
+            )
+            cfg.users}
+        '';
+      };
+    };
   };
 }
