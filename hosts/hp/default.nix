@@ -721,15 +721,17 @@ in {
   # Hermes' cron job. See hermes-ics.nix.
   MODULES.services.hermes-ics.enable = true;
 
-  # Trilium Notes (https://triliumnotes.org) as the knowledge base - https://trilium.hp on the
-  # tailnet. The ETAPI token was created in the UI and stored in sops (trilium/etapi_token), so
-  # Hermes reads and writes notes through it (see trilium.nix).
-  MODULES.services.trilium.enable = true;
+  # Trilium Notes - RETIRED 2026-11-11. The live notes system is Joplin now: the sync tree
+  # /var/lib/hermes/joplin (SFTPGo WebDAV target) is what Hermes' cron writes through
+  # joplin_event_sync.py and what the ICS feed links into (joplin:// deep links). The Trilium
+  # archive on disk (/var/lib/trilium container volume) is untouched and still readable by
+  # re-enabling - see git history and the trilium-etapi skill for the ETAPI recipes.
+  MODULES.services.trilium.enable = false;
   MODULES.services.trilium.etapiTokenSecret = "trilium/etapi_token";
   # Settings -> AI comes up with this host's LiteLLM as the provider, on the master-key-minted
   # virtual key trilium/litellm_api_key (trilium.nix's `litellm` options for the seeding
   # mechanics and the one-time key creation command).
-  MODULES.services.trilium.litellm.enable = true;
+  MODULES.services.trilium.litellm.enable = false;
 
   # Outline was tried and dropped - not needed. Its data (Postgres's "outline" database,
   # /var/lib/outline) was removed by hand on the host; see git history for how it was set up if
