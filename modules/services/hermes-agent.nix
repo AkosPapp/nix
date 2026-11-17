@@ -4,15 +4,19 @@
   pkgs,
   ...
 }: let
-  inherit (lib) mkEnableOption mkForce mkIf mkOption optionalAttrs types;
+  inherit (lib) concatStringsSep mkEnableOption mkForce mkIf mkOption optionalAttrs types;
 
   cfg = config.MODULES.services.hermes-agent;
   hermes = config.services.hermes-agent;
   matrix = config.MODULES.services.matrix;
-  litellm = config.MODULES.services.litellm;
   traefik = config.MODULES.networking.traefik;
 
   hermesHome = "${hermes.stateDir}/.hermes";
+
+  # The catalogue row for the fallback wire id (cfg.fallbackModel, below): its
+  # contextLength is what the providers.futurelab block pins, exactly like
+  # modelContextLength does for the primary. {} when the catalogue doesn't list it.
+  fallbackCatalog = config.MODULES.services.modelCatalog.lookup cfg.fallbackModel;
 
   # The reader runs as its own singleton service (systemd.services.matrix-reader below) and both
   # Hermes units reach it as a URL-based MCP server over loopback. It must be a singleton: the
@@ -33,7 +37,7 @@
     # ProtectSystem=strict (from the module) makes the filesystem read-only; these make the
     # interesting parts of it unreadable too. /var/lib holds every other service's state,
     # some of it world-readable; /run/secrets holds the world-readable copies other modules
-    # make for DynamicUser services (homepage's LiteLLM master key among them).
+    # make for DynamicUser services (homepage's gateway key among them).
     TemporaryFileSystem = ["/var/lib:ro"];
     BindPaths = [hermes.stateDir];
     InaccessiblePaths = ["-/run/secrets.d" "-/run/secrets" "-/run/docker.sock" "-/run/postgresql" "-/srv" "-/mnt" "-/media"];
@@ -73,13 +77,13 @@
   dashboardHost = "127.0.0.2";
 
   # Loopback ports Hermes (and every command it runs) may connect to; everything else on this
-  # host, the tailnet and the LAN is refused - see the firewall block below. LiteLLM, Synapse
+  # host, the tailnet and the LAN is refused - see the firewall block below. OmniRoute, Synapse
   # (its compat splitter when MAS owns the auth, which is where matrix.clientUrl points and
   # /login actually lives), and the Matrix reader MCP server (matrix-reader.service, also on
-  # the hermes uid).
+  # the hermes uid). (The LiteLLM entry left with phase 3, 2026-11-09.)
   allowedLocalPorts =
     [
-      config.PORTS.litellm
+      config.PORTS.omniroute
       (
         if config.MODULES.services.matrix.mas.enable
         then config.PORTS.matrixCompat
@@ -219,15 +223,18 @@ in {
   options.MODULES.services.hermes-agent = {
     enable = mkEnableOption ''
       Hermes Agent (Nous Research) as a sandboxed system service, chatting over this host's
-      Matrix server and thinking through this host's LiteLLM gateway
+      Matrix server and thinking through this host's OmniRoute gateway
     '';
 
     model = mkOption {
       type = types.str;
       default = "futurelab/qwen3.8-flash-next";
       description = ''
-        Default model, by its LiteLLM name. Any other model the API key is allowed to use can be
-        picked per chat with `/model` - Hermes lists them from LiteLLM's /v1/models.
+        Default model, spelled the way the OmniRoute gateway lists it (the
+        connection-prefixed id; "futurelab/..." is the nix-seeded Aqueduct route,
+        the same id every harness uses). Any other model the API key may use can
+        be picked per chat with `/model` - Hermes lists them from the gateway's
+        /v1/models.
       '';
     };
 
@@ -236,20 +243,94 @@ in {
       default = (config.MODULES.services.modelCatalog.lookup cfg.model).contextLength or null;
       defaultText = lib.literalExpression "the fleet model catalogue's contextLength for MODULES.services.hermes-agent.model";
       description = ''
-        Context window pinned for `model` in Hermes' provider config. LiteLLM cannot report one
-        for wildcard models, so Hermes would otherwise guess from the name (1M, which is also
-        Aqueduct's max_model_len) and drift toward that ceiling instead of compressing; the
-        catalogue entry for the same model (modules/services/model-catalog.nix) is what
-        opencode/paseo use, so Hermes stays in step with them. null omits the pin.
+        Context window pinned for `model` in Hermes' provider config. The gateway's
+        /v1/models reports one for the seeded futurelab row (omniroute.nix's
+        provider-models seeding), but the pin stays authoritative here so Hermes
+        compresses at the catalogue's number instead of drifting toward whatever a
+        wildcard route guesses (1M, which is also Aqueduct's max_model_len); the
+        same entry is what opencode/paseo use, so Hermes stays in step with them.
+        null omits the pin.
       '';
     };
 
-    litellmApiKeySecret = mkOption {
-      type = types.str;
-      default = "hermes/litellm_api_key";
+    fallbackModel = mkOption {
+      type = types.nullOr types.str;
+      default = (config.MODULES.services.modelCatalog.lookup cfg.model).directName or null;
+      defaultText = lib.literalExpression "the fleet model catalogue's directName for MODULES.services.hermes-agent.model (null when the catalogue lists no direct route for it)";
       description = ''
-        sops secret holding a LiteLLM virtual key made for Hermes alone (not the master key).
-        The models that key may use are the models Hermes can switch between.
+        Hermes' top-level `fallback_providers` chain (tried when the primary fails -
+        rate limit, server error, auth failure - mid-session, conversation kept): the
+        SAME model at its upstream DIRECT endpoint, so an OmniRoute outage degrades to
+        Aqueduct instead of ending the session. Mirrors the omp doctrine
+        (retry.fallbackChains in modules/services/omp.nix), with one spelling
+        difference: a Hermes fallback entry's `model` is the WIRE id sent to the
+        fallback endpoint, i.e. the catalogue's bare `directName`, not the gateway's
+        "futurelab/..." prefixed id. The default derives it from `model`, so the
+        standard setup fails over futurelab/qwen3.8-flash-next -> qwen3.8-flash-next
+        direct; null (the default whenever `model` has no direct route in the
+        catalogue, e.g. a subscription-only gateway connection) emits no fallback.
+      '';
+    };
+
+    fallbackBaseUrl = mkOption {
+      type = types.str;
+      default = "https://futurelab.robo4you.at/v1";
+      description = ''
+        The direct endpoint `fallbackModel` is served at - the same Aqueduct URL
+        omniroute.nix seeds as its futurelab connection and pi.nix/omp.nix declare as
+        their direct provider. Public-addressed, so it passes the hermes-egress chain
+        (only the private ranges are REJECTed). Only read when `fallbackModel` is set.
+      '';
+    };
+
+    fallbackApiKeySecret = mkOption {
+      type = types.str;
+      default = "futurelab_api_key1";
+      description = ''
+        sops key holding the Aqueduct key the fallback provider authenticates with
+        (mounted and exported as FUTURELAB_API_KEY by the env template). Only mounted
+        when `fallbackModel` is set. The fleet splits the three direct keys per harness
+        (pi/kilo 1, omp 2, opencode 3); key1 is deliberate here: it is the gateway's
+        OWN primary key for this endpoint (omniroute.nix's futurelab seed), and
+        Hermes' direct traffic exists only while the gateway is down - when that
+        rotation is stopped too - so it never stacks on an interactive harness's quota.
+      '';
+    };
+
+    apiKeySecret = mkOption {
+      type = types.str;
+      default = "omniroute_api_key";
+      description = ''
+        sops secret holding the OmniRoute inference key Hermes authenticates with
+        (a sk-... key from the gateway's dashboard API-Keys page; the models that
+        key's dashboard ACL allows are the models Hermes can switch between).
+        Defaults to the shared fleet key so the enable stays self-contained; a
+        dedicated per-agent key is the cheap scoping step whenever you mint one
+        (Dashboard -> API Keys, then point this at it). (Replaced
+        hermes/litellm_api_key at litellm phase 3, 2026-11-09 - the old sops
+        entry is dead weight then.) Superseded on the gateway host by
+        `apiKeyFile`, which sources the key from a nix-minted per-service key
+        instead (audit #7).
+      '';
+    };
+
+    apiKeyFile = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = lib.literalExpression "config.MODULES.services.omniroute.keys.hermes.envFilePath";
+      description = ''
+        Path to a dotenv file holding the OmniRoute inference key as one
+        `OMNIROUTE_API_KEY=sk-...` line. Set on the GATEWAY host to Hermes ride a
+        per-service key the omniroute seed unit mints (MODULES.services.omniroute.keys -
+        audit #7): the file is handed to the fork's environmentFiles, whose activation
+        copies it into $HERMES_HOME/.env as root (the hermes units' sandboxes never read
+        /var/lib/omniroute). null (default) = the apiKeySecret sops behavior above,
+        unchanged for non-gateway hosts. The shared key's sops mount is dropped when
+        this is set, so Hermes no longer decrypts the fleet-wide credential.
+        Rotation note: the mint unit logs "*** KEY VALUE CHANGED ***" when the value
+        re-mints; the fork rewrites .env on EVERY activation, so pick the new value up
+        with another switch (or mint-time: first activation after enabling this runs
+        BEFORE the seed unit's first mint - restart hermes-agent once after that mint).
       '';
     };
 
@@ -287,6 +368,53 @@ in {
         Additional loopback ports Hermes (and every command it runs, same uid) may connect to.
         Services that Hermes is meant to talk to append theirs here - trilium.nix adds its ETAPI
         port this way - instead of each growing its own hole in the hermes-egress chain.
+      '';
+    };
+
+    extraAllowedUsers = mkOption {
+      type = types.listOf types.str;
+      default = [];
+      example = lib.literalExpression ''[ "@coroot:''${config.MODULES.services.matrix.serverName}" ]'';
+      description = ''
+        Additional Matrix IDs the gateway authorizes as senders, appended to
+        MATRIX_ALLOWED_USERS (which is the admin account). Consumers that legitimately wake the
+        agent with agent turns use this instead of widening GATEWAY_ALLOW_ALL_USERS:
+        modules/services/coroot-alerts.nix admits the @coroot alert bot (its messages - a
+        webhook-shaped prompt plus an explicit @mention - are the alert-diagnosis trigger, and
+        its credential lives only in the sops mount of the receiver unit).
+      '';
+    };
+
+    extraAllowedTailnetPeers = mkOption {
+      type = types.listOf (types.submodule (_: {
+        options = {
+          name = mkOption {
+            type = types.str;
+            description = "Rule comment / identity of this hole.";
+          };
+          address = mkOption {
+            type = types.str;
+            description = "The single tailnet IPv4 destination the agent may dial.";
+          };
+          port = mkOption {
+            type = types.port;
+            description = "The single destination port.";
+          };
+          comment = mkOption {
+            type = types.str;
+            default = "";
+            description = "Why the hole exists (lands in the iptables comment).";
+          };
+        };
+      }));
+      default = [];
+      description = ''
+        Pinned tailnet egress holes for the agent: each entry is ONE destination ip:port
+        RETURNed BEFORE the private-range REJECTs, the same shape as the one paseo-hermes
+        rule its comment documents (publicDefault=allow jail, destination pinned, no range
+        widening). Consumers that give Hermes a tailnet data source append theirs -
+        modules/services/coroot-alerts.nix pins the Coroot server's API port this way so the
+        agent can actually query the alerting stack during a diagnosis.
       '';
     };
 
@@ -342,6 +470,50 @@ in {
       };
     };
 
+    # Interactive (SSH) terminal access for the agent's OWN service account.
+    # Why the account and not root: the gateway's interactive client authenticates
+    # its control socket by peer uid (upstream hermes_cli/gateway_runtime_discovery.py
+    # connect_private: SO_PEERCRED must equal the caller's uid, anything else is
+    # 'unsafe_control_peer') and resolves its config through $HOME/.hermes - so only
+    # the hermes uid can ATTACH to the gateway that chats over Matrix, runs the crons
+    # and holds the memory. A root CLI can never join it (and root's own ~/.hermes
+    # would only seed a second, keyless brain). Measured on hp 2026-11-10:
+    # `hermes gateway attach` as hermes returns state:"ready" + a ws ticket against
+    # the systemd gateway; as root there is not even a `hermes` on PATH.
+    # The pane/terminal story on top of it is herdr - see MODULES.services.herdr
+    # (users.hermes + a machines row dialing this account; hosts/hp wires both).
+    sshAccess = {
+      enable = mkEnableOption ''
+        SSH login for the Hermes service account itself (authorized keys via
+        sshAccess.authorizedKeys), so an interactive terminal - ssh/mosh from the
+        laptop, or a hub-dialed herdr session from the phone - runs `hermes` AS the
+        gateway's uid and attaches to the live agent
+      '';
+
+      authorizedKeys = mkOption {
+        type = types.listOf types.str;
+        default = [];
+        example = lib.literalExpression ''
+          [
+            (lib.removeSuffix "\\n" (builtins.readFile ../../users/herdr-hub.pub))
+            (lib.removeSuffix "\\n" (builtins.readFile ../../users/herdr-mobile.pub))
+          ]
+        '';
+        description = ''
+          Public keys the account authenticates with (public material; the host names
+          its own trust set - hub key, phone key, laptop key). NixOS writes them to
+          /etc/ssh/authorized_keys.d/<user>, NOT into $HOME/.ssh: the home IS the
+          stateDir and upstream creates it 2770 (setgid), and sshd's StrictModes
+          rejects pubkey auth through a group-writable home - the authorized_keys.d
+          lookup path skips that check entirely (measured on hp 2026-11-10: login OK
+          against the untouched 2770). What still applies to this account is exactly
+          what bounds the agent itself: uid 971 egress through the hermes-egress
+          chain (no tailnet/LAN lateral moves), no sudo, no linger (the
+          restart-safety knob is deliberately off - see the users block).
+        '';
+      };
+    };
+
     paseoHermesSandbox = mkOption {
       type = types.attrs;
       default = sandbox;
@@ -357,8 +529,19 @@ in {
   config = mkIf cfg.enable {
     assertions = [
       {
-        assertion = matrix.enable && litellm.enable;
-        message = "MODULES.services.hermes-agent needs MODULES.services.matrix and MODULES.services.litellm on the same host.";
+        assertion = matrix.enable && config.MODULES.services.omniroute.enable;
+        message = "MODULES.services.hermes-agent needs MODULES.services.matrix and MODULES.services.omniroute on the same host.";
+      }
+      {
+        # sshAccess is meaningless without a daemon to authenticate against.
+        assertion = !cfg.sshAccess.enable || config.services.openssh.enable;
+        message = "MODULES.services.hermes-agent.sshAccess needs services.openssh (MODULES.networking.sshd) enabled on this host.";
+      }
+      {
+        # A login-capable account with no keys is just a locked door with the
+        # doorframe left in - fail eval rather than ship the half.
+        assertion = !cfg.sshAccess.enable || cfg.sshAccess.authorizedKeys != [];
+        message = "MODULES.services.hermes-agent.sshAccess.enable needs sshAccess.authorizedKeys (public keys the agent account should trust).";
       }
     ];
 
@@ -371,29 +554,70 @@ in {
 
       settings = {
         model = {
-          provider = "custom:litellm";
+          provider = "custom:omniroute";
           default = cfg.model;
         };
-        providers.litellm =
+        # providers is built as ONE attribute: a second `{ providers.futurelab = ...; }`
+        # joined by `//` at the settings level would REPLACE the whole providers map
+        # (shallow `//`) and silently delete the gateway route the agent boots on.
+        providers =
           {
-            name = "LiteLLM";
-            api = "http://127.0.0.1:${toString config.PORTS.litellm}/v1";
-            key_env = "LITELLM_API_KEY";
-            transport = "chat_completions";
-            default_model = cfg.model;
-            # What /model offers: whatever this key may use, straight from LiteLLM.
-            discover_models = true;
+            omniroute =
+              {
+                name = "OmniRoute";
+                api = "http://127.0.0.1:${toString config.PORTS.omniroute}/v1";
+                key_env = "OMNIROUTE_API_KEY";
+                transport = "chat_completions";
+                default_model = cfg.model;
+                # What /model offers: whatever this key may use, straight from the gateway.
+                discover_models = true;
+              }
+              // lib.optionalAttrs (cfg.modelContextLength != null) {
+                # Wildcard routes can't all report context windows, so Hermes would guess from
+                # the name (1M, which is also Aqueduct's max_model_len). Pinned to the fleet model
+                # catalogue's window for cfg.model (default; see modelContextLength), so Hermes
+                # compresses before 262k instead of drifting toward the 1M ceiling - and describes the
+                # model exactly like opencode/paseo do.
+                models = {
+                  ${cfg.model}.context_length = cfg.modelContextLength;
+                };
+              };
           }
-          // lib.optionalAttrs (cfg.modelContextLength != null) {
-            # LiteLLM can't report context windows for wildcard models, so Hermes would guess from
-            # the name (1M, which is also Aqueduct's max_model_len). Pinned to the fleet model
-            # catalogue's window for cfg.model (default; see modelContextLength), so Hermes
-            # compresses before 262k instead of drifting toward the 1M ceiling - and describes the
-            # model exactly like opencode/paseo do.
-            models = {
-              ${cfg.model}.context_length = cfg.modelContextLength;
-            };
+          // lib.optionalAttrs (cfg.fallbackModel != null) {
+            # The direct Aqueduct route Hermes can fail over to (fallbackModel's docs). Its
+            # chain entry's `model` is the BARE wire id - unlike the primary, whose id carries
+            # the gateway's "futurelab/" prefix (agent/route_binding.py sends entry.model verbatim).
+            futurelab =
+              {
+                name = "FutureLab (Aqueduct)";
+                api = cfg.fallbackBaseUrl;
+                key_env = "FUTURELAB_API_KEY";
+                transport = "chat_completions";
+                default_model = cfg.fallbackModel;
+                # No discover_models: one-model endpoint, and discovery would re-add the
+                # gateway's prefixed spellings that only route through the gateway.
+              }
+              // lib.optionalAttrs ((fallbackCatalog.contextLength or null) != null) {
+                # Same catalogue pin as the omniroute block: route_binding clears
+                # _config_context_length on the fallback swap, so the window for the
+                # bare id comes from this per-model row (step 0c in
+                # agent/model_metadata.py), not from a probe.
+                models = {
+                  ${cfg.fallbackModel}.context_length = fallbackCatalog.contextLength;
+                };
+              };
           };
+        # The chain itself, read by every fallback site (gateway, cron, credential
+        # resolution) via hermes_cli.fallback_config.get_fallback_chain.
+        fallback_providers = lib.optionals (cfg.fallbackModel != null) [
+          # `custom:` prefix = the durable key of the providers.futurelab block above
+          # (hermes_cli/providers.py custom_provider_slug), so the entry can never be
+          # shadowed by a built-in alias of the same word.
+          {
+            provider = "custom:futurelab";
+            model = cfg.fallbackModel;
+          }
+        ];
         # Commands run in this service's own sandbox (see serviceConfig below), not a container:
         # the Google skills work by running commands, and a rootless container
         # runtime would need the setuid helpers and user namespaces the sandbox takes away.
@@ -404,7 +628,8 @@ in {
         {
           MATRIX_HOMESERVER = matrix.clientUrl;
           MATRIX_USER_ID = matrix.botId;
-          MATRIX_ALLOWED_USERS = matrix.adminId;
+          # The admin plus any consumer-injected service identity (extraAllowedUsers).
+          MATRIX_ALLOWED_USERS = concatStringsSep "," ([matrix.adminId] ++ cfg.extraAllowedUsers);
           MATRIX_E2EE_MODE = "off";
           MATRIX_REQUIRE_MENTION = "true";
           MATRIX_ALLOW_ROOM_MENTIONS = "false";
@@ -439,18 +664,46 @@ in {
       basic_auth.username = "akos";
     };
 
-    # Same underlying value as the bot's password in matrix.nix, rendered into the env file the
-    # module copies into $HERMES_HOME/.env at activation (root does the copy, so root-owned).
-    sops.secrets.${cfg.litellmApiKeySecret} = {};
+    # The gateway key + the bot's password (same underlying value as in matrix.nix),
+    # rendered into the env file the module copies into $HERMES_HOME/.env at
+    # activation (root does the copy, so root-owned).
+    # audit #7 (2026-11-14): with apiKeyFile set, the shared fleet key drops out of
+    # this path entirely - no sops mount, no placeholder line. The minted key enters
+    # $HERMES_HOME/.env at every GATEWAY START instead (the ExecStartPre refresh on the
+    # unit below): the fork rewrites .env from activation-time inputs only, and its
+    # loader makes .env OVERRIDE the process environment ("stale shell exports" -
+    # env_loader.py), so a systemd EnvironmentFile= of the minted path would be masked
+    # by the activation snapshot, and the fork's environmentFiles would freeze it until
+    # the next switch. Start-time refresh by root is the one channel that is both
+    # correct and restart-fresh: the key value rides no sops material at all.
+    sops.secrets.${cfg.apiKeySecret} = mkIf (cfg.apiKeyFile == null) {};
     sops.secrets.${cfg.dashboardPasswordSecret} = {};
     sops.secrets.${cfg.dashboardSessionSecret} = {};
+    # The fallback endpoint's key, mounted only when a fallback exists (the primary
+    # block above is what gates it) - providers.futurelab.key_env reads it from .env.
+    sops.secrets.${cfg.fallbackApiKeySecret} = mkIf (cfg.fallbackModel != null) {};
     sops.templates."hermes.env" = {
-      content = ''
-        LITELLM_API_KEY=${config.sops.placeholder.${cfg.litellmApiKeySecret}}
-        MATRIX_PASSWORD=${config.sops.placeholder.${matrix.botPasswordSecret}}
-        HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=${config.sops.placeholder.${cfg.dashboardPasswordSecret}}
-        HERMES_DASHBOARD_BASIC_AUTH_SECRET=${config.sops.placeholder.${cfg.dashboardSessionSecret}}
-      '';
+      content =
+        lib.concatStringsSep "\n"
+        (
+          # The gateway key rides here only on the sops path; with apiKeyFile set the minted
+          # key enters .env via the fork's environmentFiles copier above (exactly one
+          # OMNIROUTE_API_KEY line per source - the fork documents a secret file cannot go
+          # into .env twice, and a stale placeholder line would win over the real value
+          # against a not-yet-minted file).
+          lib.optionals (cfg.apiKeyFile == null) [
+            ''OMNIROUTE_API_KEY=${config.sops.placeholder.${cfg.apiKeySecret}}''
+          ]
+          ++ lib.optionals (cfg.fallbackModel != null) [
+            ''FUTURELAB_API_KEY=${config.sops.placeholder.${cfg.fallbackApiKeySecret}}''
+          ]
+          ++ [
+            ''MATRIX_PASSWORD=${config.sops.placeholder.${matrix.botPasswordSecret}}''
+            ''HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=${config.sops.placeholder.${cfg.dashboardPasswordSecret}}''
+            ''HERMES_DASHBOARD_BASIC_AUTH_SECRET=${config.sops.placeholder.${cfg.dashboardSessionSecret}}''
+          ]
+        )
+        + "\n";
       restartUnits = ["hermes-agent.service" "hermes-backend.service"];
     };
 
@@ -476,20 +729,36 @@ in {
     # real: Paseo's daemon (node) exports the passwd shell as $SHELL into every agent it spawns,
     # and Hermes' terminal tool executes commands through $SHELL - a forced nologin there killed
     # every terminal() call ("This account is currently not available"). bash as login shell
-    # opens nothing: the account has no password, no ssh keys, no groups, and linger stays false.
-    users.users.${hermes.user} = {
-      shell = mkForce "${pkgs.bash}/bin/bash";
-      linger = mkForce false;
-      extraGroups = mkForce [];
-      # Put the hermes CLI on the service user's profile (/etc/profiles/per-user/<user>/bin,
-      # PATH-independent when referenced by absolute path) so Paseo terminal profiles can launch
-      # `hermes chat`/`--tui` as this user. Same package the gateway unit runs; HERMES_HOME and
-      # the LiteLLM key in $HERMES_HOME/.env are picked up from the environment of the daemon.
-      packages = [hermes.package];
-    };
+    # opens nothing: the account has no password, no groups, linger stays false, and keys only
+    # exist if the host turns sshAccess on.
+    users.users.${hermes.user} =
+      {
+        shell = mkForce "${pkgs.bash}/bin/bash";
+        linger = mkForce false;
+        extraGroups = mkForce [];
+        # Put the hermes CLI on the service user's profile (/etc/profiles/per-user/<user>/bin,
+        # PATH-independent when referenced by absolute path) so Paseo terminal profiles can launch
+        # `hermes chat`/`--tui` as this user. Same package the gateway unit runs; HERMES_HOME and
+        # the gateway key in $HERMES_HOME/.env are picked up from the environment of the daemon.
+        packages = [hermes.package];
+      }
+      // lib.optionalAttrs cfg.sshAccess.enable {
+        # sshAccess (see the option docs): NixOS renders these into
+        # /etc/ssh/authorized_keys.d/${hermes.user} (this nixpkgs line has no
+        # checkAuthKeys knob - the .d file IS the mechanism, which is what
+        # root's own entry already is on every fleet host). That path is the
+        # ONLY key lookup that works here: %h/.ssh/authorized_keys would fall
+        # to StrictModes through the group-writable 2770 stateDir home, while
+        # the .d file is read root-side (live-tested on hp 2026-11-10: login OK
+        # against the untouched 2770). The login shell/PATH the terminal needs
+        # already exist for this uid (shell forced to bash above, hermes.package
+        # on the per-user profile, $HOME/.hermes = the live HERMES_HOME). The
+        # hub's ssh hop is pinned by modules/services/herdr.nix.
+        openssh.authorizedKeys.keys = cfg.sshAccess.authorizedKeys;
+      };
 
     systemd.services.hermes-agent = {
-      after = [config.services.matrix-synapse.serviceUnit "litellm.service" "matrix-provision-users.service" "matrix-reader.service"];
+      after = [config.services.matrix-synapse.serviceUnit "omniroute.service" "matrix-provision-users.service" "matrix-reader.service"];
       wants = ["matrix-provision-users.service" "matrix-reader.service"];
 
       # The Hermes units run with a closed PATH; environment.systemPackages is NOT in
@@ -499,7 +768,7 @@ in {
 
       serviceConfig =
         sandbox
-        // optionalAttrs cfg.notes.enable {
+        // optionalAttrs (cfg.notes.enable || cfg.apiKeyFile != null) {
           # The two Hermes units get the notes share read-write at the mount, but write access is
           # carried by the file modes instead: 2755 everywhere except <share>/hermes (2775), so the
           # kernel denies the agent create/replace/delete anywhere else while `hermes-notes-edit
@@ -509,12 +778,50 @@ in {
           # units run UMask=0077, so a file the agent writes is 0600 and syncthing, reading as
           # `other`, would never see it. The agent's notes workflow chmods its own files 644 as
           # it writes them.
-          BindPaths = sandbox.BindPaths ++ [notes-bind];
+          #
+          # audit #7: the minted key's file gets a READ-ONLY bind for the same reason the
+          # share does - TemporaryFileSystem=/var/lib:ro masks the whole state tree, so
+          # without the bind the root-side ExecStartPre below could not see the key file.
+          # ro + 0600-root means only that pre-step (running +root) ever reads it; the
+          # gateway uid sees a path it cannot open. `-` prefix: absent yet = start anyway
+          # (first boot before the mint; the pre-step logs it).
+          BindPaths =
+            sandbox.BindPaths
+            ++ lib.optionals cfg.notes.enable [notes-bind]
+            ++ lib.optionals (cfg.apiKeyFile != null) ["-${cfg.apiKeyFile}:${cfg.apiKeyFile}:ro"];
         }
         // {
           # Root (+): while the gateway is down, drop the egress rule for its old api port.
           # Flush-only, instant, exit-0-always - nothing here may ever block a transition.
           ExecStopPost = "+${syncGatewayApiEgress}/bin/hermes-egress-sync-gateway-api flush";
+        }
+        # audit #7 (2026-11-14): refresh the minted gateway key into $HERMES_HOME/.env at
+        # EVERY start, root-side, before the gateway's env loads. Delete-then-append keeps
+        # the line unique (the fork rewrites .env from activation inputs at every switch,
+        # and its docs warn a secret file must not enter .env twice); a not-yet-minted file
+        # is a warning not a failure (the omniroute seed unit mints it in the same switch's
+        # start phase; the NEXT start picks it up). This is the restart-fresh channel the
+        # fork's .env semantics force: its loader makes .env OVERRIDE the process
+        # environment, so a systemd EnvironmentFile= would be masked by the stale
+        # activation-time line - rewrite the line at start instead.
+        // lib.optionalAttrs (cfg.apiKeyFile != null) {
+          ExecStartPre = "+${
+            pkgs.writeShellScript "hermes-env-refresh-gateway-key" ''
+              set -u
+              envf="${hermesHome}/.env"
+              [ -e "$envf" ] || exit 0
+              if ! k="$(cat '${cfg.apiKeyFile}' 2>/dev/null)"; then
+                echo "hermes-agent: minted gateway key '${cfg.apiKeyFile}' not readable yet - keeping the .env line from the last activation" >&2
+                exit 0
+              fi
+              grep -v '^OMNIROUTE_API_KEY=' "$envf" > "$envf.tmp" || true
+              printf 'OMNIROUTE_API_KEY=%s\n' "$k" >> "$envf.tmp"
+              # Keep the fork's owner/mode (it chowns .env to the service user).
+              chmod --reference="$envf" "$envf.tmp" 2>/dev/null || true
+              chown --reference="$envf" "$envf.tmp" 2>/dev/null || true
+              mv -f "$envf.tmp" "$envf"
+            ''
+          }";
         };
     };
 
@@ -642,9 +949,9 @@ in {
 
     # Per-uid egress filter: the sandbox can't express "these loopback ports only", the
     # firewall can. Applies to the gateway and every command the agent runs (same uid), plus
-    # the matrix-reader service. LiteLLM, Synapse and the reader on loopback, DNS anywhere,
+    # the matrix-reader service. OmniRoute, Synapse and the reader on loopback, DNS anywhere,
     # and the public internet (Google,
-    # Microsoft, the providers behind LiteLLM's key never see this host directly anyway).
+    # Microsoft, the providers behind the gateway's key never see this host directly anyway).
     # Nothing else on this host, the tailnet or the LAN.
     networking.firewall.extraCommands = ''
       iptables -w -N hermes-egress 2>/dev/null || iptables -w -F hermes-egress
@@ -653,9 +960,16 @@ in {
       # Replies on connections someone else opened to Hermes (Traefik -> the dashboard) leave
       # from a hermes-owned socket too; only new outbound connections are filtered.
       iptables -w -A hermes-egress -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
-      iptables -w -A hermes-egress -p udp --dport 53 -j RETURN
-      iptables -w -A hermes-egress -p tcp --dport 53 -j RETURN
+      iptables -w -A hermes-egress -d 127.0.0.1 -p udp --dport ${toString config.PORTS.dns} -j RETURN
+      iptables -w -A hermes-egress -d 127.0.0.1 -p tcp --dport ${toString config.PORTS.dns} -j RETURN
       ${lib.concatMapStringsSep "\n" (p: "iptables -w -A hermes-egress -d 127.0.0.1 -p tcp --dport ${toString p} -j RETURN") allowedLocalPorts}
+      # Pinned tailnet destinations consumers declared (extraAllowedTailnetPeers): one
+      # ip:port each, RETURNed before the private-range REJECTs - the same deliberate
+      # single-hole shape as the paseo funnel rule below, never a range widening.
+      ${lib.concatMapStringsSep "\n" (p: ''
+          iptables -w -A hermes-egress -d ${p.address} -p tcp --dport ${toString p.port} -m comment --comment "${p.name}" -j RETURN
+        '')
+        cfg.extraAllowedTailnetPeers}
       ${lib.optionalString config.MODULES.services.paseo-hermes.enable ''
         # paseo-hermes.nix: the Hermes-owned Paseo daemon (uid hermes) dials this host's own
         # relay through the Funnel - the funnel FQDN resolves to this machine's tailnet IP
@@ -673,8 +987,22 @@ in {
       # ACCEPTed - an unscoped LOG would label them egress-deny and page the audit alert
       # on normal traffic (the bug class jail.nix documents at its own deny block).
       ${lib.concatMapStringsSep "\n" (r: "iptables -w -A hermes-egress -d ${r} -m limit --limit 6/min -j LOG --log-prefix \"egress-deny-hermes: \"\n      iptables -w -A hermes-egress -d ${r} -j REJECT") privateRanges}
+      ${lib.optionalString config.networking.enableIPv6 ''
+        # Match IPv4's private-network boundary; public IPv6 remains available.
+        ip6tables -w -N hermes-egress 2>/dev/null || ip6tables -w -F hermes-egress
+        ip6tables -w -C OUTPUT -m owner --uid-owner ${hermes.user} -j hermes-egress 2>/dev/null \
+          || ip6tables -w -I OUTPUT -m owner --uid-owner ${hermes.user} -j hermes-egress
+        ip6tables -w -A hermes-egress -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+        ip6tables -w -A hermes-egress -d ::1 -p udp --dport ${toString config.PORTS.dns} -j RETURN
+        ip6tables -w -A hermes-egress -d ::1 -p tcp --dport ${toString config.PORTS.dns} -j RETURN
+        ${lib.concatMapStringsSep "\n" (p: "ip6tables -w -A hermes-egress -d ::1 -p tcp --dport ${toString p} -j RETURN") allowedLocalPorts}
+        ${lib.concatMapStringsSep "\n" (r: "ip6tables -w -A hermes-egress -d ${r} -j REJECT") ["::1/128" "fc00::/7" "fe80::/10"]}
+      ''}
     '';
     networking.firewall.extraStopCommands = ''
+      ip6tables -w -D OUTPUT -m owner --uid-owner ${hermes.user} -j hermes-egress 2>/dev/null || true
+      ip6tables -w -F hermes-egress 2>/dev/null || true
+      ip6tables -w -X hermes-egress 2>/dev/null || true
       iptables -w -D OUTPUT -m owner --uid-owner ${hermes.user} -j hermes-egress 2>/dev/null || true
       iptables -w -F hermes-egress 2>/dev/null || true
       iptables -w -X hermes-egress 2>/dev/null || true

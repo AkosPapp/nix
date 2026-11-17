@@ -1,0 +1,236 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["fleet", "coroot", "network"],
+  "time": { "from": "now-6h", "to": "now" },
+  "title": "Egress: container TCP connections (this host)",
+  "uid": "fleet-connections",
+  "templating": {
+    "list": [
+      {
+        "name": "container",
+        "label": "container",
+        "type": "query",
+        "datasource": { "type": "prometheus" },
+        "query": "label_values(container_net_tcp_active_connections, container_id)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": ["All"], "value": ["$__all"] }
+      },
+      {
+        "name": "destination",
+        "label": "peer",
+        "type": "query",
+        "datasource": { "type": "prometheus" },
+        "query": "label_values(container_net_tcp_active_connections, destination)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": ["All"], "value": ["$__all"] }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "id": 1,
+      "title": "Open connections (now)",
+      "datasource": { "type": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus" },
+          "expr": "sum(container_net_tcp_active_connections{container_id=~\"$container\"})",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "id": 2,
+      "title": "External peers connected (now)",
+      "description": "Distinct off-tailnet destinations with at least one open connection. Internal = loopback, RFC1918 and the Tailscale CGNAT range 100.64.0.0/10.",
+      "datasource": { "type": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus" },
+          "expr": "count(count by (destination) (container_net_tcp_active_connections{container_id=~\"$container\", destination=~\"$destination\", destination!~\"(127\\\\.|10\\\\.|100\\\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\\\.|192\\\\.168\\\\.|172\\\\.(1[6-9]|2[0-9]|3[01])\\\\.).*\"}))",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "id": 3,
+      "title": "Data moved with external peers (range)",
+      "description": "container_net_tcp_bytes_{sent,received}_total, eBPF-counted per container/peer. TCP payload bytes, all peers except internal.",
+      "datasource": { "type": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus" },
+          "expr": "sum(increase(container_net_tcp_bytes_sent_total{destination!~\"(127\\\\.|10\\\\.|100\\\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\\\.|192\\\\.168\\\\.|172\\\\.(1[6-9]|2[0-9]|3[01])\\\\.).*\"}[$__range])) + sum(increase(container_net_tcp_bytes_received_total{destination!~\"(127\\\\.|10\\\\.|100\\\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\\\.|192\\\\.168\\\\.|172\\\\.(1[6-9]|2[0-9]|3[01])\\\\.).*\"}[$__range]))"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "id": 4,
+      "title": "New external connects (range)",
+      "datasource": { "type": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus" },
+          "expr": "sum(increase(container_net_tcp_successful_connects_total{destination!~\"(127\\\\.|10\\\\.|100\\\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\\\.|192\\\\.168\\\\.|172\\\\.(1[6-9]|2[0-9]|3[01])\\\\.).*\"}[$__range]))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "id": 5,
+      "title": "Open connections per container",
+      "description": "Active OUTBOUND TCP connections per container (gauge). HTTP keep-alive pooling means this counts pooled sockets, not in-flight requests - the gateway's futurelab cap of 4 bounds concurrent REQUESTS; this line is how many sockets carry them.",
+      "datasource": { "type": "prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10, "showPoints": "never" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus" },
+          "expr": "sum by (container_id) (container_net_tcp_active_connections{container_id=~\"$container\"})",
+          "legendFormat": "{{container_id}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "id": 6,
+      "title": "Open connections to external peers",
+      "description": "One line per off-tailnet destination (ip:port, or host:port when SNI named it). omniroute -> futurelab is destination=\"195.202.147.94:443\"; filter the peer variable to see it alone.",
+      "datasource": { "type": "prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10, "showPoints": "never" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus" },
+          "expr": "sum by (destination) (container_net_tcp_active_connections{container_id=~\"$container\", destination=~\"$destination\", destination!~\"(127\\\\.|10\\\\.|100\\\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\\\.|192\\\\.168\\\\.|172\\\\.(1[6-9]|2[0-9]|3[01])\\\\.).*\"})",
+          "legendFormat": "{{destination}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "id": 7,
+      "title": "Throughput with external peers (bytes/s)",
+      "datasource": { "type": "prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "fillOpacity": 10, "showPoints": "never" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus" },
+          "expr": "sum by (destination) (rate(container_net_tcp_bytes_sent_total{destination=~\"$destination\", destination!~\"(127\\\\.|10\\\\.|100\\\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\\\.|192\\\\.168\\\\.|172\\\\.(1[6-9]|2[0-9]|3[01])\\\\.).*\"}[$__auto]))",
+          "legendFormat": "tx {{destination}}"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus" },
+          "expr": "sum by (destination) (rate(container_net_tcp_bytes_received_total{destination=~\"$destination\", destination!~\"(127\\\\.|10\\\\.|100\\\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\\\.|192\\\\.168\\\\.|172\\\\.(1[6-9]|2[0-9]|3[01])\\\\.).*\"}[$__auto]))",
+          "legendFormat": "rx {{destination}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "id": 8,
+      "title": "Connect churn + failures (external)",
+      "description": "successful vs failed TCP connects per second - churn spikes here mean pooling is NOT happening upstream.",
+      "datasource": { "type": "prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10, "showPoints": "never" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus" },
+          "expr": "sum by (destination) (rate(container_net_tcp_successful_connects_total{destination!~\"(127\\\\.|10\\\\.|100\\\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\\\.|192\\\\.168\\\\.|172\\\\.(1[6-9]|2[0-9]|3[01])\\\\.).*\"}[$__auto]))",
+          "legendFormat": "ok {{destination}}"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus" },
+          "expr": "sum by (destination) (rate(container_net_tcp_failed_connects_total{destination!~\"(127\\\\.|10\\\\.|100\\\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\\\.|192\\\\.168\\\\.|172\\\\.(1[6-9]|2[0-9]|3[01])\\\\.).*\"}[$__auto]))",
+          "legendFormat": "fail {{destination}}"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "id": 9,
+      "title": "External peers: connections now + data over range",
+      "datasource": { "type": "prometheus" },
+      "gridPos": { "h": 11, "w": 24, "x": 0, "y": 23 },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "bytes" }, "properties": [{ "id": "unit", "value": "bytes" }] },
+          { "matcher": { "id": "byName", "options": "connections" }, "properties": [{ "id": "unit", "value": "short" }] }
+        ]
+      },
+      "options": { "sortBy": [{ "displayName": "bytes", "desc": true }] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus" },
+          "format": "table",
+          "instant": true,
+          "expr": "sum by (destination) (container_net_tcp_active_connections{destination!~\"(127\\\\.|10\\\\.|100\\\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\\\.|192\\\\.168\\\\.|172\\\\.(1[6-9]|2[0-9]|3[01])\\\\.).*\"})"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus" },
+          "format": "table",
+          "instant": true,
+          "expr": "sum by (destination) (increase(container_net_tcp_bytes_sent_total{destination!~\"(127\\\\.|10\\\\.|100\\\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\\\.|192\\\\.168\\\\.|172\\\\.(1[6-9]|2[0-9]|3[01])\\\\.).*\"}[$__range])) + sum by (destination) (increase(container_net_tcp_bytes_received_total{destination!~\"(127\\\\.|10\\\\.|100\\\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\\\.|192\\\\.168\\\\.|172\\\\.(1[6-9]|2[0-9]|3[01])\\\\.).*\"}[$__range]))"
+        }
+      ],
+      "transformations": [
+        { "id": "seriesToColumns", "options": { "byField": "destination" } },
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "Time 1": true, "Time 2": true }, "renameByName": { "Value #A": "connections", "Value #B": "bytes" } } }
+      ]
+    }
+  ]
+}

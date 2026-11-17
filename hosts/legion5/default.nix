@@ -16,7 +16,10 @@
     lib.flatten (map (
         host:
           map (s: s.path) (
-            builtins.filter (s: lib.hasPrefix "/var/lib" s.path)
+            # The hc bridge already contributes this folder at its active path.
+            # A second passive ~/servers mirror would duplicate its Syncthing ID
+            # and bypass the bridge's intentionally narrow ignore policy.
+            builtins.filter (s: lib.hasPrefix "/var/lib" s.path && s.path != "/var/lib/herdr-machine-registry")
             (nixosConfigurations.${host}.config.MODULES.services.syncthing.shares)
           )
       )
@@ -68,7 +71,6 @@ in {
   # - small-text: Qwen3-4B-2507 Q4_K_M. 8192, the cheap one, and what opencode uses for its side
   #   jobs. receipt-vision is hp-only again - this host no longer carries a vision model.
   MODULES.services.ollama.enable = true;
-  MODULES.services.ollama.weight = 8;
   # Keep ~1.5 GiB of the card out of Ollama's layer placement. It sizes a model to the memory free
   # at load time, but the desktop's share swings between ~0.9 and ~2.7 GiB and a vision model's
   # image encoder allocates on top at request time - receipt-vision-7b died with "cudaMalloc
@@ -105,7 +107,7 @@ in {
     };
   };
 
-  # opencode itself (just the litellm.hp provider, no local models) is configured once in
+  # opencode itself (just the gateway providers, no local models) is configured once in
   # users/akos.nix, not per-host.
 
   MODULES.nix.substituters.airlab-attic.enable = true;
@@ -158,6 +160,19 @@ in {
     scratch.tmpDiskMB = 204800;
   };
   USERS.akos.enable = true;
+  # `omp-deploy root@pi` (modules/services/omp-deploy.nix): installs the fleet-pinned
+  # omp onto any ssh-reachable box by running the gateway's served installer there -
+  # same script as the browser one-liner, funnel URL + the minted installer key.
+  MODULES.services.ompDeploy.enable = true;
+  # This laptop's omp joins the fleet web-search MCP gate (mcpPerplexity.nix's client
+  # injector: root-side merge of the perplexity entry into ~/.omp/agent/mcp.json, the
+  # X-Mcp-Token read from the sops mount so it never hits the store/attic). The URL
+  # derives through nixosConfigurations to hp's funnel /install/mcp.
+  MODULES.services.mcpPerplexity.client.users = ["akos"];
+  MODULES.security.serviceGraph = {
+    enable = true;
+    enforce = true;
+  };
   # herdr (herdr.dev): the agent multiplexer. Both products, because they are two programs
   # with two separate servers and do NOT share agents - the TUI (`herdr`) runs its own
   # server, the desktop app (`herdr-app`) talks to herdr-core (`hc`) instead. The laptop is
@@ -166,8 +181,8 @@ in {
   # /run/user/<uid> exists at boot, where the core puts its socket) and the 0700 config/state
   # dirs - herdr-core does not repair permissions on directories that already exist, and its
   # state holds saved terminal screens where agent API keys end up on scroll.
-  # Cross-machine work needs no relay: `hc machine add hp` from here drives hp's core over
-  # SSH (which is why hp/akos01 carry the binaries too).
+  # TUI endpoints are declarative; hc's runtime remote IDs are synchronized with
+  # hp/root by the isolated coreRegistry bridge, never with local identity/state.
   MODULES.services.herdr = {
     enable = true;
     # Explicit rather than left to the defaults (which install whatever the current
@@ -177,11 +192,19 @@ in {
     # is not installed.
     installCore = true;
     installApp = true;
+    coreRegistry.user = "akos";
+    # External SSH routing/public pin, shared with registry peers. The hub's
+    # public key must also be authorized for apapp on this unmanaged destination.
+    machines.r4uai00 = {
+      hostname = "10.210.0.10";
+      user = "apapp";
+      knownHosts = ["r4uai00 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHaTaGV9iR5N1uZNDtGQ52tC8/YUS9uAjfATPY9ccD+U"];
+    };
     users.akos = {
       enable = true;
       # Detached agents keep their conversations across a server restart; the 100 ms stagger
       # is upstream's default and stays, so a restore of several panes does not fire every
-      # one of them at LiteLLM in the same instant.
+      # one of them at the gateway in the same instant.
       cli = {
         enable = true;
         settings = {
@@ -213,6 +236,16 @@ in {
   # gone. Leftover state was removed from ~akos after the switch (see
   # packages/paseo/machine/cleanup-home.sh for the canonical list).
   MODULES.networking.tailscale.hostIP = "100.126.232.60";
+  # This laptop's public SSH host keys keyed by its tailnet IP - the fact every fleet
+  # hub-catalog (modules/services/herdr.nix /etc/herdr/known-hosts) pins when dialing
+  # `herdr-legion5`. Regenerate with `ssh-keyscan 100.126.232.60` after any host-key
+  # rotation; hp's runtime-known copies (its pre-catalog TOFU pins in /root/.ssh/
+  # known_hosts) matched these byte-for-byte on 2026-11-09, same cross-check doctrine as
+  # hp's own declaration.
+  MODULES.networking.sshClient.hostKeys = [
+    "100.126.232.60 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMTPGv+tHfHlRTDrCbRv7V4ZUYzvS2FWag9kectOZJKD"
+    "100.126.232.60 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQCCWjS55y8i2EPTcQFjWVCdR1YIqIDwaqc9lthu76p4G4EKmCCYoF1cbfOeGum7PCpwI/OpkRDZp5HsCpwxs7/03xcAA/xwOxKw15JXggz9q/u4pQk9SmxyZQY8GYuxJdqEw9/621LPzsivj+Kx6o/lGYx7Mw7wP+RuBBfOKKszbgdWakpR4AxQ36EdDp+Ltx80fDeV3pPH2LrtEErSRVXpqPtH49T7+YFlaNvkjqAqa0wk0ZzOfKDxvTrrW5ZSTcTWas1kEP1ybPg4C8xVXWoOodVLGTzQv5teykg9HSSkRkHcMeWi1Rtwu0P02dp2Z4mPSnMGH6jAZtuwlYlLuwcf7IY/FZMtH4rpoZ1KwSK90HogkagB0oP2YwCss46HtQ8ktKg2x7uHfwByXPEFjW0iRNXqNuNUw9VezP3oETHOf96u/ZhuzFq6NPcxIhhjDKIc0h/7J5fm5q1CAysUfLnDKncw7cW5f7HYRBBeZJNROpW675r1ciXG/nyWarNdLJGXxTSbP7AcPRy+lrMovzqTALAs9tURpcaTuMFu2lWci8vPKymLCB4YviTAQF7OGXmZAGpXQVhEV5P9jO6ON0rNKKQrQyc8YTwwC0w1jyblIq5sWifHyrhh/inilJeAIpmliH+EV1mtcC3s6jhKBwdHkcuCytO3S9Dt5i2Bq3f53Q== root@legion5"
+  ];
   MODULES.services.syncthing.deviceID = "U6G2UZ4-RX5WVKR-5MAIXOA-4GX6ZL6-PGTAPWD-KXLK3V4-N4EPLT3-GWR7MQ7";
   # Shares live under akos's home directory, which the default "syncthing" system user can't
   # read; run as akos instead (see MODULES.services.syncthing.user's description for why

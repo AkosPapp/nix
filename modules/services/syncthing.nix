@@ -327,8 +327,8 @@ in {
       (mkIf (cfg.group != null) {group = cfg.group;})
     ];
 
-    networking.firewall.allowedTCPPorts = [config.PORTS.syncthingSync];
-    networking.firewall.allowedUDPPorts = [config.PORTS.syncthingSync];
+    networking.firewall.interfaces.tailscale0.allowedTCPPorts = [config.PORTS.syncthingSync];
+    networking.firewall.interfaces.tailscale0.allowedUDPPorts = [config.PORTS.syncthingSync];
 
     MODULES.networking.traefik.enable = true;
     MODULES.networking.traefik.services.syncthing = "127.0.0.1:${toString config.PORTS.syncthingWebui}";

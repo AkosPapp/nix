@@ -53,7 +53,9 @@
         # root here. builder - reachable with just a leaked laptop key - and @wheel are not
         # (2026-10-24 audit #6); @nixbld is the nixbld group the build users themselves run
         # under and only needed for local multi-user builds.
-        trusted-users = ["root" "@root" "@nixbld"];
+        # The builder is itself in nixbld: trusting that group undid the
+        # removal of builder from wheel/trusted-users (2026-11-12 review).
+        trusted-users = ["root"];
       };
     };
 

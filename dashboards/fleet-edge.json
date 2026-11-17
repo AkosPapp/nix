@@ -1,0 +1,250 @@
+{
+  "uid": "fleet-edge",
+  "title": "Public Edge (Traefik access + Suricata DPI)",
+  "tags": ["fleet", "edge", "traefik", "suricata", "security"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "description": "Provisioned by modules/networking/traefik.nix. Where the public's requests come from: Traefik's JSON access log (job=traefik-access; real client IP + Cloudflare country) cross-checked against the loopback DPI tap (job=suricata-edge). Loki panels query the FLEET Loki.",
+  "links": [
+    { "title": "Network IDS board", "type": "dashboards", "tags": ["fleet", "ids"] }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "host",
+        "label": "edge host",
+        "type": "query",
+        "datasource": { "type": "loki", "uid": "loki-fleet" },
+        "query": { "label": "host", "refId": "LokiVariableQueryEditor-VariableQuery", "type": 1 },
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": ["All"], "value": ["$__all"] }
+      },
+      {
+        "name": "vhost",
+        "label": "public host",
+        "type": "query",
+        "datasource": { "type": "loki", "uid": "loki-fleet" },
+        "query": { "label": "vhost", "refId": "LokiVariableQueryEditor-VariableQuery", "type": 1 },
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": ["All"], "value": ["$__all"] }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Public requests (range)",
+      "id": 1,
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "loki", "uid": "loki-fleet" },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki-fleet" },
+          "queryType": "range",
+          "expr": "sum(count_over_time({job=\"traefik-access\", host=~\"$host\"} [$__range]))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests / s per public vhost",
+      "id": 2,
+      "gridPos": { "h": 5, "w": 12, "x": 6, "y": 0 },
+      "datasource": { "type": "loki", "uid": "loki-fleet" },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["sum"] }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 20, "showPoints": "never" } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki-fleet" },
+          "queryType": "range",
+          "legendFormat": "{{vhost}}",
+          "expr": "sum by (vhost) (rate({job=\"traefik-access\", host=~\"$host\", vhost=~\"$vhost\"} [$__auto]))"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Bots (range)",
+      "id": 3,
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "loki", "uid": "loki-fleet" },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 50 }, { "color": "red", "value": 500 }] } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki-fleet" },
+          "queryType": "range",
+          "expr": "sum(count_over_time({job=\"traefik-access\", host=~\"$host\", device_class=\"bot\"} [$__range]))"
+        }
+      ]
+    },
+    {
+      "type": "geomap",
+      "title": "Requests by country (CF-IPCountry / geoip)",
+      "id": 4,
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 5 },
+      "datasource": { "type": "loki", "uid": "loki-fleet" },
+      "options": {
+        "basemap": { "name": "World", "type": "default", "layer": "attribution" },
+        "layers": [
+          {
+            "type": "countries",
+            "locationMode": "lookup",
+            "locationField": "country",
+            "styleField": "Requests",
+            "colorRamp": { "name": "Interpolate", "id": "interpolateGnBu", "steps": [[0, "rgba(242,240,247,0)"], [1, "rgb(35,139,69)"]] },
+            "config": { "tooltip": true, "legend": { "show": true } }
+          }
+        ],
+        "view": { "allLayers": true, "id": "zero", "lat": 0, "lon": 0, "zoom": 1 }
+      },
+      "fieldConfig": { "defaults": { "unit": "short", "mappings": [] }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki-fleet" },
+          "queryType": "instant",
+          "format": "table",
+          "expr": "sum by (country) (count_over_time({job=\"traefik-access\", host=~\"$host\", vhost=~\"$vhost\", country!=\"\"} [$__range]))"
+        }
+      ],
+      "transformations": [
+        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value": "Requests" } } }
+      ]
+    },
+    {
+      "type": "piechart",
+      "title": "Device class mix",
+      "id": 5,
+      "gridPos": { "h": 9, "w": 6, "x": 12, "y": 5 },
+      "datasource": { "type": "loki", "uid": "loki-fleet" },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "legend": { "displayMode": "table", "placement": "right", "values": ["value", "percent"] }, "pieType": "donut" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki-fleet" },
+          "queryType": "instant",
+          "legendFormat": "{{device_class}}",
+          "expr": "sum by (device_class) (count_over_time({job=\"traefik-access\", host=~\"$host\", vhost=~\"$vhost\"} [$__range]))"
+        }
+      ]
+    },
+    {
+      "type": "piechart",
+      "title": "Status classes",
+      "id": 6,
+      "gridPos": { "h": 9, "w": 6, "x": 18, "y": 5 },
+      "datasource": { "type": "loki", "uid": "loki-fleet" },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "legend": { "displayMode": "list", "placement": "bottom", "values": ["value"] }, "pieType": "donut" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki-fleet" },
+          "queryType": "instant",
+          "legendFormat": "{{status_class}}",
+          "expr": "sum by (status_class) (count_over_time({job=\"traefik-access\", host=~\"$host\", vhost=~\"$vhost\"} [$__range]))"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Top client IPs (range)",
+      "id": 7,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "datasource": { "type": "loki", "uid": "loki-fleet" },
+      "options": { "sortBy": [{ "displayName": "Requests", "desc": true }] },
+      "fieldConfig": { "defaults": {}, "overrides": [{ "matcher": { "id": "byName", "options": "Time" }, "properties": [{ "id": "custom.hidden", "value": true }] }] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki-fleet" },
+          "queryType": "instant",
+          "format": "table",
+          "expr": "topk(20, sum by (client_ip, country) (count_over_time({job=\"traefik-access\", host=~\"$host\", vhost=~\"$vhost\"} | json | __error__=\"\" [$__range])))"
+        }
+      ],
+      "transformations": [
+        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "client_ip": "client", "country": "country", "Value": "Requests" } } }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Top paths (range)",
+      "id": 8,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "datasource": { "type": "loki", "uid": "loki-fleet" },
+      "options": { "sortBy": [{ "displayName": "Hits", "desc": true }] },
+      "fieldConfig": { "defaults": {}, "overrides": [{ "matcher": { "id": "byName", "options": "Time" }, "properties": [{ "id": "custom.hidden", "value": true }] }] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki-fleet" },
+          "queryType": "instant",
+          "format": "table",
+          "expr": "topk(20, sum by (url) (count_over_time({job=\"traefik-access\", host=~\"$host\", vhost=~\"$vhost\"} | json | __error__=\"\" [$__range])))"
+        }
+      ],
+      "transformations": [
+        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "url": "path", "Value": "Hits" } } }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "DPI cross-check: loopback tap vs access log (req/s)",
+      "id": 9,
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 22 },
+      "datasource": { "type": "loki", "uid": "loki-fleet" },
+      "description": "Two independent instruments on the same traffic: what Traefik logged vs what the Suricata lo tap parsed. A widening gap means one of them is blind.",
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 15, "showPoints": "never" } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki-fleet" },
+          "queryType": "range",
+          "legendFormat": "traefik {{host}}",
+          "expr": "sum by (host) (rate({job=\"traefik-access\", host=~\"$host\"} [$__auto]))"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "loki", "uid": "loki-fleet" },
+          "queryType": "range",
+          "legendFormat": "suricata-edge {{host}}",
+          "expr": "sum by (host) (rate({job=\"suricata-edge\", host=~\"$host\", event_type=\"http\"} [$__auto]))"
+        }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "EDGE-* DPI alerts (scanner/probe signatures)",
+      "id": 10,
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 22 },
+      "datasource": { "type": "loki", "uid": "loki-fleet" },
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending", "enableLogDetails": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki-fleet" },
+          "queryType": "range",
+          "maxLines": 200,
+          "expr": "{job=\"suricata-edge\", host=~\"$host\", event_type=\"alert\"}"
+        }
+      ]
+    }
+  ]
+}

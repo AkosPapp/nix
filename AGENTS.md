@@ -65,6 +65,21 @@ follow, not to re-litigate):
   (`acceptPush.{enable,datasetPrefix,authorizedKey}` composes the
   forced-command `authorized_keys` line) and the pg-dump dataset creation
   (`pgDumpDataset`).
+- `modules/services/datalab-harness.nix` - binds a TU-cluster agent session's ssh
+  lifetime to the agent itself: hp hosts `tmux session dl` (window per harness), the
+  window's command is the pinned ssh into datalab's own tmux, so the harness exiting on
+  datalab closes the window AND the connection, while a phone/laptop disconnect never
+  does. Dedicated sops identity (`harness/datalab_ssh_key_b64`, public
+  `users/datalab-hp.pub`); hosts supply user/knownHosts/harness values only.
+- `modules/services/bootstrap-installers.nix` - the token-gated public installer
+  endpoint (`/install/<token>/<name>.sh` on the Funnel), the standalone successor of
+  the retired Paseo cockpit's identically-shaped one: consumers register a script +
+  their `VAR -> sops key` pairs (`MODULES.services.bootstrapInstallers.{scripts,apiKeys}`),
+  a oneshot render unit envsubst's secrets into the served tree at activation (no key
+  ever lands in the Nix store - never bake secrets into a `writeShellScript`), and
+  nginx serves the tree autoindex-off so a wrong token never names a directory. The
+  omp bootstrap (`MODULES.services.omp.bootstrap`) is the first consumer; a new
+  curl|bash installer for any tool registers here, NEVER re-implements the endpoint.
 - `modules/security/service-graph.nix` - the fleet's single tailnet edge
   table. The nft/iptables allow-jails and the Suricata tap's pass-list are
   both rendered from it, and it derives peer sources (Prometheus scrapers,
@@ -72,6 +87,21 @@ follow, not to re-litigate):
   specialArgs. **A new service that accepts or dials tailnet TCP must add
   its edge there - in both roles, since each host's tap also sees our own
   outbound SYNs - or Suricata fires `SG-DRIFT` on every connection of it.**
+  The Suricata half also ships its own telemetry: EVE JSON (alert + http +
+  tls + stats) is tailed STRUCTURED by Alloy through
+  `MODULES.services.loki.extraAlloyBlocks` (the sshClient.blocks pattern
+  for the single-owner /etc/alloy/config.alloy - never write that file
+  from another module), lands in Loki as `job=suricata`/`suricata-edge`,
+  and the stats events become `suricata_*` Prometheus gauges on Alloy's own
+  /metrics (scraped via `PORTS.alloy`). Fleet streams ride
+  `MODULES.services.loki.fleetPushTargets` to the aggregator's Loki (hp,
+  `acceptFleetPush`); the `loki-fleet` datasource plus the git-provisioned
+  `fleet-ids`/`fleet-edge` boards
+  (`MODULES.services.grafana.providedDashboards`) are how you actually SEE
+  it. `suricata.edge` is the loopback DPI tap for the public Traefik entry
+  points; the log-side twin is `MODULES.networking.traefik.accessLogs`
+  (JSON access log -> Alloy -> `job=traefik-access`, country from
+  CF-IPCountry, device_class from UA).
 
 ## Rule 2 - no duplicated blocks, ever
 
@@ -121,6 +151,14 @@ an unexplained duplicate will be assumed fixable and consolidated.
   number is a bug (measured 2026-10-27: prometheus scraped cloudflared's
   metrics on the `PORTS` number while cloudflared's own default was a
   different port - the pinning now lives in the generated tunnel config).
+- `MODULES.networking.sshClient.blocks` (`modules/networking/ssh-client.nix`)
+  is the ONLY writer of `/etc/ssh/ssh_config` - modules needing per-Host ssh
+  behavior (znapzend's replication identity, the herdr hub's `Host herdr-*`
+  aliases) contribute verbatim blocks; defining
+  `environment.etc."ssh/ssh_config"` anywhere else is the redefine trap. The
+  sibling `MODULES.networking.sshClient.hostKeys` is each host's public
+  host-key fact (known_hosts lines keyed by its tailnet IP) that peers read
+  across the flake (the tuvpn toggle's pin file, herdr's machine catalog).
 - `config.LIMITS.<row>` (`modules/system/limits.nix`): the systemd
   CPU/memory/tasks caps per unit, keyed by predicates over the config.
 - sops: one encrypted file, `sops/secrets.yaml` (recipient set in

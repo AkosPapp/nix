@@ -10,10 +10,11 @@
 #     role, which happens at their setup units) costs nothing and gets SCRAM both ways.
 #
 # Consumers declare their access:
-#   socketPeerRoles  - same-named OS user and role over the unix socket (litellm-era default for
+#   socketPeerRoles  - same-named OS user and role over the unix socket (the default for
 #                      firefly-iii, matrix-synapse);
-#   identMaps        - a system user that is NOT named after the role (the LiteLLM container runs
-#                      as root, so its role needs a map entry, still scoped to one database).
+#   identMaps        - a system user that is NOT named after the role (a container that runs as
+#                      root but connects with its own role, like the old LiteLLM one, needs a map
+#                      entry, still scoped to one database).
 # A host that enables postgresql without this module keeps nixpkgs' loose defaults - the
 # assertion below is there to make that a build error on hosts that have a database at all.
 {
@@ -71,10 +72,10 @@ in {
       default = [];
       example = [
         {
-          name = "litellm";
+          name = "paperless";
           systemUser = "root";
-          database = "litellm";
-          role = "litellm";
+          database = "paperless";
+          role = "paperless";
         }
       ];
       description = "System-user-to-role mappings, each still scoped to a single database.";

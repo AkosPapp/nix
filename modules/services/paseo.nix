@@ -147,11 +147,11 @@
     set -uo pipefail
 
     PASEO_RELAY_ENDPOINT="${relayPublicHost}"
-    # Model traffic goes to the hub's own LiteLLM gateway, on the same Funnel origin this script
-    # was downloaded from: an installed machine has no Tailscale, so https://litellm.hp would not
-    # even resolve for it. The key below is a LiteLLM key, which is what authorizes and meters
-    # every request - and $MODEL_ID names a deployment *in LiteLLM's config*, so pointing these
-    # machines at a different model is a gateway change, not a re-install.
+    # Model traffic goes to the hub's own OmniRoute gateway, on the same Funnel origin this
+    # script was downloaded from: an installed machine has no Tailscale, so https://omniroute.hp
+    # would not even resolve for it. The key below is a gateway key, which is what authorizes
+    # and meters every request - and $MODEL_ID names a model *on the gateway*, so pointing
+    # these machines at a different model is a gateway change, not a re-install.
     MODEL_BASE_URL="${cfg.model.baseUrl}"
     MODEL_ID="${cfg.model.id}"
     MODEL_KEY='$PASEO_ENROLLMENT_API_KEY'
@@ -244,7 +244,7 @@
       || npm install -g $(as_flag "opencode-ai") opencode-ai >/dev/null \
       || die "npm install opencode-ai failed"
 
-    # --- 3. Point BOTH harness CLIs at the hub's LiteLLM gateway ----------------------------------
+    # --- 3. Point BOTH harness CLIs at the hub's OmniRoute gateway ---------------------------------
     log "Configuring pi + opencode for $MODEL_BASE_URL ($MODEL_ID)..."
     ${piConfig}
 
@@ -804,7 +804,7 @@
     <h2>Add a harness machine</h2>
     <p class="note">Run on any Linux/macOS box (no Tailscale needed - it reaches the hub through the public relay):
     installs Node + <code>@getpaseo/cli</code> + <strong>both</strong> harness CLIs (pi and opencode, the daemon offers
-    either per agent), points them at the hub's LiteLLM gateway, registers the machine with the
+    either per agent), points them at the hub's OmniRoute gateway, registers the machine with the
     relay, and posts its pairing link back here. Re-runnable.</p>
     <h3>Direct (any box)</h3>
     <pre>curl -fsSL https://hp.tail546fb.ts.net:8443/install/$PASEO_ENROLLMENT_TOKEN/machine.sh | bash</pre>
@@ -835,11 +835,11 @@
     <h2>What this does / rotating secrets</h2>
     <p class="note">Architecture and rotation: <code>hosts/hp/RUNBOOK/RUNBOOK-paseo.md</code> in this repo.
     Enrollment token = the URL secret above (rotate: <code>sops set sops/secrets.yaml '["paseo"]["enrollment_token"]' ...</code> + rebuild - old URLs 404).
-    Model key (<code>${cfg.model.apiKeySecret}</code> in sops - a <strong>LiteLLM</strong> key, since the harnesses these
+    Model key (<code>${cfg.model.apiKeySecret}</code> in sops - an <strong>OmniRoute</strong> key, since the harnesses these
     scripts write talk to the gateway now, not to the upstream behind it): <code>sops set sops/secrets.yaml ...</code> +
-    rebuild - re-rendered scripts pick it up (machines already installed keep the old key in their CLI config). Mint a
-    dedicated virtual key on the gateway (dashboard &rarr; API Keys, capped to one model) rather than reusing the master
-    key: this value goes to every machine that knows the enrollment URL.</p>
+    rebuild - re-rendered scripts pick it up (machines already installed keep the old key in their CLI config until the
+    installer is re-run there). Mint a dedicated key on the gateway (dashboard &rarr; API Keys, capped to one model)
+    rather than reusing the shared fleet key: this value goes to every machine that knows the enrollment URL.</p>
 
     <script>
     document.querySelectorAll("pre").forEach(function (pre) {
@@ -1295,7 +1295,7 @@
   render = pkgs.writeShellScriptBin "paseo-web-render" ''
     set -euo pipefail
     # Secrets arrive via EnvironmentFile (sops template): PASEO_ENROLLMENT_TOKEN (the URL segment),
-    # PASEO_ENROLLMENT_API_KEY (the model key the scripts embed - a LiteLLM key, from
+    # PASEO_ENROLLMENT_API_KEY (the model key the scripts embed - an OmniRoute key, from
     # ${cfg.model.apiKeySecret}). The hub pairing URL is written by paseo-pair.service.
     umask 027
     export PATH=${lib.makeBinPath (with pkgs; [gettext coreutils findutils jq])}
@@ -1409,31 +1409,35 @@ in {
     model = {
       baseUrl = mkOption {
         type = types.str;
-        default = config.MODULES.services.litellm.public.baseUrl;
-        defaultText = lib.literalExpression "MODULES.services.litellm.public.baseUrl";
+        default = config.MODULES.services.omniroute.public.baseUrl;
+        defaultText = lib.literalExpression "MODULES.services.omniroute.public.baseUrl";
         description = ''
-          OpenAI-compatible endpoint the installed harnesses talk to: this host's LiteLLM gateway
-          on its public Funnel path. Public because the scripts advertise "no Tailscale needed" -
-          and it has to be that origin rather than https://litellm.hp, which neither resolves nor
-          has a certificate these machines trust. Needs MODULES.services.litellm.public.enable:
-          with the route missing the scripts install fine and then fail their first request.
+          OpenAI-compatible endpoint the installed harnesses talk to: this host's OmniRoute
+          gateway on its public Funnel path. Public because the scripts advertise "no Tailscale
+          needed" - and it has to be that origin rather than https://omniroute.hp, which neither
+          resolves nor has a certificate these machines trust. Needs
+          MODULES.services.omniroute.public.enable: with the route missing the scripts install
+          fine and then fail their first request. (Was litellm.public.baseUrl until that
+          gateway's phase-3 deletion, 2026-11-09.)
         '';
       };
 
       provider = mkOption {
         type = types.str;
-        default = "litellm";
+        default = "omniroute";
         description = ''
           Provider id written into both harness configs - the first half of the model reference
           users type (`pi --model <provider>/<id>`, opencode's `"model"`). Not "futurelab": the
-          name now describes the endpoint the key belongs to, and LiteLLM picks the upstream from
-          the model id's own prefix (see `model.id`).
+          name now describes the endpoint the key belongs to, and the gateway picks the upstream
+          from the model id's own prefix (see `model.id`). (Was "litellm" until phase 3; the
+          installed machines' old provider entries simply stop being referenced - re-running the
+          installer rewrites them.)
         '';
       };
 
       providerLabel = mkOption {
         type = types.str;
-        default = "LiteLLM (hp)";
+        default = "OmniRoute (hp)";
         description = "Display name for that provider (opencode's model picker shows it).";
       };
 
@@ -1441,10 +1445,10 @@ in {
         type = types.str;
         default = "futurelab/qwen3.8-flash-next";
         description = ''
-          Model the harnesses start on, spelled the way LiteLLM wants: a `model_name` from the
-          gateway's config, which is why it still carries a vendor prefix - "futurelab/..." is the
-          wildcard deployment litellm.nix registers under `futurelabEnable`, i.e. the same Aqueduct
-          model these scripts used to name directly, one hop further away. The full reference a
+          Model the harnesses start on, spelled the way the gateway wants: a model id
+          `/v1/models` answers with, which is why it still carries a vendor prefix -
+          "futurelab/..." is the connection OmniRoute holds for the same Aqueduct model
+          these scripts used to name directly, one hop further away. The full reference a
           user passes is `<model.provider>/<model.id>`, two prefixes deep; that is how
           MODULES.services.paseo-machine and the interactive setup in users/akos.nix already spell
           it, so pi and opencode both handle it.
@@ -1453,21 +1457,37 @@ in {
 
       apiKeySecret = mkOption {
         type = types.str;
-        default = "opencode/litellm_api_key";
-        example = "litellm_master_key";
+        default = "omniroute_api_key";
+        example = "paseo/omniroute_api_key";
         description = ''
           sops secret the installers hand out as the harnesses' model key. It has to be a key
-          LiteLLM accepts - which is why this is not `paseo/enrollment_api_key` any more: that one
-          holds an Aqueduct key from before the gateway was in front of it, and the gateway rejects
-          it (the scripts would install happily and then 401 on the first request).
+          OmniRoute accepts - which is why this is not `paseo/enrollment_api_key` any more: that
+          one holds an Aqueduct key from before the gateway was in front of it, and the gateway
+          rejects it (the scripts would install happily and then 401 on the first request).
+          It is no longer `opencode/litellm_api_key` either: that one was a LiteLLM virtual key
+          and 401s on OmniRoute (measured 2026-11-09).
 
-          The default is the same virtual key the interactive setup in users/akos.nix and
-          MODULES.services.paseo-machine use, so scripted machines and declared ones present the
-          same credential to the same gateway. Consider minting a dedicated key for it (dashboard ->
-          API Keys, capped to `model.id`) and pointing this there: whatever this names is served to
-          anyone who knows the enrollment URL and written into ~/.pi and ~/.config/opencode on every
-          machine installed. The gateway's master key also works and is the least effort, and the
-          most of it.
+          The default is the shared fleet inference key every harness here uses. Mint a dedicated
+          key for the installers (dashboard -> API Keys, capped to `model.id`) and point this
+          there: whatever this names is served to anyone who knows the enrollment URL and
+          written into ~/.pi and ~/.config/opencode on every machine installed. IGNORED when
+          `apiKeyFile` is set (audit #7, 2026-11-14).
+        '';
+      };
+
+      apiKeyFile = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        example = lib.literalExpression "config.MODULES.services.omniroute.keys.paseoInstaller.filePath";
+        description = ''
+          File holding the installers' model key instead of a sops secret - on the gateway
+          host the nix-minted per-service key (MODULES.services.omniroute.keys.paseoInstaller
+          - audit #7, 2026-11-14): the render unit (root) cats it into
+          $PASEO_ENROLLMENT_API_KEY after sourcing the sops env, so the cockpit/scripts
+          ship their OWN revocable credential and the shared omniroute_api_key stays in
+          sops for the laptops only. null (default) = the apiKeySecret sops behavior,
+          unchanged. A missing file fails the render loudly (the mint unit owns creating
+          it; the 30s re-render timer self-heals once it exists).
         '';
       };
 
@@ -1563,12 +1583,12 @@ in {
       }
       {
         # The installers are advertised as needing no Tailscale, so their default model endpoint is
-        # the public one - which only exists if litellm.nix registers its route on this host.
-        assertion = cfg.model.baseUrl != config.MODULES.services.litellm.public.baseUrl || config.MODULES.services.litellm.public.enable;
+        # the public one - which only exists if omniroute.nix registers its route on this host.
+        assertion = cfg.model.baseUrl != config.MODULES.services.omniroute.public.baseUrl || config.MODULES.services.omniroute.public.enable;
         message = ''
           MODULES.services.paseo installs harnesses that point at
-          "${cfg.model.baseUrl}" (the default, MODULES.services.litellm.public.baseUrl), but
-          MODULES.services.litellm.public.enable is off, so no route answers there: every agent on
+          "${cfg.model.baseUrl}" (the default, MODULES.services.omniroute.public.baseUrl), but
+          MODULES.services.omniroute.public.enable is off, so no route answers there: every agent on
           an installed machine would fail its first request. Enable the gateway's public path, or
           set MODULES.services.paseo.model.baseUrl to an endpoint off-tailnet machines can reach.
         '';
@@ -1642,15 +1662,18 @@ in {
         group = "paseo-registry";
         mode = "0440";
       };
-      # The model key the installers embed - a LiteLLM key, see MODULES.services.paseo.model.
-      "${cfg.model.apiKeySecret}" = {};
+      # The model key the installers embed - an OmniRoute key, see MODULES.services.paseo.model.
+      # Bare {} merges with the harness modules' owner/group for the same sops name (paseo's
+      # consumers are root-side render/registry, which read the template, not this mount).
+      # Skipped entirely when model.apiKeyFile names a minted key instead (audit #7).
+      "${cfg.model.apiKeySecret}" = mkIf (cfg.model.apiKeyFile == null) {};
     };
 
     sops.templates."paseo-web-render.env" = {
       owner = "root";
       content = ''
         PASEO_ENROLLMENT_TOKEN=${config.sops.placeholder."paseo/enrollment_token"}
-        PASEO_ENROLLMENT_API_KEY=${config.sops.placeholder."${cfg.model.apiKeySecret}"}
+        ${lib.optionalString (cfg.model.apiKeyFile == null) ''PASEO_ENROLLMENT_API_KEY=${config.sops.placeholder."${cfg.model.apiKeySecret}"}''}
         PASEO_DAEMON_PASSWORD=${config.sops.placeholder."paseo/daemon_password"}
       '';
       restartUnits = ["paseo-web-render.service"];
@@ -1812,6 +1835,16 @@ in {
         set -a
         . ${config.sops.templates."paseo-web-render.env".path}
         set +a
+        ${lib.optionalString (cfg.model.apiKeyFile != null) ''
+          # File-sourced model key (audit #7): the omniroute mint unit owns the file; a
+          # missing one fails THIS run loudly (empty would bake keyless installers), and
+          # the 30s timer above retries until the first switch's seed unit creates it.
+          if ! PASEO_ENROLLMENT_API_KEY="$(cat '${cfg.model.apiKeyFile}')"; then
+            echo "paseo-web-render: cannot read the minted model key '${cfg.model.apiKeyFile}'" >&2
+            exit 1
+          fi
+          export PASEO_ENROLLMENT_API_KEY
+        ''}
         ${render}/bin/paseo-web-render
         # Re-render once the pairing URL exists (pair unit may finish after the first pass).
         chgrp -R paseo-web ${webDir}/releases || true

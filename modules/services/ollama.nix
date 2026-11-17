@@ -44,7 +44,7 @@
   };
 
   # One Modelfile per catalogue entry: the pulled base plus this entry's context and parameters,
-  # created under the catalogue name. Clients - LiteLLM included - then ask for "coder" rather
+  # created under the catalogue name. Clients - the fleet gateway included - then ask for "coder" rather
   # than the upstream tag.
   modelfile = name: m:
     pkgs.writeText "ollama-${name}.Modelfile" (
@@ -93,8 +93,9 @@ in {
         }
       '';
       description = ''
-        The models this host serves, keyed by the name clients request. LiteLLM treats a name served
-        on more than one host as replicas of one model.
+        The models this host serves, keyed by the name clients request. OmniRoute seeds each
+        host's Ollama as its own connection, so the same name on two hosts appears twice in
+        /v1/models under the same id - tell them apart by the connection's display name.
       '';
     };
 
@@ -154,15 +155,6 @@ in {
         override, set `parameters.num_gpu` to a fixed number of GPU layers (0 = CPU only).
       '';
     };
-
-    weight = mkOption {
-      type = types.int;
-      default = 1;
-      description = ''
-        This host's share of traffic for model names another host also serves, as LiteLLM's
-        simple-shuffle weight.
-      '';
-    };
   };
 
   config = mkIf cfg.enable {
@@ -171,7 +163,7 @@ in {
     services.ollama = {
       enable = true;
       inherit (cfg) package;
-      # All addresses: LiteLLM on other hosts reaches it over Tailscale. The firewall below opens
+      # All addresses: hp's gateway reaches other hosts' Ollama over Tailscale. The firewall below opens
       # the port on tailscale0 only, since Ollama checks no credentials.
       host = "0.0.0.0";
       inherit port;

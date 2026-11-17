@@ -22,22 +22,46 @@
     server.enable = true;
     secretOwner = "root";
     secretGroup = "root";
-    # Public SSH host keys (safe to commit), keyed by the tailnet IP the tuvpn-via-* clients
-    # dial. Cross-checked 2026-11-03: keyscan over tailscale0 == the `hp` entries in akos's
-    # known_hosts, i.e. verified identity, not a blind TOFU grab. Legion5 pins these in
-    # /etc/tuvpn/ssh-known-hosts; a mismatch there is a loud auth error, never a silent
-    # accept. Regenerate with `ssh-keyscan 100.92.36.52` if /etc/ssh/ssh_host_* ever change.
-    server.hostKeys = [
-      "100.92.36.52 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILHoBUmI+TbSwChT7XI8JAHTiHrELZTuSiNKrAnELMhT"
-      "100.92.36.52 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDD0c6to6DpnSsrVvYihDzwDKarnQ5wvJkq+OrVTr6eVFGtU8N8QrDgO4+UcB990rYA19E0Kjsg7gjhutWj/2Y5zGPxW+t2rTm99jDPXfa/8iP9gUHNM8pQh7EQwV3UkIKkvJVzckBrzdUTPXwBNBAASyK2kB4yDcKl7T9XVJnLyW5911dyMIAJ8SFYbtAciFtsrsfJM2iNK0FLy7fi8c/Z9rVoAgWvu4jrG49i3vZEe7DGBQ7D+gRjGKab//FfUtOEpG8yWvMij0w36DkEarTEujWTX5GZPqN4edOkoxO93wR3Dp6UFpYxFFRPk5RhN7rZGLdF5Rm8drRfBk0hBkdQuL15RY7C+spdNDkSpHFIx3VKuB5VInj/KBdsU0CzjRx9jX5z8CX6h/7+n0SP3UeN0sE+ap3BLDtSpIL3mBmKMq2umo4CcZRfgqAHp/ivJ3IyKg7iDDdJOn+KMTR124tFNUy5n5Algh2wR0n6m33xWHbbNnIuAPbqORjtzXyPhhDE8zJioUV1bXvdBCtDiYfIJ4Dzgh7C9aVLubYXxYTbqmBoNs7sCZ2qCto/f+UxcBoK8hrd1EPYe34ACyl0P12WyrJvH9E9aQ22wqsWA6Xvc9+fBpXJyYCadQYShLXPXcx750f748JTp9++K7vKEEEMxCUh74rINBEOTYBUWP4tUw=="
-    ];
+    # The lab's robot net 10.210.0.0/24 (r4uai00, r4uai01) rides hp's own lab routing to the
+    # AirLab gateway, so advertise it to the tailnet PERMANENTLY (reconcile timer), not just
+    # while the TU tunnel lives: tailnet devices without a NetBird client (the phone) reach
+    # the robots through this box. Verified 2026-11-10: hp TCP-connects 10.210.0.10/.50:22
+    # via its 10.50/23 legs. NetBird clients keep using NetBird's own 100.124.0.0/16 routes;
+    # transit SYNs on tailscale0 may log SG-DRIFT on hp's tap like the TU transit does
+    # (log-only today, same caveat as MODULES.networking.tuvpn.server.enable).
+    server.lanTransit = {
+      enable = true;
+      prefixes = ["10.210.0.0/24"];
+    };
+    # 2026-11-10: hp is the tailnet's standing VPN proxy (phone/any tailnet device reaches
+    # r4uai*, akos01 services and datalab without a per-device VPN app), so the tunnel
+    # lives 24/7 and the TU prefixes ride advertised from boot, not just while someone
+    # toggles. The module's on-demand default stays for hosts that want it; the toggle
+    # still owns the CLIENT side (accept-routes here) and survives this always-on choice
+    # (start on a running unit is a no-op; status reads the kernel routes, not the unit).
+    server.startAtBoot = true;
   };
-  # Nightly: pull litellm/omniroute/trilium images, recreate a container only when its
+  # Public SSH host keys (safe to commit), keyed by the tailnet IP peers dial. Cross-checked
+  # 2026-11-03: keyscan over tailscale0 == the `hp` entries in akos's known_hosts, i.e.
+  # verified identity, not a blind TOFU grab. Legion5's tuvpn toggle pins these in
+  # /etc/tuvpn/ssh-known-hosts, and every fleet host's herdr catalog now pins them too
+  # (/etc/herdr/known-hosts) - a host-key rotation that skips this list means the tunnel
+  # toggle and all hub connections fail closed with a clear error, never silently.
+  # Regenerate with `ssh-keyscan 100.92.36.52` if /etc/ssh/ssh_host_* ever change.
+  # (Moved 2026-11-09 from MODULES.networking.tuvpn.server.hostKeys to the fleet's
+  # single-owner table, modules/networking/ssh-client.nix - the herdr module reads the
+  # same fact and must not depend on tuvpn.)
+  MODULES.networking.sshClient.hostKeys = [
+    "100.92.36.52 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILHoBUmI+TbSwChT7XI8JAHTiHrELZTuSiNKrAnELMhT"
+    "100.92.36.52 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDD0c6to6DpnSsrVvYihDzwDKarnQ5wvJkq+OrVTr6eVFGtU8N8QrDgO4+UcB990rYA19E0Kjsg7gjhutWj/2Y5zGPxW+t2rTm99jDPXfa/8iP9gUHNM8pQh7EQwV3UkIKkvJVzckBrzdUTPXwBNBAASyK2kB4yDcKl7T9XVJnLyW5911dyMIAJ8SFYbtAciFtsrsfJM2iNK0FLy7fi8c/Z9rVoAgWvu4jrG49i3vZEe7DGBQ7D+gRjGKab//FfUtOEpG8yWvMij0w36DkEarTEujWTX5GZPqN4edOkoxO93wR3Dp6UFpYxFFRPk5RhN7rZGLdF5Rm8drRfBk0hBkdQuL15RY7C+spdNDkSpHFIx3VKuB5VInj/KBdsU0CzjRx9jX5z8CX6h/7+n0SP3UeN0sE+ap3BLDtSpIL3mBmKMq2umo4CcZRfgqAHp/ivJ3IyKg7iDDdJOn+KMTR124tFNUy5n5Algh2wR0n6m33xWHbbNnIuAPbqORjtzXyPhhDE8zJioUV1bXvdBCtDiYfIJ4Dzgh7C9aVLubYXxYTbqmBoNs7sCZ2qCto/f+UxcBoK8hrd1EPYe34ACyl0P12WyrJvH9E9aQ22wqsWA6Xvc9+fBpXJyYCadQYShLXPXcx750f748JTp9++K7vKEEEMxCUh74rINBEOTYBUWP4tUw=="
+  ];
+  # Nightly: pull omniroute/trilium images, recreate a container only when its
   # image actually changed (docker-images-update.nix).
   MODULES.virtualisation.docker-images-update.enable = true;
   # herdr (herdr.dev): binaries only, no desktop app. hp has no normal user account (the
-  # akos module is opt-in and off here, and hermes is a system user), so there is nobody to
-  # lay out per-user state for and nothing to launch a GUI at. What hp still needs is hc on
+  # akos module is opt-in and off here), so there is nothing to launch a GUI at - but the
+  # hermes service account DOES get laid out per-user state (2026-11-10, users.hermes
+  # below). What hp still needs is hc on
   # PATH in the non-login shell SSH gives an incoming client - that is what makes this box
   # an `hc machine add hp` / `herdr --remote hp` target whose agents keep running after the
   # SSH session ends, and hc is the whole reason to want herdr on a box you never sit at.
@@ -45,11 +69,130 @@
   # into a headless host's closure for no benefit. The three install* options default to
   # "whatever the nixpkgs-unstable pin carries", so once the pin moves past
   # 1c89083e451e the herdr-core package this host is missing appears here by itself - no
-  # second edit. The no-users attrset is deliberate, not an oversight: with no managed user,
-  # MODULES.services.herdr.users stays {} and no linger is granted anywhere.
+  # second edit.
+  #
+  # hp is also the fleet's herdr HUB (2026-11-09): the phone (Termius over the
+  # tailnet) connects to hp's sshd - the one host with a public tailnet name, the tailscale
+  # watchdog and static reachability - and hp's TUI machine catalog (auto-derived by
+  # modules/services/herdr.nix from every host enabling the module) shows legion5/akos01 in
+  # ONE sidebar. users.root + linger: root's user manager is what keeps /run/user/0 - and
+  # with it the transient units herdr's remote bootstrap uses - alive between logins; the
+  # TUI server itself lives in ~/.config/herdr/herdr.sock (a tmpfs-independent path,
+  # verified against v0.9.x session.rs) and hp is the single most-rebooted-to-service box of
+  # the three, so root's first `herdr` attach starts it. sshKeySecret: the pinned hub key
+  # (sops) makes the hub->machine hop work with NO agent and NO forwarded creds - measured
+  # 2026-11-09: without forwarding, root@hp cannot auth to the fleet at all (its only key
+  # is the nix-builder one, untrusted here), so the hub identity is load-bearing, and its
+  # public half lives in profiles/global.nix root authorizedKeys on every host.
   MODULES.services.herdr = {
     enable = true;
     installApp = false;
+    sshKeySecret = "herdr/hub_ssh_key";
+    coreRegistry.user = "root";
+    users.root = {
+      enable = true;
+      cli.enable = true;
+    };
+    # Legion5's agents live in akos's TUI (the laptop's MODULES.services.herdr.users.akos
+    # block), not root's - so the hub dials the laptop AS AKOS. users/akos.nix carries the
+    # hub's public key for exactly this hop. hp/akos01 stay root (no other account there).
+    machines.legion5.user = "akos";
+    # The agent's OWN terminal, 2026-11-10: the hermes account gets a herdr TUI
+    # server + catalog row next to root's, so the phone (and the laptop, whose key
+    # also trusts the account) reach the agent in a hub-dialed session. cli.service
+    # because the account must never linger (hermes-agent.nix: a user manager would
+    # move the gateway's cron workers out of the sandbox) and the hub's own remote
+    # bootstrap spawns no server for a linger-less account (measured same day) -
+    # the fleet unit starts it and every client just attaches; the unit's PATH/TERM
+    # env (see herdr.nix) is what puts `hermes` in the panes.
+    users.hermes = {
+      enable = true;
+      cli = {
+        enable = true;
+        service = true;
+      };
+    };
+    # hp's OWN row (the derived catalog always excludes self): the alias
+    # herdr-hp-hermes + User hermes, pinned to hp's own host keys and dialed with
+    # the hub key by the root-uid Match - a different profile id from root's
+    # "hp", which is the point. Flows to legion5/akos01 verbatim via
+    # coreRegistry, so every host's catalog agrees.
+    machines.hp-hermes = {
+      hostname = config.MODULES.networking.tailscale.hostIP;
+      user = "hermes";
+      knownHosts = config.MODULES.networking.sshClient.hostKeys;
+    };
+    # The datalab terminal, 2026-11-11: the same self-dial trick for the harness
+    # account (modules/services/datalab-harness.nix terminalAccess - linger-less, so
+    # cli.service again). Every pane of this server IS an `ssh -t datalab` (the
+    # account's login shell is the pinned ssh wrapper), so the phone gets a "datalab
+    # machine" whose terminals hold the TU keepalive and die with it - herdr never
+    # learns anything crossed a network. Trust set = the same three keys as hermes
+    # below; phone route: datalab@hp AND datalab@datalab.hp (dns.aliases further
+    # down - the phone's ssh client keys machines by hostname and cannot add hp twice).
+    users.datalab = {
+      enable = true;
+      cli = {
+        enable = true;
+        service = true;
+      };
+    };
+    machines.hp-datalab = {
+      hostname = config.MODULES.networking.tailscale.hostIP;
+      user = "datalab";
+      knownHosts = config.MODULES.networking.sshClient.hostKeys;
+    };
+    # The lab robots, 2026-11-11: the phone's second route to the fleet (the herdr-native
+    # one - the app talks ONLY to hp, hp dials the robots with the hub key, which is already
+    # in apapp's authorized_keys on both boxes; measured: no secret key ever leaves hp's sops
+    # mount). Lab IPs churn behind DHCP, but the HostKeyAlias pins (re-keyed to the herdr-*
+    # alias at render) absorb that exactly like the laptop's ~/.ssh/config does. Host keys
+    # are the laptop's TOFU'd pins, cross-checked against a fresh keyscan 2026-11-11 (both
+    # ed25519 lines match). Off-flake hosts: hostname + user + knownHosts are the minimum.
+    # Direct phone logins (Termius): users/herdr-mobile.pub was appended to
+    # apapp@r4uai00:~/.ssh/authorized_keys 2026-11-11 by hand (same key hp/akos01 trust);
+    # r4uai01 already carried it (mtime 10:32). The robots are Ubuntu, outside this flake -
+    # THIS comment is the registry for that line; revocation = delete it there.
+    machines.r4uai00 = {
+      hostname = "10.210.0.10";
+      user = "apapp";
+      knownHosts = [
+        "r4uai00 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHaTaGV9iR5N1uZNDtGQ52tC8/YUS9uAjfATPY9ccD+U"
+      ];
+    };
+    machines.r4uai01 = {
+      hostname = "10.210.0.50";
+      user = "apapp";
+      knownHosts = [
+        "r4uai01 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHK6sRVfSpV3k8XGKlapnhyhqmBZTYZ6Tds8JJJicjOx"
+      ];
+    };
+  };
+  # Phone's core mobile SSH key; shared public material, no private key on hosts.
+  users.users.root.openssh.authorizedKeys.keys = [
+    (lib.removeSuffix "\n" (builtins.readFile ../../users/herdr-mobile.pub))
+  ];
+
+  # Terminal access to the Hermes agent (modules/services/hermes-agent.nix sshAccess),
+  # 2026-11-10: the agent's interactive TUI must run AS THE HERMES UID - upstream's
+  # gateway attach authenticates the control socket by SO_PEERCRED (hermes_cli/
+  # gateway_runtime_discovery.py connect_private: a peer uid mismatch is
+  # 'unsafe_control_peer'), so a root CLI can never join the gateway that chats over
+  # Matrix and runs the crons; 2026-11-10 measured: `hermes gateway attach` as hermes
+  # returns state:"ready" + a ws ticket against the live gateway, and as root there is
+  # not even a hermes on PATH. The trust set is deliberately the SAME keys hp's root
+  # carries (laptop + hub + phone - one human owns all three; shared files under
+  # users/), so `ssh hermes@hp`, mosh, and the hub's self-dial (machines.hp-hermes
+  # above) all work with NO new key material, and revocation stays "delete the line,
+  # redeploy". The herdr account wiring lives in the MODULES.services.herdr block
+  # above (users.hermes + machines.hp-hermes).
+  MODULES.services.hermes-agent.sshAccess = {
+    enable = true;
+    authorizedKeys = [
+      (lib.removeSuffix "\n" (builtins.readFile ../../users/akos-laptop.pub))
+      (lib.removeSuffix "\n" (builtins.readFile ../../users/herdr-hub.pub))
+      (lib.removeSuffix "\n" (builtins.readFile ../../users/herdr-mobile.pub))
+    ];
   };
 
   # VPN-aware split DNS (modules/networking/dns/split-dns.nix): dnsmasq becomes the system
@@ -60,7 +203,33 @@
     enable = true;
     advertiseExitNode = true;
     labForward.enable = true;
+    # NetBird enrolled 2026-11-11, but its zone forward stays off HERE: the lab DNS it
+    # points at (100.124.160.88) is not authoritative for robo4you.at, so dnsmasq's RD=0
+    # forwarding breaks CNAME chains leaving the lab's zone - measured same day:
+    # stiftlerapi.robo4you.at answers the CNAME (airlab.robo4you.at) but no A via dnsmasq,
+    # while RD=1 dig direct to the same server returns the full chain. Every robo4you.at
+    # names hp consumes resolves identically on public DNS (idp 195.202.147.93, stiftlerapi
+    # 185.199.x GitHub Pages), and wt0 DATA reachability is untouched by this flag.
+    # Re-enable if the lab ever serves private-view names hp needs over NetBird.
+    netbird.enable = false;
+    # ...but the lab's `futurelab` zone IS private-view (r4uai00/r4uai01.futurelab exist only
+    # on 100.124.160.88, measured 2026-11-11) and the phone resolves it THROUGH here: the
+    # tailnet console maps the zone to this box's dnsmasq (split DNS), dnsmasq forwards over
+    # wt0 while the netbird probe answers. Same mechanism as the old robo4you.at forward,
+    # minus that zone's broken CNAME chain.
+    netbird.extraZones = ["futurelab"];
+    # Bare names for the phone (Termius has no zone suffix): MagicDNS probes `r4uai00.` and
+    # `r4uai00.<search>` at the split resolver, and `datalab` has no zone at all (it's TU's
+    # public cluster host, reachable via the approved TU subnet route). IPs measured against
+    # the lab DNS + public DNS 2026-11-11; the robots' lab DHCP is static (10.210.0.x).
+    tailnetRecords = {
+      r4uai00 = "10.210.0.10";
+      r4uai01 = "10.210.0.50";
+      datalab = "128.130.194.213";
+    };
   };
+  # FutureLab subnet access; enrollment stays runtime state, DNS stays dnsmasq.
+  MODULES.networking.netbird.enable = true;
   networking.enableIPv6 = false;
 
   MODULES.services.syncthing.deviceID = "ST66PS2-5LYQY5J-LNI3FR4-3VLG7W3-F4ZHRS2-72NZMBG-QVWV2QD-6SB2DQF";
@@ -87,6 +256,15 @@
   ];
 
   PROFILES.zroot.enable = true;
+  # 2026-11-11 user request: hardened kernel on the ZFS servers. nixpkgs 26.05 removed
+  # linuxPackages_hardened ("lack of maintenance"), so modules/system/hardened-kernel.nix
+  # rebuilds the pinned 6.18.59 with the grafix linux-hardened patchset (v6.18.59-hardened1)
+  # + the vendored hardened defconfig, keeping the eBPF/kprobe floor coroot/docker/tailscale
+  # need. Takes effect on the NEXT boot; the current generation stays selectable.
+  # 2026-11-12: owner chose hardened 6.18.60 while all flake dependencies
+  # update independently. The source and patch are pinned together in the module.
+  # Activation installs a boot generation; it does not reboot this host.
+  MODULES.system.hardenedKernel.enable = true;
   PROFILES.server.enable = true;
   MODULES.security.sops.enable = true;
   # No X11 / ssh-agent auth on a server (2026-10-24 audit #8): nobody graphs onto hp, and a
@@ -122,9 +300,10 @@
   MODULES.services.grafana.enable = true;
   MODULES.services.loki.enable = true;
   # hp is the CPU worker as well as the gateway: it serves catalogue names legion5 also serves, so
-  # LiteLLM treats them as replicas of one model and keeps answering - slowly, on four Zen+ cores -
-  # while the laptop is shut. Weight 1 against legion5's 8 decides how the traffic splits when both
-  # are up.
+  # a request still answers - slowly, on four Zen+ cores - while the laptop is shut. OmniRoute
+  # seeds the two hosts as separate Ollama connections (same ids, different connection), so which
+  # one a client gets is the client's pick; the replica-weighting litellm.nix did died with it
+  # (phase 3, 2026-11-09).
   #
   # GGUF quants rather than full-precision weights: small-text is a ~2.5 GB Q4_K_M whose q8_0 cache
   # is sized to the configured context, which is what makes 8192 tokens affordable beside Immich
@@ -139,60 +318,151 @@
   };
 
   # hp is the always-on node, so the gateway lives here rather than on the laptop, and it is
-  # https://litellm.hp that goes in a client config.
-  MODULES.services.litellm.enable = true;
-  # Where requests land when the only host serving a name is unreachable. litellm.nix builds those
-  # fallbacks for every name no local host has, which is most of legion5's catalogue (coder,
-  # gpt-oss, heretic): with the laptop shut they answer from this host's local/small-text instead
-  # of erroring. Of the entries here it is the cheap one, and a degraded reply beats a failure.
-  MODULES.services.litellm.fallbackModel = "local/small-text";
-  # Wildcard OpenRouter passthrough - see litellm.nix. Key comes from the openrouter_api_key sops
-  # secret.
-  MODULES.services.litellm.openrouterEnable = true;
-  # Second gateway, managed from its own dashboard (https://omniroute.hp) rather than
-  # declared here: hosted providers and combos live in its database. The first-login password is
-  # in /var/lib/omniroute/secrets.env (INITIAL_PASSWORD) - see omniroute.nix.
+  # https://omniroute.hp that goes in a client config. Providers, combos and API keys are
+  # dashboard state; the nix-seeded connections (openrouter, futurelab) and the first-login
+  # password in /var/lib/omniroute/secrets.env (INITIAL_PASSWORD) are omniroute.nix's - see
+  # that file's header for the full seed list and the phase-3 history (litellm.nix deleted
+  # 2026-11-09, its upstreams - openrouter/futurelab/openai/codex - already OmniRoute
+  # connections, so nothing here restates them).
   MODULES.services.omniroute.enable = true;
-  # Wildcard passthrough the other way: OmniRoute's own dashboard-managed providers/combos,
-  # reachable through LiteLLM as "omniroute/<name>" - see litellm.nix. omniroute_api_key has to
-  # be created by hand from OmniRoute's dashboard first (its module has no sops key to auto-fill
-  # - see the option's doc comment), then added to sops under that name.
-  MODULES.services.litellm.omnirouteEnable = true;
-  MODULES.services.litellm.omnirouteApiKeySecret = "omniroute_api_key";
-  # Third gateway, the Aqueduct instance self-hosted at https://futurelab.robo4you.at: wildcard
-  # passthrough the same way again, so its models are reachable through LiteLLM as
-  # "futurelab/<name>" - see litellm.nix. Nothing about it is on the tailnet, it is reached over
-  # the public internet like OpenRouter is, and the models listed are discovered from Aqueduct's
-  # own /v1/models, i.e. whatever its dashboard
-  # (https://futurelab.robo4you.at/aqueduct/management/) has configured.
-  #
-  # futurelab_api_key1/2/3 have to be created by hand first, from the Tokens page of that
-  # dashboard, since it sits behind the gateway's own login and nothing here can mint one - the
-  # same manual-step situation omniroute's key is in. All three are configured: litellm.nix
-  # registers one "futurelab/*" replica deployment per key, so simple-shuffle spreads requests
-  # over the three keys' separate Aqueduct quotas and a cooled-down key falls to its siblings.
-  MODULES.services.litellm.futurelabEnable = true;
-  # OpenAI's own API, the fourth upstream and wildcarded the same way: "openai/<model>" is
-  # forwarded verbatim to api.openai.com - see openaiDeployments in litellm.nix. openai_api_key
-  # is a plain key from https://platform.openai.com/api-keys kept in sops under that name.
-  # (ChatGPT Plus itself rides OmniRoute's dashboard-managed codex OAuth connection instead -
-  # that is the hosted-subscription side of the fleet split, reached as "omniroute/codex/<model>".)
-  MODULES.services.litellm.openaiEnable = true;
-  # The gateway itself, on the internet: https://hp.tail546fb.ts.net:8443/litellm/v1 through the
-  # shared Funnel origin (see RUNBOOK-public.md). It exists for the Paseo installers - the machines
-  # they install deliberately have no Tailscale, so https://litellm.hp is not an address they can
-  # use - and for any other off-tailnet client. Only the OpenAI-compatible prefix gets a route: the
-  # admin UI, its management API and /metrics stay tailnet-only, and what is public answers only to
-  # a LiteLLM key (litellm_master_key, or a virtual key minted from it). See the `public` options in
-  # litellm.nix.
-  MODULES.services.litellm.public.enable = true;
+  # The gateway itself, on the internet: https://hp.tail546fb.ts.net:8443/omniroute/v1 through
+  # the shared Funnel origin (see RUNBOOK-public.md). It exists for the Paseo installers and
+  # Amp's cloud - machines/clients with no Tailscale, for whom https://omniroute.hp is not an
+  # address - and for any other off-tailnet client. Only the OpenAI-compatible prefix gets a
+  # route: the admin UI and its management API stay tailnet-only, and what is public answers
+  # only to an OmniRoute inference key (a per-service nix-minted key, or one minted on the
+  # dashboard). Took over litellm's public.enable role at phase 3 (2026-11-09).
+  MODULES.services.omniroute.public.enable = true;
+  # audit #7 (2026-11-14): per-service minted inference keys (omniroute.nix header documents
+  # the doctrine + the /api/keys API; the seed unit mints them at switch into
+  # /var/lib/omniroute/keys, root-only, znapzend'd with the gateway dataset; a wiped DB or
+  # file dir re-mints and logs "*** KEY VALUE CHANGED ***" - restart the consumer). The
+  # shared omniroute_api_key in sops now serves ONLY the off-gateway-host harnesses.
+  # One entry per CONSUMER THAT RUNS HERE: trilium (gateway disabled) gets its key when
+  # it returns - keys.trilium should then be scoped (models = the one route it needs) so
+  # a re-enabled note-db leak costs one model, plus gateway.apiTokenFile = the raw
+  # filePath (and a cleared document.db llmProviders row so the seed-once re-seeds).
+  # No ompBootstrap row (owner ruling 2026-11-15): the installer has no baked key -
+  # every box mints its own omp-<hostname> credential, and the install DIES when the
+  # mint endpoint is unreachable (a box that can't mint can't reach the gateway
+  # either, so a shared fallback key would only ever install a harness that 401s).
+  MODULES.services.omniroute.keys = {
+    hermes = {}; # OMNIROUTE_API_KEY default fits the fork's .env line
+    homepage.envVar = "HOMEPAGE_VAR_OMNIROUTE_API_KEY"; # homepage substitutes its unit env
+    openWebui.envVar = "OPENAI_API_KEY"; # open-webui's EnvironmentFile variable
+  };
+  MODULES.services.hermes-agent.apiKeyFile =
+    config.MODULES.services.omniroute.keys.hermes.envFilePath;
+  MODULES.services.homepage.omnirouteKeyFile =
+    config.MODULES.services.omniroute.keys.homepage.envFilePath;
+  MODULES.services.open-webui.apiKeyFile =
+    config.MODULES.services.omniroute.keys.openWebui.envFilePath;
+  # The omp bootstrap installer, served token-gated at /install/<token>/omp.sh by
+  # modules/services/bootstrap-installers.nix (the standalone successor of the retired
+  # cockpit's endpoint). hp runs no omp itself - this only ships the fleet's omp config
+  # to off-nix Linux/macOS boxes. No baked provider key at all: the installer mints this
+  # box's own `omp-<hostname>` gateway credential at the hub's mint endpoint and DIES if
+  # the mint fails (owner ruling 2026-11-15 - unreachable mint = unreachable gateway,
+  # so a shared fallback key could only ever install a harness that 401s). See
+  # modules/services/omp.nix's bootstrap block for what the script writes and what it
+  # deliberately deviates from.
+  MODULES.services.omp.bootstrap.enable = true;
+  # The owner's short URL (2026-11-14): `curl https://hp/install-omp.sh | sh` on the
+  # tailnet (the step-ca cert covers the apex, the bootstrap-installers apex router
+  # answers Host(hp)), and the homepage tile points at the /omp page below, which
+  # prints both this one-liner and the funnel URL with the enrollment token. The
+  # script carries NO credential of its own (owner ruling 2026-11-15): a tailnet
+  # stranger who curls it can only make the hub MINT a per-device key for their own
+  # box (rate-capped per IP + name by the mint daemon), never read anyone else's.
+  MODULES.services.bootstrapInstallers.scripts.omp.publicPath = "/install-omp.sh";
+  # The public funnel face of the same script, token in a HEADER instead of the URL
+  # (owner ask 2026-11-15): `curl -H "X-Install-Token: <token>"
+  # https://hp.tail546fb.ts.net:8443/install/omp.sh | sh`. The token never rides a
+  # URL anyone logs; the ACL is the rendered nginx include the render unit maintains.
+  MODULES.services.bootstrapInstallers.headerTokens.omp = "/install-omp.sh";
+  # Per-DEVICE keys for the copied one-liner (owner design 2026-11-15): the script,
+  # run on ANY device (no Tailscale needed), mints its own gateway key named after
+  # the box (`omp-<hostname>`, dashboard-revocable per device) through the loopback
+  # installer-mint daemon - fetched via this header-gated /install/mint proxy, with
+  # its OWN token (a leaked script copy mints keys; it cannot fetch other consumers'
+  # scripts, and the daemon caps per-name + per-IP). The proxies.mint gate entry is
+  # self-registered by MODULES.services.installerMint; this just supplies its token.
+  MODULES.services.installerMint.enable = true;
+  MODULES.services.bootstrapInstallers.apiKeys.INSTALL_MINT_TOKEN = "installer/mint_token";
+  MODULES.services.omp.bootstrap.mintUrl =
+    config.MODULES.networking.traefik.funnel.urlOf "/install/mint";
+  # The fleet web-search MCP server (modules/services/mcp-perplexity.nix): every
+  # device that ran the installer gets a perplexity entry in its mcp.json pointing at
+  # the funnel /install/mcp gate; searches flow through the gateway's sonar-pro route
+  # with a nix-minted key. Both halves self-register on enable (proxies.mcp gate +
+  # the installer's $MCP_PERPLEXITY_TOKEN) - the mcpPerplexity key row below is the
+  # only extra declaration needed.
+  MODULES.services.mcpPerplexity.enable = true;
+  MODULES.services.omniroute.keys.mcpPerplexity = {};
+  # The homepage tile the owner asked for: opens the /omp page (next block), which
+  # carries both one-liners. Icon is the project's OWN pi-symbol svg served from its
+  # repo (the i2pd precedent - a remote logo URL). NOT the maintainer's GitHub avatar:
+  # that is a person's face on a service tile (owner: "a random guy", 2026-11-15).
+  MODULES.services.homepage.services.install-omp = {
+    href = "https://${config.MODULES.networking.traefik.domain}/omp";
+    icon = "https://raw.githubusercontent.com/can1357/oh-my-pi/main/assets/icon.svg";
+    description = "curl|sh installer for omp";
+  };
+  MODULES.services.bootstrapInstallers.pages.omp = {
+    path = "/omp";
+    source = pkgs.writeText "omp-page.html" ''
+          <!doctype html>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Install omp</title>
+          <style>
+            body { font: 15px/1.6 system-ui, sans-serif; max-width: 44rem; margin: 3rem auto; padding: 0 1rem;
+                   background: #101418; color: #d8dee6; }
+            h1 { font-size: 1.3rem; }
+            p.lead { color: #8b97a8; }
+            pre { background: #1a2027; border: 1px solid #2a3340; border-radius: 8px;
+                  padding: .7rem .9rem; overflow-x: auto; white-space: pre-wrap; }
+            code { color: #9ecbff; }
+            small { color: #6b7686; }
+          </style>
+          <h1>omp - the fleet coding agent</h1>
+          <p class="lead">Installs the pinned omp CLI and the fleet gateway config (the
+          public OmniRoute funnel). Runs on <strong>any Linux/macOS box, with or without
+          Tailscale, with or without curl</strong> (it self-fetches the binary via python3
+          when curl is missing), mints <strong>its own gateway API key named after the
+          machine</strong> (<code>omp-&lt;hostname&gt;</code>, revocable per device on the
+          OmniRoute dashboard), and wires <strong>live web search</strong> (a self-hosted,
+          free search MCP server behind the same funnel). Refuses NixOS hosts (declare
+          <code>MODULES.services.omp</code> there instead).</p>
+          <p>Copy-paste, works anywhere (the token rides a HEADER, never a URL anyone logs):</p>
+          <pre>curl -fsSL -H "X-Install-Token: $BOOTSTRAP_INSTALL_TOKEN" \
+      https://hp.tail546fb.ts.net:8443/install/omp.sh | sh</pre>
+          <p>On the tailnet, the same install without the header:</p>
+          <pre>curl https://hp/install-omp.sh | sh</pre>
+          <p>From a fleet box that can ssh the target (installs it there, same per-device
+          key mint):</p>
+          <pre>omp-deploy [-J root@hp] user@host</pre>
+          <small>Generated by the fleet hub (modules/services/bootstrap-installers.nix);
+          re-rendered at every activation and secret rotation. This box mints its own
+          gateway key (<code>omp-&lt;hostname&gt;</code>) at install time; if the hub's
+          mint endpoint is unreachable the install aborts (no shared fallback key).</small>
+    '';
+  };
   MODULES.services.prometheus.enable = true;
   # 21 GiB box; eval fails if the LIMITS table's MemoryHigh lines stop fitting (PLAN.md §1.2).
   # 19G since 2026-10-30, the day the paperless row landed and broke the old 18G sum: owner
   # measured the box idle at ~60% RAM with most of that ZFS ARC (reclaimable under pressure),
   # so the throttle-line cap - not the hardware - is the binding limit here, and it moved to
   # keep every row's memHigh honest instead of squeezing a new one below its working set.
-  MODULES.system.limits.memoryBudget = "19G";
+  # 2026-11-11: 19G -> 23G with the tiny/boring tier raises (below-the-working-set
+  # throttles were causing real stalls - see the tier comments in limits.nix) and the
+  # immich-server bump. Sum of memHigh overcomitting the 21G box is now the deliberate
+  # owner call: the fleet's services don't all peak at once, MemoryHigh only throttles
+  # (each row's memMax is still the hard wall), and hp has no swap so the wall is the
+  # real boundary anyway. Old note: sized so the gateway + immich ML + the monitoring
+  # stack could all throttle at once; that premise (plan for simultaneous high) is what
+  # the owner retired.
+  MODULES.system.limits.memoryBudget = "23G";
   # Author the §1.7 PSI-pressure alert rules here; Syncthing ships them to every Prometheus.
   MODULES.system.limits.managePressureRules = true;
   # PLAN.md §2 Tier A + §3.4: per-service containment specs live in modules/security/jail.nix
@@ -216,8 +486,8 @@
   MODULES.security.jails.grafana.enable = true;
   MODULES.security.jails.syncthing.enable = true;
   MODULES.security.jails.firefly.enable = true;
-  # PLAN §3: auditd + execve keys for the code-running class (hermes IS the agent uid -
-  # paseo-hermes shares it; matrix-synapse's tree is static so execve is near-silent) + the
+  # PLAN §3: auditd + execve keys for the code-running class (hermes IS the agent uid;
+  # matrix-synapse's tree is static so execve is near-silent) + the
   # journald forwarder + Grafana paging rules. Container workloads run as root's uid and are
   # covered by their jails' egress LOGs, not execve keys.
   MODULES.security.audit.enable = true;
@@ -259,11 +529,28 @@
     vms = ["vm-agents"];
   };
 
-  # PLAN §7: east-west service graph in observe mode (log-only) + the passive Suricata
-  # tap (hp is the tailnet aggregation point - one tap is enough); flip
-  # MODULES.security.serviceGraph.enforce after a week of explainable sg-seen logs
-  # (query {unit="kernel"} |= "sg-seen" / {job=~".*suricata.*"} in Loki).
+  # Phone SSH (keeps working after audit #9): Termius authenticates with the key in
+  # users/herdr-mobile.pub, provisioned declaratively above and on akos01/hermes/datalab.
+  # The Moshi/Herdr mobile pairing pages are retired 2026-11-14 (audit #9): the modules,
+  # their ports (8470/8471) and their Traefik routes are deleted from the tree - enabling
+  # them is no longer expressible here.
+
+  # PLAN §7: east-west service graph in ENFORCE on this host (2026-11-13 audit flipped
+  # `enforce` deliberately; the stale "observe mode, flip after a week of sg-seen" gate
+  # prose was what was wrong - audit finding #12) + the passive Suricata tap (hp is the
+  # tailnet aggregation point - one tap is enough, akos01 added 2026-10-25). Undeclared
+  # TCP still logs rate-limited "sg-seen" BEFORE the reject, so drift keeps showing up as
+  # {unit="kernel"} |= "sg-seen" / {job=~".*suricata.*"} in Loki.
   MODULES.security.serviceGraph = {
+    # 2026-11-12: independent nftables hook survives VPN rule reordering.
+    enforce = true;
+    # wt0 joins tailscale0 as a tap (2026-11-12): the owner reaches hp over
+    # NetBird too, and enforce's default treats wt0 as outbound-only - leaving
+    # it there would drop NEW netbird inbound (SSH included), a silent
+    # regression against today's live `-i wt0 -j ACCEPT`. Tapped, netbird
+    # traffic must still match a declared edge; netbird's own ACLs layer on
+    # top. akos01 is NOT enrolled in netbird, so it keeps the stock pair.
+    taps = ["tailscale0" "wt0"];
     enable = true;
     suricata.enable = true;
     allow = [
@@ -275,13 +562,28 @@
       }
       # znapzend push target is ssh (covered); the laptop replica arrives over tailscale
       # too - nothing extra needed yet, this list is where host-local edges will land.
+      {
+        name = "airlab-builder";
+        # ssh-ng dials to r4unb02.airlab ride akos01's advertised transit /32, so OUR
+        # tailscale0 tap sees them as outbound SYNs to a non-tailnet IP - undeclared,
+        # that is SG-DRIFT on every nix offload (AGENTS Rule 1, both-roles).
+        ports = [22];
+        from = ["172.18.2.21"];
+      }
     ];
   };
+  # 2026-11-12: hp is the fleet's PUBLIC door (Cloudflare tunnel + funnel), so it also
+  # runs the two public-facing observers: the Suricata loopback DPI tap on Traefik's
+  # public entry ports (suricata.edge) and Traefik's JSON access log feeding the
+  # edge-analytics Alloy pipeline. acceptFleetPush makes hp's Loki the aggregator every
+  # peer's fleetPushTargets land in (the tailnet firewall rule lives in loki.nix).
+  MODULES.security.serviceGraph.suricata.edge.enable = true;
+  MODULES.networking.traefik.accessLogs.enable = true;
+  MODULES.services.loki.acceptFleetPush = true;
 
   MODULES.security.audit.execUsers = [
     "postgres"
     "hermes"
-    "paseo"
     "matrix-synapse"
   ];
 
@@ -290,26 +592,31 @@
   # The agent pushes over Tailscale to akos01's collector (derived serverHost), hp is
   # visualised in that server's UI (coroot.<akos01's domain>); the old per-host servers
   # (2026-10-25) left the hp-local data in the now-orphaned coroot-data and
-  # coroot-clickhouse-data docker volumes. Loopback OTLP emitters (litellm, open-webui)
+  # coroot-clickhouse-data docker volumes. Loopback OTLP emitters (open-webui)
   # key off coroot.enable and switch their trace export off on this host by themselves.
   MODULES.services.coroot.agentEnable = true;
   # Coroot RCA -> Postgres metrics for this box's cluster (role+extensions provisioned by
   # postgresql.nix; credentials go into Coroot's per-app form once per monitored instance).
   MODULES.services.postgres.corootIntegration.enable = true;
 
+  # Coroot alerting lands HERE, where the talking parts of the fleet live: a webhook
+  # receiver (PORTS.corootAlerts, tailscale0-only) that posts every Coroot alert/incident
+  # into a Matrix room as the @coroot bot - one message for me (@akos) plus an @hermes
+  # mention asking the agent to summarize what happened and diagnose it (the agent dials
+  # akos01's Coroot API/MCP over the one pinned egress hole for real evidence). hp is the
+  # receiver only; the akos01 server half of the wiring derives automatically, and
+  # coroot-alert-configure registers the integration on akos01 hourly - no UI step.
+  # RUNBOOK-coroot-alerts.md: the sops secrets. (modules/services/coroot-alerts.nix)
+  MODULES.services.corootAlerts.enable = true;
+
   # n8n, the n8n-sandbox runner and LibreChat were removed from the fleet on 2026-10-24
   # (PLAN.md §1.5) - the chat UIs that remain are Open WebUI and Omniroute's own.
 
-  # Paseo control plane - see hosts/hp/RUNBOOK/RUNBOOK-paseo.md + modules/services/paseo.nix. The hub
-  # daemon serves https://paseo.hp (tailnet), the relay is the one public piece (Funnel port
-  # 10000), and https://hp.tail546fb.ts.net:8443/install/<token>/{opencode,pi}.sh bootstraps
-  # remote harness machines. Secrets: sops paseo/*.
-  MODULES.services.paseo.enable = true;
-  # Hermes' own Paseo daemon (uid hermes, loopback 8116, dials out to the relay above): drives
-  # Hermes conversations from the Paseo app/dashboard via the ACP provider "Hermes". Its egress
-  # gets exactly one extra hermes-egress RETURN rule (tailnet IP:10000) - see paseo-hermes.nix.
-  # Secret: sops paseo/hermes_daemon_password.
-  MODULES.services.paseo-hermes.enable = true;
+  # Paseo (hub + relay + paseo-hermes, formerly enabled here - RUNBOOK-paseo.md) and
+  # litellm were retired fleet-wide on 2026-11-11: herdr (modules/services/herdr.nix)
+  # replaced the Paseo hub/machine control plane, OmniRoute replaced litellm as the
+  # gateway. The enable flips are gone; the modules stay for their pass-through parts
+  # (see the ports note below) until the runbook/secret cleanup lands.
 
   # opencode (terminal coding agent) on this host, for root's shell. hp has no akos uid, so the
   # module cannot be reached via users/akos.nix and is enabled here directly, with the API-key
@@ -375,11 +682,12 @@
   };
 
   # Prosody XMPP server hosting akosp.app (same domain as Matrix; JIDs like akos@akosp.app).
-  # Reachability is IPv6-only (hp's IPv4 is NATed): the xmpp module maintains the AAAA at
-  # xmpp.akosp.app plus the _xmpp-client/_xmpp-server SRV records through the Cloudflare API
-  # token (cloudflare/dns_api_token) and a DNS-01 cert from Let's Encrypt. Accounts come from
-  # sops (xmpp/*_password), hashed into Prosody once at first boot. Matrix side: the jabber
-  # bridge above. Runbook: RUNBOOK-xmpp.md.
+  # Reachability is through the Cloudflare Tunnel (websocket + XEP-0156 host-meta on
+  # xmpp.akosp.app; the old IPv6-direct design died because TU Wien drops inbound v6 and the
+  # bridge cannot do SRV - the header of modules/services/xmpp.nix carries the 2026-11-15
+  # measurements). The DNS-01 cert from Let's Encrypt still fronts direct 5222/5269 for
+  # tailnet/LAN clients. Accounts come from sops (xmpp/*_password), hashed into Prosody once
+  # at first boot. Matrix side: the jabber bridge above. Runbook: RUNBOOK-xmpp.md.
   MODULES.services.xmpp.enable = true;
 
   MODULES.services.hermes-agent = {
@@ -399,17 +707,17 @@
   # Hermes' cron job. See hermes-ics.nix.
   MODULES.services.hermes-ics.enable = true;
 
-  # Trilium Notes - RETIRED 2026-11-11. The live notes system is Joplin now: the sync tree
-  # /var/lib/hermes/joplin (SFTPGo WebDAV target) is what Hermes' cron writes through
-  # joplin_event_sync.py and what the ICS feed links into (joplin:// deep links). The Trilium
-  # archive on disk (/var/lib/trilium container volume) is untouched and still readable by
-  # re-enabling - see git history and the trilium-etapi skill for the ETAPI recipes.
+  # Trilium Notes (https://triliumnotes.org) as the knowledge base - https://trilium.hp on the
+  # tailnet. The ETAPI token was created in the UI and stored in sops (trilium/etapi_token), so
+  # Hermes reads and writes notes through it (see trilium.nix).
+  # Retired by the owner during the 2026-11-12 review; keep its stored data.
   MODULES.services.trilium.enable = false;
   MODULES.services.trilium.etapiTokenSecret = "trilium/etapi_token";
-  # Settings -> AI comes up with this host's LiteLLM as the provider, on the master-key-minted
-  # virtual key trilium/litellm_api_key (trilium.nix's `litellm` options for the seeding
-  # mechanics and the one-time key creation command).
-  MODULES.services.trilium.litellm.enable = false;
+  # Settings -> AI comes up with this host's gateway (OmniRoute) as the provider on the shared
+  # omniroute_api_key inference key (trilium.nix's `gateway` options for the seeding mechanics;
+  # a dashboard-minted scoped key is the cheap tightening step - the key lands in document.db in
+  # plain text). Seed-once semantics, so the module re-seeds exactly the old litellm-id'd entry.
+  MODULES.services.trilium.gateway.enable = false;
 
   # Joplin (https://joplinapp.org), side by side with Trilium for the same job - https://joplin.hp
   # on the tailnet: the Joplin DESKTOP streamed from lscr.io/linuxserver/joplin. The Hermes
@@ -420,11 +728,13 @@
   # auto-sync on. No browser login (webUser = null, 2026-10-27: every tailnet peer is akos' own
   # device, so the nginx basic auth guards nothing a determined-enough local isn't already
   # trusted with; see the option's caveat about Joplin plugins before widening the tail).
-  # AI chat is not seeded the way Trilium's LiteLLM provider is - if wanted, Options -> AI with
-  # http://127.0.0.1:8095/v1 and a virtual key minted like trilium.nix describes.
+  # AI chat is not seeded the way Trilium's gateway provider is - if wanted, Options -> AI with
+  # http://127.0.0.1:<PORTS.omniroute>/v1 and an inference key minted on the dashboard.
   MODULES.services.joplin = {
     enable = true;
-    webUser = null;
+    # 2026-11-12: a streamed desktop with plugins is code execution; require
+    # the module's generated password even on the private overlay.
+    webUser = "akos";
     # The W6400 (amdgpu, renderD128) moves Selkies' capture/encode off the CPU - measured
     # 2026-10-27: software x264 readback under the cgroup quota felt laggy from the browser,
     # the image's own README calls this flag the whole GPU setup on AMD.
@@ -439,7 +749,8 @@
   # first-run page, mint the token per paperless.nix's apiTokenSecret text, store it in sops as
   # paperless/api_token, then flip the line below - until then the archive runs, but only the
   # human UI can touch it. OCR languages ride hermes' eng+deu default.
-  MODULES.services.paperless.enable = true;
+  # Retired by the owner; disabling the units does not delete the archive.
+  MODULES.services.paperless.enable = false;
   # MODULES.services.paperless.apiTokenSecret = "paperless/api_token";
 
   # Outline was tried and dropped - not needed. Its data (Postgres's "outline" database,
@@ -511,9 +822,15 @@
   MODULES.nix.substituters.airlab-attic.enable = true;
   MODULES.nix.substituters.airlab-attic.push.enable = true;
 
-  networking = {
-    useDHCP = lib.mkForce true;
-  };
+  # Networking: NetworkManager owns DHCP (its own profiles are connected and
+  # already hold the leases + the resolvconf records; measured 2026-11-15: NM had
+  # .232 on the WAN NIC while a legacy dhcpcd held a SECOND concurrent lease .235
+  # on the same interface plus one on wlo1 - profiles/global pulled NM in for the
+  # TU campus, dhcpcd's mkForce from before that was never retired). The microvm
+  # bridge keeps systemd.network enabled, and NixOS warns (correctly) when dhcpcd
+  # is also switched on with a networkd-configured stack: with dhcpcd gone the
+  # duplicate-managed-interface warning is gone because there is no second client.
+  # dhcpcd's bridge/tap deny-list (microvm-host.nix) stays as a no-op safety net.
 
   services.logind.settings.Login = {
     # lid closed = keep working, on battery AND external power AND docked
@@ -545,9 +862,89 @@
   boot.kernel.sysctl = {
     "net.ipv6.conf.all.disable_ipv6" = 1;
   };
-  # Off 2026-11-09: r4unb02.airlab is unreachable from this box ("cannot build on
-  # ssh-ng://builder@r4unb02.airlab: failed to start SSH connection" during the deploy of
-  # that day), and nix just falls back to local builds anyway - the dead entry only added
-  # retries. Flip back to true once the builder is reachable again.
-  MODULES.nix.builders.airlab = false;
+  # RE-ENABLED 2026-11-11. The 2026-11-09 teardown blamed unreachability, but that was
+  # never the problem: r4unb02.airlab (172.18.2.21) rides akos01's tailscale transit /32
+  # route (table 52) and answers TCP 22 today, and the shared nix-builder key authenticates
+  # from akos01 fine. What actually failed ssh-ng was hp having NO host-key pin for the box
+  # ("Host key verification failed" is what the daemon logs as "failed to start SSH
+  # connection") plus the dangling identity symlink the disabled state left behind. Both
+  # fixed in modules/nix/builders/airlab.nix (pinned identity + ssh/airlab-known-hosts,
+  # keys cross-checked against akos01's and the laptop's pins and a fresh hp keyscan).
+  # (The user's hunch said netbird; netbird is up here but not in the path - the route is
+  # the tailnet's.)
+  MODULES.nix.builders.airlab = true;
+
+  # datalab agent sessions, 2026-11-11: hp hosts the ssh into the TU cluster inside tmux
+  # so phone/laptop disconnects stop datalab's idle-reaper from killing the agent, while
+  # the connection still ends WITH the harness (modules/services/datalab-harness.nix owns
+  # the mechanics; tuvpn.boot keeps the tunnel up 24/7 - it is already this box's job).
+  # The pi/opencode PATHs were verified against a plain non-login `ssh datalab`.
+  MODULES.services.datalabHarness = {
+    enable = true;
+    user = "alexander.lampalzer";
+    knownHosts = lib.removeSuffix "\n" (builtins.readFile ../../users/datalab-known-hosts);
+    harness = {
+      pi = {};
+      opencode = {};
+      # cmd "" = no agent, no remote tmux: a plain login shell on datalab, living and
+      # dying with its dl-shell core terminal like every harness (reaper-safe).
+      shell.cmd = "";
+      # UltraTrainer (the A2RL video-training web app), 2026-11-13: spawned like any
+      # harness (herdr menu row / `ultra-trainer` in a dl terminal / datalab-harness
+      # ultra-trainer), runs `./run.sh` on the head with UT_PORT pinned to the number
+      # hp's persistent loopback tunnel binds (PORTS.ultraTrainer; one port both ends).
+      # The UI then answers at https://ultra-trainer.datalab.hp for the whole tailnet
+      # WITHOUT any browser-side -L forward; until it is spawned the tunnel is up but
+      # nothing listens head-side, so the site 502s - spawning from the menu is the
+      # on-switch (the app keeps training jobs alive in its harness-ultra-trainer tmux
+      # across phone disconnects, like every harness).
+      ultra-trainer = {
+        cmd = "cd ~/ultra-trainer && exec ./run.sh";
+        portEnv = "UT_PORT";
+        port = config.PORTS.ultraTrainer;
+      };
+    };
+    # hp's third herdr identity (see the herdr block above: users.datalab +
+    # machines.hp-datalab): every pane of that server execs the pinned cluster ssh
+    # directly, the TU keepalive IS the terminal. Same trust set as hermes/root (one
+    # human owns all keys; revocation = delete the line, redeploy).
+    terminalAccess = {
+      enable = true;
+      authorizedKeys = [
+        (lib.removeSuffix "\n" (builtins.readFile ../../users/akos-laptop.pub))
+        (lib.removeSuffix "\n" (builtins.readFile ../../users/herdr-hub.pub))
+        (lib.removeSuffix "\n" (builtins.readFile ../../users/herdr-mobile.pub))
+      ];
+    };
+  };
+
+  # The phone's ssh client keys its saved hosts by hostname, so it cannot hold hp twice
+  # (root@hp and hermes@hp already exhaust it... one name, one entry). The alias gives
+  # datalab its own name for the SAME sshd + tailnet IP: the phone adds
+  # datalab@datalab.hp and lands in the pane-shell account. No router, no listener -
+  # one address= record in the hp zone (modules/networking/dns.nix aliases).
+  MODULES.networking.dns.aliases = ["datalab"];
+
+  # The robot's UltraTrainer on the tailnet, 2026-11-13: hp dials r4uai01 through the
+  # hub's herdr catalog identity (herdr-r4uai01 -> apapp@10.210.0.50 over the lab netbird
+  # route, pinned keys, hub key via the Match-root rule) and republishes the app's port
+  # on loopback; Traefik serves https://ultra-trainer.r4uai01.hp with a step-ca cert
+  # (same "ultra-trainer" name as the datalab instance, one less spelling to remember).
+  # Spawn-side: `ultra-trainer` runs ON r4uai01 (its ~/.local/bin launcher, tmux
+  # attach-or-start, UT_PORT=8148 - the module header carries the exact one-time manual
+  # block; r4uai01 is Ubuntu, outside this flake). The robot-side code is untouched by
+  # hp - a reboot or lab power cycle needs NO tunnel restart here (Restart=always
+  # re-dials) and no app start there (spawn it from the phone/laptop menu as always).
+  # 502 until spawned, by design; the training outlives the pane via the robot's tmux.
+  MODULES.services.labWebTunnels = {
+    enable = true;
+    # sshHost spelled out: the attr keys the APP (a machine can host several web UIs),
+    # the alias keys the MACHINE - the module's "herdr-<attr>" default only fits when
+    # the two coincide.
+    tunnels."ultra-trainer-r4uai01" = {
+      sshHost = "herdr-r4uai01";
+      subdomain = "ultra-trainer.r4uai01";
+      port = config.PORTS.ultraTrainerR4uai01;
+    };
+  };
 }

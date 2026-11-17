@@ -65,6 +65,16 @@ in {
               "vmstat"
             ];
             port = config.PORTS.prometheusNodeExporter;
+            # The fleet default vmstat whitelist (^(oom_kill|pgpg|pswp|pg.*fault).*)
+            # carries no node_vmstat_allocstall_*/pgscan_direct/pgsteal_direct/
+            # compact_stall - the direct-reclaim counters that are the ground truth
+            # for "kswapd is losing and processes stall in reclaim" (akos01 burned
+            # 95M allocstall_normal before the 2026-11-11 ARC-tuning fix with zero
+            # metric coverage - see modules/system/zfs-tuning.nix). Same shape as
+            # the default, four extra prefixes; everything already scraped stays.
+            extraFlags = [
+              "--collector.vmstat.fields=^(oom_kill|pgpg|pswp|pg.*fault|allocstall|compact_stall|pgscan_direct|pgsteal_direct).*"
+            ];
           };
         };
 
@@ -278,6 +288,23 @@ in {
       ];
     })
 
+    # coroot-node-agent publishes its own Prometheus /metrics (loopback; PORTS registered
+    # by coroot.nix, which deliberately leaves it unscraped - "nothing connects to it"
+    # was true until the fleet dashboards wanted agent-side eBPF counters next to
+    # node_exporter's). Local scrape only; no service-graph edge needed for loopback.
+    (mkIf (cfg.enable && (config.MODULES.services.coroot.enable || config.MODULES.services.coroot.agentEnable)) {
+      services.prometheus.scrapeConfigs = [
+        {
+          job_name = "coroot-node-agent";
+          static_configs = [
+            {
+              targets = ["127.0.0.1:${toString config.PORTS.corootNodeAgent}"];
+            }
+          ];
+        }
+      ];
+    })
+
     (mkIf (cfg.enable && config.MODULES.services.immich.enable) {
       # Immich exposes its own OTel/Prometheus metrics natively (no separate exporter binary),
       # same as the traefik/syncthing jobs above - just needs telemetry collection switched on.
@@ -343,45 +370,11 @@ in {
       ];
     })
 
-    (mkIf (cfg.enable && config.MODULES.services.litellm.enable && config.MODULES.services.litellm.metrics) {
-      # LiteLLM serves its own /metrics once the "prometheus" callback is registered (see
-      # litellm.nix) - no exporter binary, same as the traefik/syncthing/immich jobs above.
-      # Worth having beyond the usual request rates and latencies: the gateway is the only
-      # component that can see a backend host being cooled out of rotation after a failure,
-      # and litellm_deployment_state carries that. It is also the only place token counts
-      # exist at all, since nothing scrapes the backend instances directly - they are
-      # on-demand, and scraping them on a timer would defeat the idle unload exactly
-      # the way LiteLLM's own background health checks did.
-      #
-      # The path stays /metrics even with SERVER_ROOT_PATH set: FastAPI's root_path changes
-      # the URLs the app generates, not the ones it answers on, and this scrape goes straight
-      # to the backend port rather than through Traefik.
-      #
-      # LiteLLM requires the master key on /metrics by default (require_auth_for_metrics_endpoint
-      # is True since the move to the upstream image), and the gateway's port is published to the
-      # whole tailnet by tailscale serve, so the scrape authenticates rather than that check being
-      # switched off. Same underlying sops value as litellm.nix's, declared again to be readable
-      # by the prometheus user, which reads credentials_file itself on every scrape.
-      sops.secrets."prometheus/litellm_master_key" = mkIf (config.MODULES.services.litellm.masterKeySecret != null) {
-        key = config.MODULES.services.litellm.masterKeySecret;
-        owner = "prometheus";
-        mode = "0400";
-      };
-
-      services.prometheus.scrapeConfigs = [
-        ({
-            job_name = "litellm";
-            static_configs = [
-              {
-                targets = ["127.0.0.1:${toString config.PORTS.litellm}"];
-              }
-            ];
-          }
-          // lib.optionalAttrs (config.MODULES.services.litellm.masterKeySecret != null) {
-            authorization.credentials_file = config.sops.secrets."prometheus/litellm_master_key".path;
-          })
-      ];
-    })
+    # (litellm's /metrics scrape job lived here; deleted with litellm.nix phase 3
+    # 2026-11-09. OmniRoute exposes no Prometheus endpoint - /metrics 404s and
+    # /api/metrics is management-API-gated (measured same day) - so gateway-side
+    # per-model counters/latencies now live only in the OmniRoute dashboard's own
+    # usage pages until a Grafana panel reads that API.)
 
     (mkIf (cfg.enable && config.MODULES.services.open-webui.enable) {
       # Open WebUI serves no /metrics endpoint and there's no exporter for it; its only

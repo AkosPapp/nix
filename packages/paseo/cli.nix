@@ -6,13 +6,13 @@
 }:
 buildNpmPackage rec {
   pname = "getpaseo-cli";
-  version = "0.11.4";
+  version = "0.15.3";
 
   # The daemon (@getpaseo/server, a dependency) ships its bundled web UI inside its own npm
   # tarball (dist/server/web-ui), so no extra assets are needed to serve the dashboard.
   src = fetchurl {
     url = "https://registry.npmjs.org/@getpaseo/cli/-/cli-${version}.tgz";
-    hash = "sha256-+NHwcqEk2Xnx33aiGFZQyHboIdSHLMZT1xXtR4Zkgk0=";
+    hash = "sha256-d0Gp7cUFsTa+/HhP2iEA6FCwVcFFrSRVxuBiu1mJP1g=";
   };
 
   # The npm tarball carries no lockfile; this one was generated from the tarball's own
@@ -23,7 +23,7 @@ buildNpmPackage rec {
     cp ${./package-lock.json} ./package-lock.json
   '';
 
-  npmDepsHash = "sha256-xDheh/CTulZPypRUq3MNNkqSrtAQlIEI3D3fme4+y6M=";
+  npmDepsHash = "sha256-J+jj8Q9YaHLVvG/3T0usY042wa7IQkm/mfAo2uiEk5o=";
 
   # Pure-JS dependency tree (ws, zod, commander, ...) and a prebuilt dist/ - nothing to
   # compile, and the root build/prepack scripts want the monorepo's tsconfig, absent here.

@@ -84,7 +84,7 @@
   # defaultProvider/defaultModel: without them pi's initial-model search falls through to "first
   # available model with a valid API key" (findInitialModel in dist/core/model-resolver.js), and
   # with the backup provider configured both providers always have a key - models.json is written
-  # from attrsets, so the alphabetical provider map puts `futurelab` BEFORE `litellm`. An
+  # from attrsets, so the alphabetical provider map puts `futurelab` BEFORE `omniroute`. An
   # unpinned pi would therefore boot on the BACKUP endpoint. Pinning cfg.modelProvider/modelId
   # keeps the primary the default and the backup something you switch to by hand (/model).
   #
@@ -108,10 +108,10 @@
     }
   ));
 
-  # Where model discovery is enabled, the discovered litellm inventory replaces the static
+  # Where model discovery is enabled, the discovered gateway inventory replaces the static
   # entries by id - including cfg.modelId, whose advertised metadata carries no thinking info.
   # The override re-asserts exactly what the hand-curated entry says for this model, so the
-  # wildcard-discovered "futurelab/qwen3.8-flash-next" still thinks the way LiteLLM's gateway
+  # discovered "futurelab/qwen3.8-flash-next" still thinks the way the gateway's Aqueduct
   # wants: vLLM-style chat-template kwargs, with the level map in compat (pi lifts compat
   # reasoning/thinkingLevelMap to the model's top level, the other keys through as-is).
   qwenDiscoveryOverride = lib.optionalAttrs (hasModelThinking && cfg.modelDiscoverModels) {
@@ -246,7 +246,7 @@
                   ({id = cfg.modelId;} // piModelAttrs)
                 ];
                 # When on, the pi-models-discovery extension lists every model the gateway's
-                # /v1/models serves (litellm grows this without config edits here); the static
+                # /v1/models serves (the gateway grows this without config edits here); the static
                 # entry above stays as the offline fallback. Discovered defaults are zero cost.
               }
               // lib.optionalAttrs cfg.modelDiscoverModels {
@@ -525,52 +525,55 @@ in {
 
     modelBaseUrl = mkOption {
       type = types.str;
-      default = "${cfg.hubUrl}/litellm/v1";
-      defaultText = lib.literalExpression "hubUrl + \"/litellm/v1\"";
+      default = "${cfg.hubUrl}/omniroute/v1";
+      defaultText = lib.literalExpression "hubUrl + \"/omniroute/v1\"";
       description = ''
-        OpenAI-compatible endpoint baked into the harness model configs: the hub's LiteLLM gateway,
-        on the public Funnel path its MODULES.services.litellm.public option registers (the same
-        URL the generated /install/<token>/machine.sh scripts carry). Derived from `hubUrl` so a
-        fleet pointed at another hub takes its models with it; that hub must have the public path
-        enabled or every agent fails its first request.
+        OpenAI-compatible endpoint baked into the harness model configs: the hub's OmniRoute
+        gateway, on the public Funnel path its MODULES.services.omniroute.public option registers
+        (the same URL the generated /install/<token>/machine.sh scripts carry). Derived from
+        `hubUrl` so a fleet pointed at another hub takes its models with it; that hub must have
+        the public path enabled or every agent fails its first request. (Was /litellm/v1 until
+        phase 3, 2026-11-09.)
 
         A machine that is itself on the tailnet can skip the trip through the Funnel and use the
-        hub's own subdomain instead - modelBaseUrl = "https://litellm.hp/v1", which is what legion5
-        sets to stay byte-identical with the interactive configs there.
+        hub's own subdomain instead - modelBaseUrl = "https://omniroute.hp/v1", which is what the
+        interactive configs on a tailnet host speak.
       '';
     };
 
     modelProvider = mkOption {
       type = types.str;
-      default = "litellm";
+      default = "omniroute";
       description = ''
         Provider id under which the model is registered in the harness configs, i.e. the
         "<provider>" half of the model reference (pi --model <provider>/<id>, opencode's
         model setting). Set it to the same id a host's interactive setup uses so harness
-        configs and daily use agree on one provider entry - which is what "litellm" is here:
+        configs and daily use agree on one provider entry - which is what "omniroute" is here:
         the gateway is the endpoint these machines talk to, whoever answers behind it.
       '';
     };
 
     modelProviderLabel = mkOption {
       type = types.str;
-      default = "LiteLLM (hp)";
+      default = "OmniRoute (hp)";
       description = "Display name for the provider (opencode's picker).";
     };
 
     modelApiKeySecret = mkOption {
       type = types.str;
       default = "paseo/enrollment_api_key";
-      example = "opencode/litellm_api_key";
+      example = "omniroute_api_key";
       description = ''
         sops secret holding the model API key. Declared here (merging with any other module's
         declaration of the same key), handed to the daemon through LoadCredential and baked
         into the user's harness configs by the pre-start script.
 
         It has to be a key the gateway accepts, since that is what these configs now point at -
-        either its master key or (better, on a machine that only ever needs one model) a virtual
-        key minted on it. On a host whose interactive setup already declares a LiteLLM key, point
-        this at that secret instead of adding a second one; the example is legion5's.
+        an inference key minted on the gateway's dashboard, or the shared omniroute_api_key the
+        harness modules mount (the example). NOTE: the current VALUE of the default
+        paseo/enrollment_api_key predates the gateway (an Aqueduct key) and 401s there - this
+        module is enabled nowhere since 2026-10-29, so nothing is broken; whoever re-enables it
+        must point this at a gateway key first.
       '';
     };
 
@@ -578,10 +581,11 @@ in {
       type = types.str;
       default = "futurelab/qwen3.8-flash-next";
       description = ''
-        Model offered to the harnesses, spelled the way the gateway spells it: a LiteLLM
-        `model_name`, vendor prefix included ("futurelab/..." is the wildcard Aqueduct deployment
-        in litellm.nix). So the reference a user types is <modelProvider>/<modelId>, two prefixes
-        deep - both harnesses take that, and users/akos.nix already does the same interactively.
+        Model offered to the harnesses, spelled the way the gateway spells it: the model id its
+        /v1/models answers with, vendor prefix included ("futurelab/..." is the Aqueduct
+        connection on OmniRoute). So the reference a user types is <modelProvider>/<modelId>, two
+        prefixes deep - both harnesses take that, and users/akos.nix already does the same
+        interactively.
       '';
     };
 
@@ -666,7 +670,7 @@ in {
         "discoverModels": true to the pi provider entry, which makes the official
         pi-models-discovery extension (pulled from npm via the settings.json packages fragment)
         GET {baseUrl}/models and register every model it serves. The gateway's model list then
-        grows without editing this module; litellm.nix's dashboard-only model additions pick up
+        grows without editing this module; the gateway's dashboard-only model additions pick up
         automatically.
 
         Defaults of the discovered entries: zero cost, reasoning on with pi's standard levels
@@ -712,8 +716,8 @@ in {
             default = "qwen3.8-flash-next";
             description = ''
               Model id on the backup gateway, spelled the way THAT gateway wants it (the futurelab
-              Aqueduct one takes the bare name - "futurelab/..." is only LiteLLM's wildcard
-              spelling on hp).
+              Aqueduct one takes the bare name - "futurelab/..." is only the fleet gateway's
+              connection-prefix spelling on hp).
             '';
           };
         };
@@ -727,14 +731,14 @@ in {
       '';
       description = ''
         Optional second provider registered next to the primary one in every harness config: a
-        fallback to switch to by hand when the primary (the hub's LiteLLM gateway) is down.
+        fallback to switch to by hand when the primary (the hub's OmniRoute gateway) is down.
         Nothing in pi or opencode fails over automatically - the user picks the backup in the
         model selector.
 
         The backup's model entry reuses the primary's settings (modelContextLength,
         modelOutputLength, modelThinkingLevels, modelThinkingDefault, zero cost), which is only
         correct when the backup serves the same model the primary does - the intended shape: the
-        same qwen3.8-flash-next that litellm.nix's futurelabEnable wildcard proxies on hp, dialled
+        same qwen3.8-flash-next that the gateway's futurelab connection proxies on hp, dialled
         straight to the Aqueduct gateway instead while hp is unreachable.
       '';
     };
@@ -809,7 +813,7 @@ in {
 
       # Same sops keys the hub publishes installers with; on hp itself paseo.nix declares
       # them already - an empty second declaration merges, it does not clash. The model key
-      # follows cfg.modelApiKeySecret (e.g. opencode/litellm_api_key on hosts where the
+      # follows cfg.modelApiKeySecret (e.g. omniroute_api_key on hosts where the
       # opencode module already declares it with a user owner - LoadCredential reads it as
       # PID1, so any owner works).
       sops.secrets =

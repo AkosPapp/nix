@@ -38,16 +38,35 @@
     install -m600 ${config.sops.secrets.${cfg.certPemSecret}.path} "$conf/cert.pem"
 
     fail=0
-    while IFS= read -r name; do
+    # "|| [ -n "$name" ]" is load-bearing: builtins.toFile (writeText) emits NO trailing
+    # newline, and a bare `while read` silently drops the final unterminated line - the
+    # last declared record was never routed (measured 2026-11-15: xmpp.akosp.app missing
+    # from the zone after two deploys; earlier last-names happened to exist from the
+    # setup app, which masked it since 2026-10-24).
+    while IFS= read -r name || [ -n "$name" ]; do
       [ -n "$name" ] || continue
       # route dns wants the tunnel by ID (names are only unique per account, the UUID is the
       # stable handle); with -f this is a create-or-overwrite, i.e. an upsert.
-      if ! TUNNEL_ORIGIN_CERT="$conf/cert.pem" cloudflared tunnel route dns --overwrite-dns \
-          ${
+      # Retry the API call (tuvpn-advertise's poll doctrine): this is a oneshot WITHOUT
+      # RemainAfterExit, so `systemctl start` waits for it - a single transient WAN/DNS
+      # blip ("lookup api.cloudflare.com: no such host", measured hp 2026-11-13 14:17)
+      # used to exit 1, fail the unit's job, and ROLL BACK an otherwise healthy switch.
+      # Three tries with a minute between covers the blip; a sustained outage still
+      # fails loudly, which is the point.
+      ok=0
+      for try in 1 2 3; do
+        if TUNNEL_ORIGIN_CERT="$conf/cert.pem" cloudflared tunnel route dns --overwrite-dns \
+            ${
       if cfg.tunnel.uuid != null
       then cfg.tunnel.uuid
       else cfg.tunnel.name
     } "$name" < /dev/null; then
+          ok=1
+          break
+        fi
+        [ "$try" -lt 3 ] && { echo "cloudflare-dns: $name: attempt $try failed, retrying in 15s" >&2; sleep 15; }
+      done
+      if [ "$ok" != 1 ]; then
         echo "cloudflare-dns: $name: route failed" >&2
         fail=1
       fi

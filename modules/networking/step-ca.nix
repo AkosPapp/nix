@@ -115,6 +115,22 @@ in {
       description = "Add the root CA to this host's system trust store (when pkiDir has one).";
     };
 
+    extraAllowDns = mkOption {
+      type = types.listOf types.str;
+      default = [];
+      example = ["*.datalab.hp"];
+      description = ''
+        Additional name patterns the CA may sign, beyond the built-in `*.zone` /
+        `zone` pair. step-ca's policy matches WILDCARDS LABEL-PERFECT ("the domain
+        to be evaluated must have the same number of labels as the rule" - smallstep
+        docs, checked 2026-11-13): `*.hp` signs foo.hp but NOT foo.bar.hp, so a
+        service whose name hangs one level below an existing one (the cluster web
+        UIs under `datalab.hp`, see MODULES.services.datalabHarness harness.<name>.port)
+        needs its own wildcard here or lego's order dies at issuance. Public
+        names only - this is an allow-list of subjects, not a secret.
+      '';
+    };
+
     rootCertFile = mkOption {
       type = types.path;
       readOnly = true;
@@ -190,8 +206,10 @@ in {
           logger.format = "text";
 
           authority = {
-            # Only ever sign names inside this host's own zone (and the zone name itself).
-            policy.x509.allow.dns = ["*.${domain}" domain];
+            # Only ever sign names inside this host's own zone (and the zone name
+            # itself), plus cfg.extraAllowDns for the deeper-than-one-label names
+            # (wildcards are label-perfect; see the option).
+            policy.x509.allow.dns = ["*.${domain}" domain] ++ cfg.extraAllowDns;
             provisioners = [
               {
                 type = "ACME";

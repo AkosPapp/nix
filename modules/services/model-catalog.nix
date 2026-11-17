@@ -10,8 +10,10 @@
 # consumer renders them in (opencode's variants, pi's thinkingLevelMap, Hermes'
 # context_length) stays in the consumer module - it's the numbers that must not duplicate.
 #
-# Keyed by the model's LiteLLM name (the fleet-canonical spelling); `directName` carries the
-# bare id the upstream gateway itself lists, for fronts that don't route through LiteLLM.
+# Keyed by the model's gateway name (the fleet-canonical spelling; it was LiteLLM's
+# deployment name until phase 3 put OmniRoute in its place, 2026-11-09 - the ids the
+# gateway answers /v1/models with are unchanged); `directName` carries the bare id the
+# upstream itself lists, for fronts that don't route through the gateway.
 {
   config,
   lib,
@@ -23,10 +25,10 @@
 
   modelSubmodule = {name, ...}: {
     options = {
-      litellmName = mkOption {
+      gatewayName = mkOption {
         type = types.str;
         default = name;
-        description = "The name on the wire for the LiteLLM front - by default the catalogue key itself.";
+        description = "The name on the wire for the fleet gateway (OmniRoute) front - by default the catalogue key itself. (Was litellmName until phase 3, 2026-11-09.)";
       };
 
       directName = mkOption {
@@ -34,9 +36,9 @@
         default = null;
         example = "qwen3.8-flash-next";
         description = ''
-          Name this model answers to at its upstream gateway directly (the bare id, where
-          LiteLLM's deployment spelling adds the vendor prefix). Null for models that are
-          only reachable through LiteLLM.
+          Name this model answers to at its upstream directly (the bare id, where
+          the gateway's spelling adds the vendor prefix). Null for models that are
+          only reachable through the gateway.
         '';
       };
 
@@ -105,9 +107,10 @@ in {
       type = types.attrsOf (types.submodule modelSubmodule);
       default = {
         # The fleet's interactive model: FutureLab's Aqueduct gateway (self-hosted at
-        # https://futurelab.robo4you.at), reached either through litellm.nix's wildcard
-        # deployment ("futurelab/...") or at the gateway directly (the bare id - the prefix
-        # only exists in LiteLLM's deployment spelling). vLLM-served, so thinking rides the
+        # https://futurelab.robo4you.at), reached either through the fleet gateway's
+        # ("futurelab/..." on OmniRoute, since phase 3 2026-11-09; LiteLLM's wildcard
+        # before that) or at Aqueduct directly (the bare id - the prefix only exists in
+        # the gateway's spelling). vLLM-served, so thinking rides the
         # chat_template_kwargs dialect both fronts pass through unchanged.
         "futurelab/qwen3.8-flash-next" = {
           directName = "qwen3.8-flash-next";
@@ -128,7 +131,7 @@ in {
         };
       };
       description = ''
-        The fleet's agent-model fact table, keyed by each model's LiteLLM name. Consumers
+        The fleet's agent-model fact table, keyed by each model's gateway name. Consumers
         (opencode.nix's default catalogue, paseo.nix, paseo-machine.nix, hermes-agent.nix)
         default their own model parameters from here; they only ever restate them for a model
         this table does not list.
@@ -139,7 +142,7 @@ in {
       type = types.functionTo types.anything;
       internal = true;
       default = name: let
-        hits = lib.filter (m: m.litellmName == name || (m.directName or null) == name) (lib.attrValues cfg.models);
+        hits = lib.filter (m: m.gatewayName == name || (m.directName or null) == name) (lib.attrValues cfg.models);
       in
         if hits == []
         then {}

@@ -36,8 +36,31 @@
     # NixOS/patchelf#672 fix - at 0.15.2 that patch fails 4/6 hunks, taking down every pm
     # tool (ripgrep/node/pnpm/ffmpeg) and with them hp's /etc. Bump this rev together
     # with `nix flake update hermes-agent` (take whatever THEIR flake.lock locks).
+    #
+    # 2026-11-11: the URL is our fork, not upstream. One commit on top of
+    # upstream 4ad61cee: check_runtime (hermes_cli/venv_sync.py) drops the pm
+    # drift verdict when the install stamp says distribution=nix. The Nix
+    # package ships node/npm/pnpm/ffmpeg as build-time runtimeDeps on the
+    # wrapper PATH and never publishes pm store entries for them, AND pm's
+    # staged verification refuses every glibc-linked download on a NixOS host
+    # without nix-ld (measured on hp 2026-11-10: `hermes pm install
+    # node`/`ffmpeg` die at the --version probe, exit 127) - so upstream's
+    # startup warning "must rebuild the artifact to fix" can never be fixed on
+    # this distribution and fired on EVERY dispatch (chat, gateway boot,
+    # status).
+    # 2026-11-14 (audit #8): the URL moved from AkosPapp/hermes-agent to
+    # AkosPapp/hermes-agent-fork, a REAL GitHub fork of NousResearch/hermes-agent.
+    # The old repo was never forked: its `nix` branch sat on an orphan
+    # snapshot-base (c01b4549, parents: [], 15 files upstream tracks but the
+    # copy-time .gitignore skipped) so the "one commit on top of upstream" claim
+    # was false and `git rebase upstream/main nix` was impossible. The rebuilt
+    # branch (dd9ef8eb, parent = genuine upstream 4ad61cee, same 12-line
+    # venv_sync.py hunk) restores that workflow. The old repo is superseded;
+    # delete/archive it when convenient. To carry upstream: `git fetch upstream
+    # && git rebase upstream/main nix` in ../forks/hermes-agent, push akosfork,
+    # then re-pin here.
     hermes-agent = {
-      url = "github:NousResearch/hermes-agent";
+      url = "github:AkosPapp/hermes-agent-fork/nix";
       inputs.nixpkgs.url = "github:NixOS/nixpkgs/02c087f3fe673c9e317f206a627cb6b910336dbe";
     };
     # gpu-unlock (tensor-core throttle removal) as of 2026-10-28 only carries Nix packaging in

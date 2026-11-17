@@ -24,6 +24,23 @@
   nixpkgs.overlays = [inputs.microvm.overlays.default];
 
   microvm = {
+    # Sync (pread/pwrite), NOT the runner's io_uring-based "Async" default -
+    # kept deliberately even though the blocker is gone. Original incident
+    # (measured on hp's first hardened boot, gen 437, 2026-11-13): the grafix
+    # host kernel latched io_uring off (io_uring_disabled=1, sysctl only
+    # flips 1->2), so Async died at io_uring_setup(EPERM) and
+    # microvm@vm-agents flapped 156x. 2026-11-14: the host kernel now reverts
+    # that latch at build time (MODULES.system.hardenedKernel.ioUring,
+    # default on), so Async is technically available again from the NEXT
+    # hardened boot - but this unit keeps Sync: the owner's rule is no churn
+    # on a working VM, and Sync has no measured deficit at this guest's load.
+    # Flip to "Async" only with a measured reason (and only after the
+    # ioUring-revert kernel is actually booted on hp). Note the whole story is
+    # HOST-side: this is firecracker's drive-backend engine. The GUEST kernel
+    # is stock nixpkgs (flake.nix's microvmConfigurations imports only this
+    # file - the hardened-kernel module never enters a guest), so the guest's
+    # own io_uring was never disabled by any of this.
+    firecracker.driveIoEngine = "Sync";
     mem = 1024; # MB - the §6 budget rows start conservative; LIMITS counts VMs later
     vcpu = 2;
     # Firecracker is the explicit choice from the review (not qemu):
@@ -66,7 +83,9 @@
   # marks the node's version in the UI. Bump by checking it against the server on akos01.
   # Pushes to akos01's Coroot server (tailscale IP spelled out; a guest sees no
   # nixosConfigurations; 2026-10-26: was hp, whose server half was disabled and aggregation
-  # moved to akos01). Loopback listener on 8141 = PORTS.corootNodeAgent, kept in sync by eye.
+  # moved to akos01). The --listen value is moot: with a collector endpoint set, the agent
+  # (>=1.32, flags.go) forces its metrics listener to 127.0.0.1:10300 = PORTS.corootNodeAgent
+  # - which nothing on a guest scrapes anyway (data flows by push).
   # The guest kernel is stock nixpkgs, so CONFIG_DEBUG_INFO_BTF is on - the CO-RE probes need it.
   systemd.services.coroot-node-agent = {
     description = "Coroot node agent (package build, microVM guest)";
@@ -97,9 +116,14 @@
 
   # Console access needs no network: microvm attaches ttyS0, and the root password is
   # empty with a getty (serial getty the microvm module enables); once tailscale is up
-  # this sshd + the laptop key is the admin path.
+  # this sshd + the laptop key is the admin path. Builtins.readFile is fine even though
+  # microVM guests deliberately see `nixosConfigurations = {}` - this reads repo files,
+  # not cross-host facts, so there is no specialArgs dependency to break (and per Rule 2
+  # the key material lives in one place: users/*.pub). The phone's public key rides along
+  # so `ssh vm-agents` works from the tailnet with the same key the fleet roots trust.
   users.users.root.openssh.authorizedKeys.keys = [
-    "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQCYoxGrmlgUcVfncMnlDONPk5RwSEqbiBpvT3c2m9MIDsYdYlLfnRN5YJPZgp8CHcPnPK2rboRiHAO00j545ci2CDeAp6zGKoOhX0q/3fES3ySqMG7lJ+cplxoXekSL9GNOQqSREDymqrMfqGy9OnupqcAZForX/k1aegi99TgZwbGMAK/UIzfdkQr49VVzYbaNR14rikIfjvi23s4bdP/KgeAs0T9KEKKSAd9WJQxUr/dmTjNBODzW10llgmCCVRNk3Pj4A1qiGiz0wkjG7XmZT0QjHyrX2GzSYuhW1l8s6mY3tTBBKVoj+peBphgxGBbEwUCQh0yPVBGstM5fHqN1bvOjRfYNQboVSmLhicX7Bk0WNLPS6DtqHZTXGNuYM8NcHn4xUIX5GwlsS6Mfo2tDMcX83w1Jv0BuImfcUMl6jvYCzcpEdGENYHWisIvQLSlAK6UEIYGeG8CH/iRqRPQIrOW49EQJYlW2VSLuTf8SA6c9Z2xdSIsli9JOfr79VUdYpgrdiv7vFjiX5d+hcJVC0rjQkF6XlAWVH5yMfpr1OXFbpKqILygx9Zcj7IhMHodQsjtr6+FjIs5Xm5Nt1nY9Cpke/q3lHcgq0PVgwvMPMhTOxfv6XoKQGmDTJWsmAP8n4BotZm7H2OlO29/zJnrgJ8+ZienkAX5s2cAaT16Kvw== akos@laptop"
+    (lib.removeSuffix "\n" (builtins.readFile ../../users/akos-laptop.pub))
+    (lib.removeSuffix "\n" (builtins.readFile ../../users/herdr-mobile.pub))
   ];
   services.openssh = {
     enable = true;

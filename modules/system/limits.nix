@@ -113,7 +113,7 @@
   # --cpus wants "1.5" where CPUQuota wants "150%". Integer math with a hand-built decimal:
   # nix >= 2.34 truncates int/int unconditionally where it used to yield a rational (measured
   # 2026-10-30: 150/100 -> 1, 50/100 -> 0), so the old `toString (pct / 100)` silently shaves
-  # litellm's 150% row to --cpus=1 on every docker host - and a 0 renders as UNLIMITED to
+  # omniroute's 150% row to --cpus=1 on every docker host - and a 0 renders as UNLIMITED to
   # docker, so a sub-100% row escapes its cap entirely rather than shrink it.
   cpusFromQuota = q: let
     m = builtins.match "([0-9]+)%" q;
@@ -131,13 +131,20 @@
       else "${toString whole}.${decimals}";
 
   # §1.3's "boring tier, one default", parameterised by unit + predicate.
+  # 2026-11-11: high 256M -> 512M. The 256M throttle line turned out to be INSIDE the
+  # legitimate working set of two members (akos01's node-exporter 116M was the extreme,
+  # the tier's daemons generally idle below it, but redis/netbird churn past 256M under
+  # real traffic), which is exactly the "capping below the working set keeps a unit in
+  # permanent reclaim" failure the immichMl row documents. These are fleet services that
+  # never all spike at once; the ZFS ARC on top of them is shrinkable cache, not
+  # contention (owner decision 2026-11-11). The max line keeps the actual wall.
   boring = unit: when: {
     inherit when;
     units = [unit];
     tasks = 128;
     cpu = "100%";
-    memHigh = "256M";
-    memMax = "384M";
+    memHigh = "512M";
+    memMax = "768M";
   };
 
   # Small Go binaries that must answer while everything else burns.
@@ -146,12 +153,17 @@
   # 3.78M and 6.7M high-hits!), postgres-exporter runs 15 threads = at a 16-task cap, and
   # both froze mid-scrape: backlog 4096/4096, prometheus targets down, coroot "memory
   # pressure" + "failed to connect" alerts. Still small, but sized above the working set.
+  # 2026-11-11: high 96M -> 160M - akos01's node-exporter carries the full scrape surface
+  # now and sits at 116M steady (coroot still alerting "high memory stall" on the unit,
+  # memory.pressure avg300 ~90%), hp's same-tier processes measure 20-116M. The high line
+  # was throttling a healthy exporter into reclaim it doesn't need; 160M keeps the tier
+  # honest (max 192M still can't eat the box) with a real margin over the working set.
   tiny = unit: when: {
     inherit when;
     units = [unit];
     tasks = 64;
     cpu = "25%";
-    memHigh = "96M";
+    memHigh = "160M";
     memMax = "192M";
     note = "monitoring must survive everyone else - tiny but guaranteed.";
   };
@@ -189,21 +201,6 @@
         memMax = "1536M";
         note = "96 = 64 backend slots (max_connections pinned to 64 by the assertion below) + bgworkers/autovacuum/threads.";
       };
-      litellm = {
-        when = c: (c.MODULES.services.litellm.enable or false);
-        units = ["litellm"];
-        dockerName = "litellm";
-        tasks = 256;
-        cpu = "200%";
-        memHigh = "768M";
-        memMax = "1G";
-        note = ''
-          uvicorn workers, no threads concern. 2026-11-05: owner raised from 150%/512M/768M -
-          this proxy is on the hot path of every harness request (the openai/* wildcard landed
-          the same week), and one core throttled request JSON/token handling against a whole
-          box's worth of callers. 200% renders as --cpus=2 via cpusFromQuota.
-        '';
-      };
       traefik = {
         when = c: (c.services.traefik.enable or false);
         units = ["traefik"];
@@ -225,8 +222,14 @@
         units = ["immich-server"];
         tasks = 256;
         cpu = "200%";
-        memHigh = "1G";
-        memMax = "1536M";
+        # 2026-11-11: 1G/1536M -> 1536M/2G. akos01's coroot alert "high memory stall
+        # time" was live, not stale: MemoryCurrent 1234M against MemoryHigh 1G with the
+        # cgroup's PSI some/avg300 pinned near 90% - the same below-the-working-set
+        # throttle as immichMl's 2026-10-27 note, now on the server half (the 4096-uploads
+        # library + the job queue). High sits above the observed set; max keeps 512M of
+        # burst room.
+        memHigh = "1536M";
+        memMax = "2048M";
       };
       immichMl = {
         when = c: (c.services.immich.machine-learning.enable or false);
@@ -244,6 +247,12 @@
       };
       redisImmich = boring "redis-immich" (c: (c.services.redis.servers.immich.enable or false));
       redisSearx = boring "redis-searx" (c: (c.services.redis.servers.searx.enable or false));
+      # The loopback installer/mcp daemons: thin ASGI proxies (uvicorn + mcp), their
+      # memory is the connection pool not a model - the boring tier's floor is ample,
+      # and hp's ZFS ARC is the real occupant. Both mint/mcp ride one row each so a
+      # runaway cannot pile onto the gateway container.
+      installerMint = boring "installer-mint" (c: (c.MODULES.services.installerMint.enable or false));
+      mcpPerplexity = boring "mcp-perplexity" (c: (c.MODULES.services.mcpPerplexity.enable or false));
       grafana = {
         when = c: (c.services.grafana.enable or false);
         units = ["grafana"];
@@ -279,6 +288,26 @@
         memHigh = "768M";
         memMax = "1G";
       };
+      corootAlerts = {
+        # The receiver unit on the agent host (the room cache + two tiny HTTP legs per alert).
+        when = c: (c.MODULES.services.corootAlerts.enable or false);
+        units = ["coroot-alerts"];
+        tasks = 64;
+        cpu = "50%";
+        memHigh = "64M";
+        memMax = "96M";
+      };
+      corootAlertConfigure = {
+        # The hourly REST reconciler on the SERVER host (serverHalfActive is the module's
+        # derived "the wiring half runs here" flag - a separate row per side because the
+        # row contract demands every named unit exists whenever `when` is true).
+        when = c: (c.MODULES.services.corootAlerts.serverHalfActive or false);
+        units = ["coroot-alert-configure"];
+        tasks = 64;
+        cpu = "50%";
+        memHigh = "64M";
+        memMax = "96M";
+      };
       corootClickhouse = {
         when = c: (c.MODULES.services.coroot.enable or false);
         units = ["docker-coroot-clickhouse"];
@@ -308,12 +337,27 @@
         units = ["omniroute"];
         dockerName = "omniroute";
         tasks = 128;
-        cpu = "150%";
-        memHigh = "512M";
-        memMax = "768M";
+        cpu = "200%";
+        memHigh = "768M";
+        memMax = "1G";
         # 2026-11-05: owner raised from 100%/384M/512M with the litellm row - it now also fronts
         # the hosted-subscription traffic (codex OAuth connection), so streaming responses sit
         # behind this cap too.
+        # 2026-11-09 (phase 3): cpu 150% -> 200% - with litellm.nix deleted this is the ONLY
+        # gateway on the hot path of every harness/service request; the 2026-11-05 lesson on
+        # litellm's own 150% row (one core throttling request JSON/token handling under a whole
+        # box's worth of callers) now applies here.
+        # 2026-11-11: raised to 768M/1G after hp shed EVERY /v1/chat/completions with 503
+        # "resource_pressure" from 08:55 onward. The 2026-11-10 nightly image pulled in a
+        # chat-admission guard that reads its OWN cgroup limit and sheds at 85% (high) / 92%
+        # (critical) of --memory; the steady-state anon set of a day's SSE/streaming traffic
+        # (measured 620-674M with the container's Node heap at ~386M) sits at 85-92% of the
+        # old 768M wall, so the guard latched permanently (memory.events: 121 high hits,
+        # 0 oom - the wall was never the problem, the guard's headroom was). It is
+        # self-protection worth keeping: sized so the healthy window (<=640M = 62% of 1G)
+        # covers the observed peak +40%. /v1/models and the dashboard kept answering
+        # throughout - only inference sheds - which is why this looked like "the futurelab
+        # model broke" instead of "the gateway is full".
       };
       trilium = {
         when = c: (c.MODULES.services.trilium.enable or false);
@@ -497,6 +541,8 @@
       };
       nginx = boring "nginx" (c: (c.services.nginx.enable or false));
       smartd = tiny "smartd" (c: (c.services.smartd.enable or false));
+      herdrRegistrySync = tiny "herdr-registry-sync" (c: c.MODULES.services.herdr.enable && c.MODULES.services.herdr.coreRegistry.user != null);
+      netbird = boring "netbird" (c: c.MODULES.networking.netbird.enable);
     }
     // lib.genAttrs [
       "mautrix-whatsapp"
@@ -759,11 +805,49 @@ in {
             groups = [
               {
                 name = "limits-pressure";
-                rules = map pressure [
-                  "memory"
-                  "cpu"
-                  "io"
-                ];
+                rules =
+                  map pressure [
+                    "memory"
+                    "cpu"
+                    "io"
+                  ]
+                  ++ [
+                    # The reclaim ground-truth alert PSI can only imply: allocstall_*
+                    # counts every time a process ALREADY stalled in direct reclaim
+                    # (kswapd woke too late or couldn't keep up). Occasional single
+                    # stalls are normal kernel behavior; >1/s sustained 10m is the
+                    # 2026-11-11 akos01 signature (uncapped ARC vs tight watermarks:
+                    # 95M lifetime allocstall_normal, exporters hung >20s) with the
+                    # sign flipped - that incident had ZERO metric coverage, which is
+                    # why the vmstat whitelist was widened (prometheus.nix) and this
+                    # rule exists. Every zone summed; absent zones just don't add.
+                    {
+                      alert = "DirectReclaimStalls";
+                      # NOT `rate({__name__=~"node_vmstat_allocstall_.*"}[1m])`:
+                      # live-tested on this Prometheus 3.12 - any range function over a
+                      # multi-name regex selector drops __name__ and dies with
+                      # "vector cannot contain metrics with the same labelset" (the
+                      # zones are one instance). GoETA union of the explicit names,
+                      # `or` chaining first-wins so a host missing a zone just skips it.
+                      expr = "sum by (instance) (rate(node_vmstat_allocstall_normal[1m]) or rate(node_vmstat_allocstall_movable[1m]) or rate(node_vmstat_allocstall_dma[1m]) or rate(node_vmstat_allocstall_dma32[1m]) or rate(node_vmstat_allocstall_device[1m])) > 1";
+                      for = "10m";
+                      labels = {
+                        severity = "warning";
+                      };
+                      annotations = {
+                        summary = "{{ $labels.instance }}: sustained direct-reclaim stalls";
+                        description = ''
+                          Processes on this host have been stalling in direct reclaim
+                          >1x/second for 10 minutes: free memory is dropping faster than
+                          kswapd (vm.watermark_scale_factor, MODULES.system.zfsTuning) can
+                          claw it back from cache - or from the ZFS ARC on zroot hosts.
+                          Correlate: node_vmstat_pgscan_direct rate (who scans), ARC size
+                          and node_memory_MemFree (zfs-tuning.nix headroom floor), and the
+                          LIMITS row whose cgroup sits on its MemoryHigh.
+                        '';
+                      };
+                    }
+                  ];
               }
             ];
           };

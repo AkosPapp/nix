@@ -306,7 +306,10 @@ in {
 
       watchdogService = {
         description = "Stuck-tailnet watchdog: restart tailscaled after continuous offline";
-        after = ["tailscaled.service" "network-online.target"];
+        # No network-online.target ordering: this is a timer-triggered probe, it runs
+        # long after boot by definition, and `after =` without a dep made systemd warn
+        # "ordered after but doesn't depend on it" on every evaluation (fixed 2026-11-15).
+        after = ["tailscaled.service"];
         serviceConfig = {
           Type = "oneshot";
           ExecStart = "${watchdogScript}";

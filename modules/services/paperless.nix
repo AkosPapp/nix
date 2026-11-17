@@ -191,7 +191,7 @@ in {
 
       virtualisation.oci-containers.containers.paperless = {
         inherit (cfg) image;
-        # Keeps the unit at paperless.service, like litellm.nix/omniroute.nix/trilium.nix.
+        # Keeps the unit at paperless.service, like omniroute.nix/trilium.nix.
         serviceName = "paperless";
 
         dependsOn = ["paperless-broker"];

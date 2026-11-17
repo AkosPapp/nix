@@ -288,9 +288,11 @@
   # --- mautrix-jabber: jmpchat-matrix-bridge, the maintained successor of mautrix-jabber ------
   # Per-user XMPP puppeting bridge (same bridgev2 config generation as slack/mattermost; the
   # package is hand-built because upstream is not in nixpkgs). There is deliberately no XMPP
-  # server setting: logins carry a JID (akos@akosp.app) and the bridge derives the server from
-  # its domain through the SRV/AAAA records MODULES.services.xmpp maintains, with Prosody on
-  # this host answering.
+  # server setting: logins carry a JID (akos@akosp.app) and the fork resolves the JID's domain
+  # itself - a plain A/AAAA lookup on port 5222, no SRV (pkg/connector/connector.go @ v0.9.6).
+  # akosp.app's public answer is Cloudflare's edge (no XMPP forwarding), so MODULES.services.xmpp
+  # pins the domain to loopback for THIS unit only (unit-scoped /etc/hosts bind); Prosody on this
+  # host answers there.
   #
   # The ONE bridge here with Matrix-side E2EE (end-to-bridge encryption) turned on - hence the
   # reversed recursiveUpdate below, so the encryption block wins over bridgeSettings' off.

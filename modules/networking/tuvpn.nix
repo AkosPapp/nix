@@ -25,13 +25,21 @@
 # (account's) VPN address. hp's OWN traffic never enters the tunnel: profile 1_TU_getunnelt is
 # split (no default route), and only the TU prefixes are advertised to the tailnet.
 #
-# Lifecycle is deliberately ON-DEMAND (the toggle drives the service; server.startAtBoot=false
+# Lifecycle was born ON-DEMAND (the toggle drives the service; server.startAtBoot=false
 # by default): the tunnel exists only while someone is using it, so the account's fixed VPN
 # address is not held 24/7. That makes two ordering rules load-bearing, and the toggle
 # implements both: start hp's unit BEFORE accepting routes (never advertise dead routes ->
 # blackhole), and drop routes BEFORE stopping it. The unit's ExecStartPost gates `systemctl
 # start`'s return on "tunnel up AND routes advertised", and ExecStopPost always retracts the
 # advertisement, so the script can stay sequential.
+#
+# 2026-11-10: hp is startAtBoot = true - the tailnet's STANDING proxy (r4uai00/r4uai01 via
+# lanTransit below, akos01 services and datalab via the TU tunnel) for every tailnet device
+# without a per-device VPN app (the phone). Two consequences the toggle respects: `off`
+# there only stops the LOCAL accept-routes when the server is always-on (never kills the
+# shared tunnel), and the advertised set is reconciled by a boot unit + timer so a reboot
+# re-asserts it without waiting for a toggle. The on-demand default stands for any other
+# server host.
 {
   config,
   pkgs,
@@ -154,10 +162,16 @@
     nixosConfigurations.${cfg.viaHost} or {}
   );
   viaIP = viaTarget.config.MODULES.networking.tailscale.hostIP or null;
-  viaHostKeys = viaTarget.config.MODULES.networking.tuvpn.server.hostKeys or [];
-  # Same cross-flake read as viaIP/viaHostKeys: the toggle's state probe needs to know
-  # WHICH prefixes to look for in the local routing table (see ENABLED below).
+  # (host keys live in the fleet's neutral owner, MODULES.networking.sshClient.hostKeys -
+  # modules/networking/ssh-client.nix - since 2026-11-09, so the herdr machine catalog reads
+  # the same fact without importing tuvpn.)
+  viaHostKeys = viaTarget.config.MODULES.networking.sshClient.hostKeys or [];
+  # Same cross-flake read as viaIP/viaHostKeys: the toggle script must bake from the
+  # target's config WHICH prefixes to look for in the local routing table (see ENABLED)
+  # and whether the tunnel is standing infrastructure (startAtBoot) rather than the
+  # toggle's private property (see off).
   viaTuPrefixes = viaTarget.config.MODULES.networking.tuvpn.server.tuPrefixes or [];
+  viaAlwaysOn = viaTarget.config.MODULES.networking.tuvpn.server.startAtBoot or false;
 
   tuvpn-via = pkgs.writeShellScriptBin "tuvpn-via-${cfg.viaHost}" ''
     set -uo pipefail
@@ -234,9 +248,12 @@
         echo "ON - TU routes via $VIA"
         ;;
       off)
-        # Mirror order: stop accepting first, then tear the tunnel down.
+        # Mirror order: stop accepting first, then tear the tunnel down. On an always-on
+        # server (startAtBoot) the tunnel is STANDING shared infrastructure - the phone and
+        # every other accept-routes peer keep using it - so this client only drops its own
+        # acceptance; on an on-demand server the unit belongs to the toggle and stops.
         sudo $TS set --accept-routes=false
-        $SSH systemctl stop tuvpn >/dev/null 2>&1 || true
+        ${lib.optionalString (!viaAlwaysOn) ''$SSH systemctl stop tuvpn >/dev/null 2>&1 || true''}
         echo "OFF"
         ;;
       toggle)
@@ -394,11 +411,24 @@
       > /run/tuvpn/creds
   '';
 
+  # --disable-ipv6: hp runs networking.enableIPv6 = false, but TU's gateway still
+  # pushes IPv6 config on connect AND on rekey; vpnc-script's `ip -6 addr add` then dies
+  # ("Error: ipv6: address not found") against the v6-disabled device and openconnect
+  # treats the script failure as FATAL - measured hp 2026-11-13: three such tunnel
+  # deaths before noon (00:43, 11:40, 12:09), each taking down the advertised TU route
+  # set for the whole re-dial window, each silently killing every datalab@datalab.hp
+  # login mid-hop (the terminal account's whole job is one ssh -t over this tunnel; the
+  # sshd auth succeeded in the journal - the session just died at its first command).
+  # Not asking for v6 makes the gateway stop pushing it. The vpnc-script wrapper above
+  # already blanks the DNS vars for the same don't-adopt-TU-networking reason; this is
+  # the tunnel-side half. (The flag sits inline because a `#` between `\`-continued
+  # lines would silently terminate the exec line.)
   tuvpn-exec = pkgs.writeShellScript "tuvpn-exec" ''
     exec ${pkgs.openconnect}/bin/openconnect \
       --protocol=anyconnect \
       ${lib.optionalString cfg.server.noDtls "--no-dtls"} \
       --no-external-auth \
+      --disable-ipv6 \
       --interface=${cfg.server.tunDevice} \
       --script ${tuvpn-vpnc-script} \
       --authgroup=${lib.escapeShellArg cfg.server.profile} \
@@ -429,21 +459,22 @@
       tailscale ip -4 >/dev/null 2>&1 && break
       sleep 1
     done
-    if ! tailscale set --advertise-routes=${routeCsv}; then
+    if ! tailscale set --advertise-routes=${advertiseAllCsv}; then
       logger -t tuvpn "tailscale set --advertise-routes failed (tailscaled not up?)"
       exit 1
     fi
-    logger -t tuvpn "advertised ${routeCsv} to the tailnet"
+    logger -t tuvpn "advertised ${advertiseAllCsv} to the tailnet"
   '';
 
   # ExecStopPost runs on EVERY stop, including the one that precedes a Restart=always
   # re-dial: the advertisement blinks out and the next ExecStartPost puts it back. A stale
   # advertisement pointing at a dead tunnel is the blackhole this mode cannot tolerate
   # (the laptop's accept-routes would happily keep sending into it), so clearing is the
-  # default and keeping is the exception.
+  # default and keeping is the exception. LAN transit prefixes are NOT tunnel-dependent,
+  # so the retract restores exactly those (or nothing, when lanTransit is off).
   tuvpn-unadvertise = pkgs.writeShellScript "tuvpn-unadvertise" ''
     export PATH="${lib.makeBinPath [tsBin pkgs.util-linux]}"
-    tailscale set --advertise-routes= 2>/dev/null || true
+    tailscale set --advertise-routes=${idleCsv} 2>/dev/null || true
   '';
 
   masqRules =
@@ -459,13 +490,64 @@
 
   masqStopRules =
     (builtins.concatMap (src: [
-        ''iptables -w -t nat -D POSTROUTING -s ${src} -o ${cfg.server.tunDevice} -j MASQUERADE 2>/dev/null || true''
+        ''iptables -w -D POSTROUTING -s ${src} -o ${cfg.server.tunDevice} -j MASQUERADE 2>/dev/null || true''
         ''iptables -w -D FORWARD -i tailscale0 -o ${cfg.server.tunDevice} -s ${src} -j ACCEPT 2>/dev/null || true''
       ])
       cfg.server.forwardFrom)
     ++ [
       ''iptables -w -D FORWARD -o tailscale0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true''
     ];
+
+  # ------------------------------------------------------- server: LAN-side transit -------
+  # Prefixes reachable through THIS host's own routing (hp: the AirLab-routed robot net
+  # 10.210.0.0/24 holding r4uai00/r4uai01, measured reachable from hp AND akos01
+  # 2026-11-10), advertised to the tailnet WITHOUT the TU-tunnel gate. The NetBird clients
+  # (legion5, the robots themselves) reach that net over NetBird's 100.124.0.0/16 routes;
+  # this transit is what gives a device WITHOUT a NetBird app (the phone) the same access
+  # through the tailnet alone. MASQUERADE stays destination-prefixed and interface-free:
+  # hp's lab leg fails over between enp4s0f3u1u1c2 and wlo1 (both on 10.50.0.0/23), and
+  # the lab gateway has no route back into 100.64.0.0/10, so the return leg must come
+  # back to this host.
+  exitRoutes = lib.optionals config.MODULES.networking.dns.splitDns.advertiseExitNode [
+    "0.0.0.0/0"
+    "::/0"
+  ];
+  lanPrefixes = lib.optionals cfg.server.lanTransit.enable cfg.server.lanTransit.prefixes;
+  # Every `--advertise-routes` write REPLACES the whole list, so all three writers in this
+  # module name the exit routes too - otherwise toggling the TU tunnel (or the stop-time
+  # retract) silently drops hp's exit-node advertisement that split-dns declares.
+  # idleCsv: advertised whenever the tunnel carries nothing (boot, timer, tunnel stop).
+  # advertiseAllCsv: tunnel up.
+  idleCsv = lib.concatStringsSep "," (exitRoutes ++ lanPrefixes);
+  advertiseAllCsv = lib.concatStringsSep "," (exitRoutes ++ cfg.server.tuPrefixes ++ lanPrefixes);
+  lanMasqRules =
+    builtins.concatMap (dst: [
+      ''iptables -w -t nat -A POSTROUTING -s 100.64.0.0/10 -d ${dst} ! -o tailscale0 -j MASQUERADE''
+      ''iptables -w -A FORWARD -i tailscale0 -d ${dst} -j ACCEPT''
+    ])
+    lanPrefixes;
+  lanMasqStopRules =
+    builtins.concatMap (dst: [
+      ''iptables -w -t nat -D POSTROUTING -s 100.64.0.0/10 -d ${dst} ! -o tailscale0 -j MASQUERADE 2>/dev/null || true''
+      ''iptables -w -D FORWARD -i tailscale0 -d ${dst} -j ACCEPT 2>/dev/null || true''
+    ])
+    lanPrefixes;
+
+  # Single desired-state writer used by the boot unit + its timer: exit + LAN prefixes,
+  # plus the TU prefixes only while tun0 actually carries routes (so a timer tick can
+  # never claw the tunnel's advertisement away, and a reboot re-asserts what extraSetFlags
+  # alone cannot - reboot left hp advertising only the exit routes until someone toggled
+  # the TU VPN, blackholing the phone's 10.210/24 access). No-op while tailscaled is not
+  # up yet: the next tick retries.
+  tuvpn-transit-reconcile = pkgs.writeShellScript "tuvpn-transit-reconcile" ''
+    export PATH="${lib.makeBinPath [tsBin pkgs.iproute2 pkgs.coreutils pkgs.util-linux pkgs.gnugrep]}"
+    tailscale ip -4 >/dev/null 2>&1 || exit 0
+    ROUTES="${idleCsv}"
+    if ip route show dev ${cfg.server.tunDevice} 2>/dev/null | grep -q .; then
+      ROUTES="${advertiseAllCsv}"
+    fi
+    tailscale set --advertise-routes="$ROUTES" || true
+  '';
 in {
   options = {
     MODULES.networking.tuvpn = {
@@ -604,19 +686,30 @@ in {
           '';
         };
 
-        hostKeys = lib.mkOption {
-          type = lib.types.listOf lib.types.str;
-          default = [];
-          example = ["100.92.36.52 ssh-ed25519 AAAAC3..."];
-          description = ''
-            This host's SSH public host keys as known_hosts lines, keyed by its Tailscale
-            IP (the address the tuvpn-via-* scripts connect to). Set on the SERVER host;
-            clients read it across the flake and pin it in /etc/tuvpn/ssh-known-hosts, so
-            the toggle authenticates the tunnel host without any user ever having
-            interactively ssh'd there. Public material, safe to commit; refresh after any
-            ssh host-key regeneration (ssh-keyscan <tailnet-ip> over the tailnet).
-          '';
+        lanTransit = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = ''
+              Advertise `prefixes` to the tailnet permanently (boot unit + 2-minute
+              reconcile timer), independent of the TU tunnel's on-demand lifecycle. For
+              LAN-adjacent gateways like hp's robot net: tailnet peers without a NetBird
+              client reach those hosts through THIS host alone.
+            '';
+          };
+          prefixes = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [];
+            example = ["10.210.0.0/24"];
+            description = ''
+              Reachable-through-this-host CIDRs to advertise as tailnet subnet routes
+              while the TU tunnel is down (and, appended, while it is up). Same approval
+              contract as tuPrefixes: unapproved = invisible to clients.
+            '';
+          };
         };
+        # (hostKeys moved here? NO - moved out: peers pin this host's keys via
+        # MODULES.networking.sshClient.hostKeys, modules/networking/ssh-client.nix.)
       };
     };
   };
@@ -679,7 +772,7 @@ in {
         }
         {
           assertion = viaHostKeys != [];
-          message = "MODULES.networking.tuvpn.viaHost = \"${cfg.viaHost}\" but ${cfg.viaHost} declares no MODULES.networking.tuvpn.server.hostKeys - the toggle would have nothing to pin and every ssh would die at host key verification.";
+          message = "MODULES.networking.tuvpn.viaHost = \"${cfg.viaHost}\" but ${cfg.viaHost} declares no MODULES.networking.sshClient.hostKeys - the toggle would have nothing to pin and every ssh would die at host key verification.";
         }
         {
           # The combined menu's direct path (and the tailscale sudo rules) live in the
@@ -776,14 +869,44 @@ in {
         };
       };
 
+      # LAN transit rides a boot unit + timer, NOT tuvpn.service's ExecStartPost: the
+      # prefix reachability does not depend on tun0, so a reboot must not wait for
+      # someone to toggle the TU VPN before tailnet peers see the LAN net. The 2-minute
+      # timer also heals the silent-failure modes (control-plane re-approval wiping the
+      # advertisement, prefs resets) that the tunnel-gated ExecStartPost can never reach.
+      systemd.services.tuvpn-transit = lib.optionalAttrs cfg.server.lanTransit.enable {
+        description = "Assert this host's LAN-transit tailnet subnet routes";
+        after = ["tailscaled.service" "network-online.target"];
+        wants = ["network-online.target"];
+        wantedBy = ["multi-user.target"];
+        unitConfig.StartLimitIntervalSec = 0;
+        # Wanted by multi-user as well: without it the 15s OnBootSec firing is the only
+        # start, and a tailscaled that takes longer to get a tailnet IP would leave the
+        # boot attempt a silent no-op until the first 2-minute tick.
+        serviceConfig = {
+          Type = "oneshot";
+          ExecStart = "${tuvpn-transit-reconcile}";
+        };
+      };
+      systemd.timers.tuvpn-transit = lib.optionalAttrs cfg.server.lanTransit.enable {
+        description = "Re-assert LAN-transit tailnet subnet routes";
+        wantedBy = ["timers.target"];
+        timerConfig = {
+          Unit = "tuvpn-transit.service";
+          OnBootSec = "15s";
+          OnUnitActiveSec = "2min";
+          AccuracySec = "10s";
+        };
+      };
+
       # NAT + forwarding for tailnet transit, mirroring modules/vm/microvm-host.nix's shape
       # (the firewall flushes the chains before extraCommands run, so -A/-D stay idempotent;
       # FORWARD default here is the kernel's ACCEPT, the explicit rules are what survive the
       # day the default flips). Only tailscale0's sources are masqueraded - the tunnel never
       # carries this host's own traffic under the split profile anyway.
       networking.firewall = {
-        extraCommands = lib.concatStringsSep "\n" masqRules;
-        extraStopCommands = lib.concatStringsSep "\n" masqStopRules;
+        extraCommands = lib.concatStringsSep "\n" (masqRules ++ lanMasqRules);
+        extraStopCommands = lib.concatStringsSep "\n" (masqStopRules ++ lanMasqStopRules);
       };
     })
   ];

@@ -5,6 +5,7 @@
   pandoc,
   chromium,
   gnused,
+  gnugrep,
   coreutils,
 }:
 # md2pdf: Markdown -> PDF with real LaTeX rendering, via
@@ -53,18 +54,24 @@ in
           CP="${coreutils}/bin/cp"
           REALPATH="${coreutils}/bin/realpath"
           BASENAME="${coreutils}/bin/basename"
+          GREP="${gnugrep}/bin/grep"
+          HEAD="${coreutils}/bin/head"
+          TR="${coreutils}/bin/tr"
 
           usage() {
-            echo "usage: md2pdf [-o out.pdf] [-t title] [-c extra.css]... input.md [out.pdf]" >&2
+            echo "usage: md2pdf [-o out.pdf] [-t title] [-c extra.css]... [--no-probe] [--strict] input.md [out.pdf]" >&2
           }
 
           src="" title="" out=""
           css_extra=()
+          probe=1 strict=0
           while [ "$#" -gt 0 ]; do
             case "$1" in
               -o) out="''${2?''$0: -o needs an argument}"; shift 2 ;;
               -t) title="''${2?''$0: -t needs an argument}"; shift 2 ;;
               -c) css_extra+=("''${2?''$0: -c needs an argument}"); shift 2 ;;
+              --no-probe) probe=0; shift ;;
+              --strict) strict=1; shift ;;
               -h) usage; exit 0 ;;
               -*) echo "md2pdf: unknown option $1" >&2; usage; exit 2 ;;
               *)
@@ -133,6 +140,97 @@ in
           # invisible U+2060 WORD JOINER.
           WJ="$(printf '\342\201\240')"
           "$SED" -i "s|</span>\([.,;:!?]\)|</span>$WJ\1|g" "$tmp/render.html"
+
+          # Print-width probe: Chromium silently scales the WHOLE page down when
+          # any element is wider than the print column (nowrap MathJax formulas
+          # are the usual culprit; measured on UE5 2026-11-16: one 5-equals
+          # chain shrank the entire document to 84%, changing even the H1 size,
+          # and different files drifted differently). Before printing, render
+          # the page at the exact print column width (A4 210mm minus the CSS's
+          # 2x18mm margins = 657.6px at 96dpi) and list elements that overflow
+          # it. --strict turns the warning into an error (exit 3); --no-probe
+          # skips the extra headless pass.
+          if [ "$probe" = 1 ]; then
+            cat > "$tmp/probe.js" <<'PEOF'
+    <script>
+    function md2pdfMeasure() {
+      var limit = 657.6;
+      // Predicate: only genuinely unbreakable boxes trigger Chromium's
+      // shrink-to-fit. Proven on UE5 2026-11-16: display math (nowrap by the
+      // print CSS) shrinking whole pages to 84-91% - while long lines inside
+      // pre/code printed at FULL scale (the pre's code{white-space:pre-wrap}
+      // makes them breakable), so pre/table must NOT be flagged or every
+      // script-line snippet would warn falsely.
+      var bad = [];
+      var els = document.querySelectorAll("body mjx-container[display], body img, body svg");
+      for (var i = 0; i < els.length; i++) {
+        var el = els[i];
+        if (el.closest("#md2pdf-width-probe")) continue;
+        if (el.tagName === "MJX-CONTAINER" && el.getAttribute("display") !== "true") continue;
+        var w = 0;
+        if (el.tagName === "MJX-CONTAINER") {
+          var m = el.querySelector("mjx-math");
+          w = m ? m.getBoundingClientRect().width : 0;
+        } else if (el.tagName === "IMG") {
+          w = el.naturalWidth || el.getBoundingClientRect().width;
+        } else {
+          w = el.getBoundingClientRect().width;
+        }
+        if (w > limit + 1) {
+          bad.push(Math.round(w * 10) / 10 + "px | " + (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 100));
+        }
+      }
+      var out = document.createElement("pre");
+      out.id = "md2pdf-width-probe";
+      out.style.cssText = "position:absolute;left:-99999px";
+      out.textContent = "<<MD2PDF_BEGIN>>" + bad.join("<<MD2PDF_SEP>>") + "<<MD2PDF_END>>";
+      document.body.appendChild(out);
+    }
+    function md2pdfWhenReady() {
+      // pandoc loads MathJax with defer; the startup promise resolves once
+      // every formula is typeset. Poll until it exists, then measure on top
+      // of it (a fixed setTimeout races the typesetter and measures empty
+      // containers; observed on the first probe build).
+      if (window.MathJax && MathJax.startup && MathJax.startup.promise) {
+        MathJax.startup.promise.then(function () { setTimeout(md2pdfMeasure, 100); });
+      } else {
+        setTimeout(md2pdfWhenReady, 250);
+      }
+    }
+    setTimeout(md2pdfWhenReady, 50);
+    </script>
+    PEOF
+            # pandoc's HTML ends in </body></html>; a <script> appended after
+            # that gets re-parented into the body by the HTML parser (verified
+            # 2026-11-16), so a plain concat beats escaping the snippet into
+            # a sed replacement.
+            cp "$tmp/render.html" "$tmp/render.probed.html"
+            cat "$tmp/probe.js" >> "$tmp/render.probed.html"
+            "$CHROMIUM" --headless=new --disable-gpu --no-sandbox \
+              --user-data-dir="$tmp/probe-profile" \
+              --allow-file-access-from-files --hide-scrollbars \
+              --window-size=658,1200 --virtual-time-budget=60000 \
+              --dump-dom "file://$($REALPATH "$tmp/render.probed.html")" 2>/dev/null \
+              > "$tmp/probe-dom.html" || true
+            # The probe node holds "&lt;&lt;MD2PDF_BEGIN&gt;&gt;w1px | ...&lt;&lt;MD2PDF_END&gt;&gt;"
+            # (dump-dom re-escapes it). Cut it out, decode the entities, split items.
+            offenders="$("$TR" '\n' ' ' < "$tmp/probe-dom.html" \
+              | "$SED" -n 's/.*id="md2pdf-width-probe"[^>]*>//p' \
+              | "$SED" -e 's/&lt;&lt;MD2PDF_BEGIN&gt;&gt;//; s/&lt;&lt;MD2PDF_SEP&gt;&gt;/\n/g; s/&lt;&lt;MD2PDF_END&gt;&gt;.*//' \
+                        -e 's/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g' -e 's/<[^>]*>//g; s/&amp;/\&/g' \
+              | "$GREP" -v '^[[:space:]]*$' | "$HEAD" -5 || true)"
+            if [ -n "$offenders" ]; then
+              echo "md2pdf: WARNING - content wider than the print column (657.6px);" >&2
+              echo "md2pdf:   Chromium shrinks the ENTIRE page to fit; fix the items" >&2
+              echo "md2pdf:   below (split long formulas with aligned, wrap long code" >&2
+              echo "md2pdf:   lines) or pass --no-probe to accept the scaling." >&2
+              printf 'md2pdf:   %s\n' "$offenders" >&2
+              if [ "$strict" = 1 ]; then
+                echo "md2pdf: aborting (--strict)" >&2
+                exit 3
+              fi
+            fi
+          fi
 
           # Fresh --user-data-dir: a running browser would lock the default profile.
           # --no-sandbox: we print a trusted local file and skip the setuid helper.

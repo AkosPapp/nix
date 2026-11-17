@@ -23,8 +23,9 @@
 #     allowed above (postgres, prometheus, loki, vaultwarden - they should dial out to nobody);
 #   - allowTailnet / allowLan drop the corresponding REJECT (syncthing replicates over the
 #     tailnet; prometheus scrapes it).
-#   IPv4 only, exactly like hermes-egress (no ip6tables counterpart in this repo's pattern);
-#   AF_INET6 stays open for legitimate v6 (federation) - revisit with §7's nftables SERVICE_GRAPH.
+#   IPv4 and IPv6 use the same policy. Review 2026-11-12 found that the old
+#   allow-mode omitted loopback from the deny list entirely, and IPv6 had no filter.
+#   Both bypassed the promised lateral-movement boundary.
 {
   config,
   lib,
@@ -236,7 +237,16 @@
         units = ["matrix-synapse"];
         # opens sops.templates."synapse-secrets.yaml" (its extraConfigFiles) at startup.
         inaccessiblePaths = ownSecretsMask;
-        note = "federation/media fetch = public 443; DB via unix socket; tailnet/LAN blocked.";
+        allowedLoopbackTCPPorts = [
+          config.PORTS.matrixAuth
+          config.PORTS.mautrixWhatsapp
+          config.PORTS.mautrixSignal
+          config.PORTS.mautrixSlack
+          config.PORTS.mautrixDiscord
+          config.PORTS.mautrixMattermost
+          config.PORTS.mautrixJabber
+        ];
+        note = "federation/media fetch = public; appservices and MAS use explicit loopback ports; DB via unix socket.";
       };
       matrixMas = {
         units = ["matrix-mas"];
@@ -261,7 +271,7 @@
           (config.PORTS.traefikDashboard or 8888)
           (config.PORTS.transmissionRpc or 8001)
           (config.PORTS.fireflyIii or 8093)
-          (config.PORTS.litellm or 8095)
+          (config.PORTS.omniroute or 8102)
         ];
         note = "widget backends on loopback; external widgets (weather/stocks) need public 443.";
       };
@@ -297,7 +307,7 @@
       };
       prometheus = {
         units = ["prometheus"];
-        # authorization.credentials_file (litellm scrape) is read by the prometheus uid.
+        # authorization.credentials_file entries (scrape secrets) are read by the prometheus uid.
         inaccessiblePaths = ownSecretsMask;
         allowAnyLoopback = true;
         # Scrapes node/zfs/tailscale exporters on every fleet host over the tailnet; alerting
@@ -345,7 +355,12 @@
           (config.PORTS.prometheus or 8009)
           (config.PORTS.loki or 8031)
         ];
-        note = "datasources on loopback; public 443 stays open for update/geoip checks; tailnet/LAN blocked.";
+        custom = let
+          target = builtins.match "http://([0-9.]+):([0-9]+).*" config.MODULES.services.loki.fleetQueryUrl;
+        in
+          lib.optional (target != null && builtins.head target != "127.0.0.1")
+          "iptables -w -A %c -d ${builtins.elemAt target 0} -p tcp --dport ${builtins.elemAt target 1} -j RETURN";
+        note = "Local datasources plus the explicitly configured fleet Loki; other tailnet/LAN destinations blocked.";
       };
       syncthing = {
         units = ["syncthing"];
@@ -355,6 +370,8 @@
         # them into the config dir from a root `+`-prefixed ExecStartPre, which runs
         # OUTSIDE the unit's namespaces.)
         readWritePaths = ["/var/lib/syncthing"];
+        # syncthing-init authenticates to this local API during activation.
+        allowedLoopbackTCPPorts = [config.PORTS.syncthingWebui];
         allowTailnet = true;
         # go-safetynet's network monitor lists interfaces over netlink every 30 min;
         # without AF_NETLINK it logs "route ip+net: netlinkrib: address family not
@@ -413,7 +430,7 @@
     ] (
       n: {
         units = [n];
-        allowedLoopbackTCPPorts = [(config.PORTS.synapse or 8008)];
+        allowedLoopbackTCPPorts = [config.PORTS.synapse config.PORTS.matrixCompat];
         note = "bridge talks to its network's servers (public) and Synapse (loopback); tailnet/LAN blocked.";
       }
     );
@@ -500,62 +517,83 @@
     then j.user
     else (config.systemd.services.${builtins.head j.units}.serviceConfig or {}).User or null;
 
-  chainScript = name: j: let
+  chainScriptFor = ipv6: name: j: let
     chain = chainOf name;
     user = jailUser name j;
-    i = "iptables -w";
+    i =
+      if ipv6
+      then "ip6tables -w"
+      else "iptables -w";
+    loopback =
+      if ipv6
+      then "::1/128"
+      else privateRanges.loopback;
+    localAddress =
+      if ipv6
+      then "::1"
+      else "127.0.0.1";
+    tailnet =
+      if ipv6
+      then "fd7a:115c:a1e0::/48"
+      else privateRanges.tailnet;
+    lan =
+      if ipv6
+      then ["fc00::/7"]
+      else [privateRanges.lan privateRanges.lan2 privateRanges.lan3];
     rejects =
-      (lib.optionals (!j.allowLan) [
-        privateRanges.lan
-        privateRanges.lan2
-        privateRanges.lan3
-      ])
-      ++ (lib.optionals (!j.allowTailnet) [privateRanges.tailnet])
-      ++ [privateRanges.linklocal];
-  in
-    ''
-      # jail-${name} egress (${user}): §3.4 - every deny is LOGged (rate-limited 6/min)
-      ${i} -N ${chain} 2>/dev/null || ${i} -F ${chain}
-      ${i} -C OUTPUT -m owner --uid-owner ${user} -j ${chain} 2>/dev/null \
-        || ${i} -I OUTPUT -m owner --uid-owner ${user} -j ${chain}
-      ${i} -A ${chain} -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
-      ${optionalString j.allowDns ''
-        ${i} -A ${chain} -p udp --dport 53 -j RETURN
-        ${i} -A ${chain} -p tcp --dport 53 -j RETURN
-      ''}
-      ${concatMapStringsSep "\n" (p: "${i} -A ${chain} -d 127.0.0.1 -p tcp --dport ${toString p} -j RETURN") j.allowedLoopbackTCPPorts}
-      ${optionalString j.allowAnyLoopback "${i} -A ${chain} -d ${privateRanges.loopback} -j RETURN"}
-      ${concatMapStringsSep "\n" (r: lib.replaceString "%c" chain r) j.custom}
-    ''
-    + optionalString (j.publicDefault == "deny") ''
-      ${concatMapStringsSep "\n" (p: "${i} -A ${chain} ! -d 127.0.0.0/8 -p tcp --dport ${toString p} -j RETURN") j.allowPublicTCPPorts}
+      [loopback]
+      ++ lib.optionals (!j.allowTailnet) [tailnet]
+      ++ lib.optionals (!j.allowLan) lan
+      ++ (
+        if ipv6
+        then ["fe80::/10"]
+        else [privateRanges.linklocal]
+      );
+    rejectRanges =
+      concatMapStringsSep "\n" (r: ''
+        ${i} -A ${chain} -d ${r} -m limit --limit 6/min -j LOG --log-prefix "egress-deny-${sanitize name}: "
+        ${i} -A ${chain} -d ${r} -j REJECT
+      '')
+      rejects;
+  in ''
+    ${i} -N ${chain} 2>/dev/null || ${i} -F ${chain}
+    ${i} -C OUTPUT -m owner --uid-owner ${user} -j ${chain} 2>/dev/null \
+      || ${i} -I OUTPUT -m owner --uid-owner ${user} -j ${chain}
+    ${i} -A ${chain} -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+    ${optionalString j.allowDns ''
+      ${i} -A ${chain} -d ${localAddress} -p udp --dport ${toString config.PORTS.dns} -j RETURN
+      ${i} -A ${chain} -d ${localAddress} -p tcp --dport ${toString config.PORTS.dns} -j RETURN
+    ''}
+    ${concatMapStringsSep "\n" (p: "${i} -A ${chain} -d ${localAddress} -p tcp --dport ${toString p} -j RETURN") j.allowedLoopbackTCPPorts}
+    ${optionalString j.allowAnyLoopback "${i} -A ${chain} -d ${loopback} -j RETURN"}
+    ${optionalString j.allowTailnet "${i} -A ${chain} -d ${tailnet} -j RETURN"}
+    ${optionalString j.allowLan (concatMapStringsSep "\n" (r: "${i} -A ${chain} -d ${r} -j RETURN") lan)}
+    ${concatMapStringsSep "\n" (r: lib.replaceString "%c" chain r)
+      (lib.filter (r:
+        lib.hasPrefix (
+          if ipv6
+          then "ip6tables "
+          else "iptables "
+        )
+        r)
+      j.custom)}
+    ${rejectRanges}
+    ${optionalString (j.publicDefault == "deny") ''
+      ${concatMapStringsSep "\n" (p: "${i} -A ${chain} -p tcp --dport ${toString p} -j RETURN") j.allowPublicTCPPorts}
       ${i} -A ${chain} -m limit --limit 6/min -j LOG --log-prefix "egress-deny-${sanitize name}: "
-      ${i} -A ${chain} -j REJECT --reject-with icmp-port-unreachable
-    ''
-    # Allow mode ONLY: in deny mode the blanket LOG+REJECT above already catches every
-    # destination, and per-range rules appended BEHIND a blanket REJECT are unreachable
-    # dead rules whose counters would forever read zero (2026-10-25 review nit).
-    + optionalString (j.publicDefault == "allow") (concatMapStringsSep "\n" (
-        r: ''
-          # The LOG carries the same -d match as the REJECT: a flow destined elsewhere
-          # must not be logged as denied (public flows in allow-mode fall off the chain's
-          # end and are accepted - logging them "egress-deny" would page on normal traffic).
-          ${i} -A ${chain} -d ${r} -m limit --limit 6/min -j LOG --log-prefix "egress-deny-${sanitize name}: "
-          ${i} -A ${chain} -d ${r} -j REJECT
-        ''
-      )
-      rejects);
+      ${i} -A ${chain} -j REJECT
+    ''}
+  '';
+  chainScript = name: j:
+    chainScriptFor false name j
+    + optionalString config.networking.enableIPv6 (chainScriptFor true name j);
 
-  stopScript = name: j: let
-    chain = chainOf name;
-    user = jailUser name j;
-  in
-    # hermes pattern: never blanket-D with a missing chain; every step is idempotent.
-    ''
-      iptables -w -D OUTPUT -m owner --uid-owner ${user} -j ${chain} 2>/dev/null || true
-      iptables -w -F ${chain} 2>/dev/null || true
-      iptables -w -X ${chain} 2>/dev/null || true
-    '';
+  stopScript = name: j:
+    concatMapStringsSep "\n" (i: ''
+      ${i} -w -D OUTPUT -m owner --uid-owner ${jailUser name j} -j ${chainOf name} 2>/dev/null || true
+      ${i} -w -F ${chainOf name} 2>/dev/null || true
+      ${i} -w -X ${chainOf name} 2>/dev/null || true
+    '') ["iptables" "ip6tables"];
 
   # Plain attrset (no mkMerge/mkIf inside): folded per unit across jails, then wrapped in a
   # single mkIf at the `serviceConfig` option level - one definition per option per module,

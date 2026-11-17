@@ -19,7 +19,6 @@ in {
     homepage = 8082;
     i2pdWebui = 8070;
     immich = 2283;
-    litellm = 8095;
     loki = 8031;
     # loki's gRPC (scheduler/ingester ring traffic) - loopback-only since 2026-10-27; see
     # modules/services/loki.nix. Named so the jail rule and the config share one source.
@@ -84,11 +83,57 @@ in {
     # entries and any future override share one source. Named so a scene that moves the
     # addon's port restates it once.
     blenderMcp = 9876;
-    # coroot-node-agent's own /metrics listener - loopback only; nothing connects to it.
-    corootNodeAgent = 8141;
+    # coroot-node-agent's own /metrics listener - loopback only; scraped locally by
+    # modules/services/prometheus.nix (job coroot-node-agent), nothing connects remotely.
+    # 8141 -> 10300 (measured 2026-11-13): the 1.36.x agent IGNORES --listen whenever a
+    # collector pushes metrics - flags.go overrides ListenAddress to exactly
+    # 127.0.0.1:10300 once MetricsEndpoint (derived from --collector-endpoint) is set -
+    # so the scrape had been hitting a dead port (up=0) since the agent bump. The
+    # --listen flag is kept in coroot.nix because its value must match this one.
+    corootNodeAgent = 10300;
     # ClickHouse for Coroot - loopback only; 9000/8123 are unavailable here (PORTS.stepCa).
     corootClickhouseNative = 8142;
     corootClickhouseHttp = 8143;
+    # Coroot alert webhook receiver (modules/services/coroot-alerts.nix): bound to all
+    # interfaces like the Coroot server's own listener, reachable only over tailscale0
+    # (the firewall's default zone drops everything else); the Coroot SERVER posts its
+    # alert/incident notifications here from the tailnet.
+    corootAlerts = 8144;
+    # The token-gated installer endpoint (modules/services/bootstrap-installers.nix):
+    # loopback nginx serving /install/<token>/<name>.sh, exposed only through Traefik's
+    # funnel route. Named so the module and the firewall share one source (PORTS rule).
+    bootstrapInstallers = 8145;
+    # The per-device installer key mint daemon (modules/services/installer-mint.nix):
+    # loopback-only HTTP; the sole client is the bootstrap-installers nginx mintProxy
+    # (which carries the X-Mint-Token header ACL), so no funnel/tailnet edge entry is
+    # needed - same loopback reasoning as the omniroute seed unit's API calls. 8149,
+    # not 8147: that number sits between the ultraTrainer 8146/8148 tunnel ladder and
+    # lab-web-tunnels.nix says the next robot instance claims the next slot - take the
+    # number above the pair instead of cutting in.
+    installerMint = 8149;
+    # The Perplexity MCP server (modules/services/mcp-perplexity.nix): loopback
+    # streamable-HTTP MCP daemon whose upstream is this host's own OmniRoute sonar
+    # route; its sole non-local client is the bootstrap-installers proxies.mcp nginx
+    # gate (the funnel's /install/mcp), so like installerMint it needs no firewall
+    # edge and rides the edge tap's funnel-port scope already in place.
+    mcpPerplexity = 8150;
+    # Prosody's HTTP face (websocket/BOSH/file-share/host-meta, modules/services/xmpp.nix):
+    # loopback-only, reached through the Cloudflare Tunnel via Traefik's `cloudflare` entry
+    # point. Not 5280 - that is prosody's public-by-default port and the number the retired
+    # IPv6 era opened in the firewall; the replacement sits on the registry ladder instead.
+    prosodyHttp = 8151;
+    # The UltraTrainer web app on the TU cluster, surfaced on hp (modules/services/
+    # datalab-harness.nix web tunnels): the SAME number is hp's loopback forward-bind
+    # AND the UT_PORT the app binds on the cluster head - ssh -L bridges identical
+    # ports, so one registry entry describes both ends. Traefik routes
+    # ultra-trainer.datalab.hp here.
+    ultraTrainer = 8146;
+    # The robot-side UltraTrainer instance (modules/services/lab-web-tunnels.nix):
+    # hp's loopback bind == the app's bind on the robot, same one-number doctrine.
+    # Distinct from ultraTrainer (the datalab instance) AND from whatever the robots run
+    # locally - r4uai01 already has a foreign :8000 service (measured 2026-11-13).
+    # r4uai00 can earn its own entry later; do not reserve numbers here for it.
+    ultraTrainerR4uai01 = 8148;
     # Traefik's Cloudflare-facing entry point (modules/networking/traefik.nix's `cloudflare`
     # options) - loopback only; cloudflared is its sole client, TLS ends at Cloudflare's edge.
     traefikCloudflare = 8140;
@@ -115,6 +160,12 @@ in {
     traefikDashboard = 8888;
     vaultwarden = 8222;
     transmissionRpc = 8001;
+
+    # Grafana Alloy's own /metrics + UI listener (modules/services/loki.nix). NOT the
+    # component's 12345 default: PORTS.i2pdRouter owns that (the duplicate-port
+    # assertion caught it), so loki.nix passes --server.http.listen-addr explicitly and
+    # the scrape job reads the same key.
+    alloy = 12346;
 
     # prometheus exporters
     prometheusImmichApiExporter = 9201;
@@ -158,6 +209,10 @@ in {
     # disabled on hp); outline.nix still points at it for the day Outline returns - re-enable
     # would then need its own port, since Funnel allows no fourth.
     paseoRelayFunnel = 10000;
+    # 8470/8471 freed 2026-11-14 with the retired phone-pairing pages (audit
+    # finding #9): the modules and their Traefik routes are deleted; do not
+    # reuse these ports without re-checking nothing still caches them.
+    netbirdWireguard = 51820;
     ipfsSwarm = 4001;
     mosquitto = 1883;
     dns = 53;

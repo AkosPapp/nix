@@ -210,7 +210,7 @@ in {
     baseUrl = mkOption {
       type = types.str;
       default = "https://omniroute.hp/v1";
-      example = "https://litellm.hp/v1";
+      example = "http://127.0.0.1:${toString config.PORTS.omniroute}/v1";
       description = "OpenAI-compatible base URL the slot points at (must carry /v1 - Cline appends only /chat/completions).";
     };
 

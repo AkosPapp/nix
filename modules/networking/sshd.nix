@@ -39,6 +39,10 @@ in {
       programs.ssh.forwardX11 = cfg.x11Forwarding;
       services.openssh = {
         enable = true;
+        # 2026-11-12: key-only root SSH was still open on every LAN/WAN NIC.
+        # Keep the management path on the authenticated overlay; other modules
+        # may deliberately open a specific interface if a host needs one.
+        openFirewall = false;
         settings =
           {
             # Forwarded X11 sockets on loopback only, even where forwarding is on (audit #8).
@@ -51,6 +55,7 @@ in {
             X11Forwarding = true;
           };
       };
+      networking.firewall.interfaces.tailscale0.allowedTCPPorts = config.services.openssh.ports;
     })
     (mkIf (cfg.enable && cfg.agentAuth) {
       security.pam.sshAgentAuth.enable = true;

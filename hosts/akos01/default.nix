@@ -1,27 +1,58 @@
 {
   pkgs,
   config,
+  lib,
   ...
 }: {
   config = {
     PROFILES.qemu-vm.enable = true;
+    # 2026-11-11 user request: hardened kernel on the ZFS servers. nixpkgs 26.05 removed
+    # linuxPackages_hardened ("lack of maintenance"), so modules/system/hardened-kernel.nix
+    # rebuilds the pinned 6.18.59 with the grafix linux-hardened patchset (v6.18.59-hardened1)
+    # + the vendored hardened defconfig, keeping the eBPF/kprobe floor coroot/docker/tailscale
+    # need. Takes effect on the NEXT boot; the current generation stays selectable.
+    # 2026-11-12: owner chose hardened 6.18.60 with independently updated
+    # flake dependencies. Source and patch are pinned together by the module.
+    MODULES.system.hardenedKernel.enable = true;
     MODULES.nix.builders.airlab = true;
     MODULES.security.sops.enable = true;
     # No X11 / ssh-agent auth on a server (2026-10-24 audit #8).
     MODULES.networking.sshd.x11Forwarding = false;
     MODULES.networking.sshd.agentAuth = false;
     MODULES.networking.tailscale.hostIP = "100.83.255.5";
+    # Public SSH host keys keyed by tailnet IP - pinned by every fleet hub catalog
+    # (modules/services/herdr.nix) and readable by humans as `ssh herdr-akos01`. Cross-checked
+    # 2026-11-10: keyscan over tailscale0 == the `100.83.255.5` entries in hp's
+    # /root/.ssh/known_hosts, verified identity not TOFU. The rsa line's comment still says
+    # root@akos01zfs because the key predates this host's rename to akos01 (the zfs-root
+    # VM's original name).
+    MODULES.networking.sshClient.hostKeys = [
+      "100.83.255.5 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHHqlpfnUw96jh5f6doxd+ThejCSC6EwEnxrAPPttMup"
+      "100.83.255.5 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQCexStvKObMSDoxaU3FnygbC/ITflGJChHeHn+6Gpf6RPk01Hf69gs0YWitbutv6G+TNgRheQHjOodpnSHPUQqXdFczoqSC3Ou0LPWUitUHn+aKKkpzzl5iuEaHawH5auZzbYLLMKEopmkEbKn5Haju36u2/3mSc+TXMtOZ+VEZ9ubSxLlfhRQIErJncdmQHJXjphpT8MqxRf6PP6BRB7YSo+vRH/VG0ObN5hnhHzKPirRP3SFkRYjq95JHPuoDtpMdnkuw46pzwwsJMZYgNgMxRyP+P35jK8DzXQ99tpI5AATzY6Zi+bCPv8yN7fERkRRZE00O+V5txVO6df0Gu/MDFoyIpru/RWVnr43hQAQT3H+6NE/7l3KWf1QEe5qi83Mz4AadaFB4cj+aojD0kO6InufnUpiXc2+4dfzTJAH4/o46gMHV29boLQXPlCA3X3HD5wXLm1GYZcqZ3iY1lL2+kYtPSlC+/88whPr5S0kDon8oUhn5bFIX7NJMNgn5vqndpDG1t4iHKXvo0AhbLWMzRc2Mm38pD6fSqqRcpj0hBccJrUe5pqpMt2hiweb56QsVGoED3B7kTn+JjsWnkpb6s1agKGITNQi/DThqCWC2Xy4lE191/Jpvs0IhBxqnshYyzDoJPcfX3ftsHy4fncyQFYgys+qaOA9vC2FnDUNNIw== root@akos01zfs"
+    ];
     # Nightly: pull the fastdds discovery-server image (docker-images-update.nix).
     MODULES.virtualisation.docker-images-update.enable = true;
     # herdr (herdr.dev): binaries only, same reasoning as hp - no normal user account here
-    # (no USERS.akos), so no per-user state and no GUI. hc on PATH is what lets this box be
-    # an `hc machine add akos01` target; installApp = false keeps vulkan/mesa out of a VM
-    # with no display server. See modules/services/herdr.nix for why the servers themselves
-    # stay unmanaged (herdr-core spawns its own transient systemd --user units).
+    # (no USERS.akos), so no GUI. hc on PATH is what lets this box be an `hc machine add
+    # akos01` target; installApp = false keeps vulkan/mesa out of a VM with no display
+    # server. See modules/services/herdr.nix for why the servers themselves stay unmanaged
+    # (herdr-core spawns its own transient systemd --user units; the TUI's server is
+    # auto-started by the hub's incoming bridge - src/remote/host.rs ensure_remote_server_running).
+    # users.root mirrors hp: the fleet hub (hp) dials this box as root from its declared
+    # catalog, and the incoming herdr server needs the 0700 config/state scaffolding (saved
+    # screens hold agent scrollback with API keys) plus linger for root's transient units.
     MODULES.services.herdr = {
       enable = true;
       installApp = false;
+      users.root = {
+        enable = true;
+        cli.enable = true;
+      };
     };
+    # Same phone public key as the hub/laptop; private key stays on the phone.
+    users.users.root.openssh.authorizedKeys.keys = [
+      (lib.removeSuffix "\n" (builtins.readFile ../../users/herdr-mobile.pub))
+    ];
     MODULES.services.syncthing.deviceID = "ZNMNOF4-NH6MXMO-VCFTEPL-4CUQ2DC-Y7VR6WI-NHFOUKS-OK2GXAR-A7SVWQ2";
     MODULES.networking.traefik.enable = true;
     MODULES.services.vaultwarden.enable = true;
@@ -35,6 +66,10 @@
     # (coroot.<this host's domain>); the local eBPF agent pushes to it over loopback.
     # The multi-server mode itself remains supported (see modules/services/coroot.nix).
     MODULES.services.coroot.enable = true;
+    # 2026-11-14 (owner ask): EE binary + sops license (coroot/license_key) + Coroot Cloud
+    # org key (coroot/cloud_api_key) - enables AI RCA and the enterprise features; the
+    # community agent package stays version-paired on the same minor (see the module).
+    MODULES.services.coroot.enterprise = true;
     # Coroot RCA -> Postgres metrics for this box's cluster (immich's DB; the agent here
     # collects it). Role/extensions provisioned by postgresql.nix - note the unit is NOT
     # jailed, it talks to the jailed server through the shared /run/postgresql socket.
@@ -52,16 +87,32 @@
     MODULES.security.jails.vaultwarden.enable = true;
     # PLAN §3 (see hp for the rationale; here only the Immich-stack DB user earns an execve
     # key - no code-running agents live on this box).
-    # PLAN §7: graph in observe mode here too; `enforce` stays off until a week of
-    # explainable sg-seen / suricata logs (same gate as hp). 2026-10-25: Suricata IDS tap
-    # ALSO enabled on this host on request - previously hp-only ("one tap is enough", the
-    # tailnet aggregation point; this second tap now covers the grafana/loki/prometheus/
-    # vaultwarden half of the fleet directly). allow = [] = observe mode: every undeclared
-    # tailnet edge is logged, edges become explicit as sg-seen logs make the case.
+    # PLAN §7: graph in ENFORCE on this host - the 2026-11-13 audit flipped it deliberately
+    # and this comment is its ledger (audit finding #12: the stale "observe mode, flip
+    # after a week of sg-seen" gate prose is what was wrong, not the toggle). 2026-10-25:
+    # Suricata IDS tap ALSO enabled on this host on request - previously hp-only ("one tap
+    # is enough", the tailnet aggregation point; this second tap now covers the
+    # grafana/loki/prometheus/vaultwarden half of the fleet directly). allow = [] holds
+    # host-local additions only: cross-host edges live in the fleet table
+    # (modules/security/service-graph.nix), and undeclared TCP still gets the rate-limited
+    # sg-seen log BEFORE the reject, so drift stays observable the same way.
     MODULES.security.serviceGraph = {
+      # 2026-11-12: independent nftables hook survives VPN rule reordering.
+      enforce = true;
       enable = true;
       suricata.enable = true;
       allow = [];
+    };
+    # 2026-11-12: akos01 has no public door (no cloudflare services, no funnel), so
+    # MODULES.networking.traefik.accessLogs stays off here - traefik.nix asserts it,
+    # and there is no public traffic to analyze. What akos01 DOES do is mirror its
+    # FLEET streams (suricata EVE from this host's tap) to hp's Loki - hp is the
+    # aggregator (acceptFleetPush) - while the journal spine keeps going to the
+    # local Loki. Grafana here queries the same fleet Loki via fleetQueryUrl, so
+    # both boxes' IDS dashboards show the whole tailnet picture either way.
+    MODULES.services.loki = {
+      fleetPushTargets = ["http://100.92.36.52:${toString config.PORTS.loki}/loki/api/v1/push"];
+      fleetQueryUrl = "http://100.92.36.52:${toString config.PORTS.loki}";
     };
     MODULES.security.audit.enable = true;
     MODULES.security.audit.execUsers = ["postgres"];
@@ -189,6 +240,17 @@
     boot.zfs.forceImportRoot = false;
     boot.zfs.devNodes = "/dev";
     boot.loader.grub.zfsSupport = true;
+    # ARC policy (2026-11-11, owner call): NO zfs_arc_max cap here. This box's files
+    # live on a slow CIFS-mounted Ceph drive, so ARC is the difference between 0.1ms
+    # and multi-second reads, and 100%-of-free-RAM is fine. What the 2026-11-11 stall
+    # incident (node-exporter >20s hung scrapes at 83% PSI, immich-api/microservices
+    # scrape timeouts, coroot "memory pressure" x3) actually needed was faster ARC
+    # yield, not a smaller ARC: modules/system/zfs-tuning.nix (auto-on for any host
+    # with zfs in supportedFilesystems) lifts the reclaim wake-up watermarks so
+    # kswapd shrinks the ARC before cgroups start stalling, and keeps a standing
+    # 1 GiB free-RAM floor the ARC never grows into (arcHeadroom). Measured live:
+    # exporters answer in 0.04-0.28s, PSI 0.0, zero direct-reclaim stalls while the
+    # ARC refills under kswapd's supervision.
 
     fileSystems."/" = {
       device = "zroot/root";

@@ -41,7 +41,23 @@
 
     users.mutableUsers = false;
 
-    programs.mosh.enable = true;
+    # Client only (the laptop dials out; nothing here should be a mosh server).
+    # The nixpkgs default openFirewall=true was accepting UDP 60000-61000 on
+    # EVERY interface of every host - measured 2026-11-12: it's the only author
+    # of that hole on hp and akos01 (live `-A nixos-fw -p udp --dport
+    # 60000:61000`), while mosh-server itself is enabled nowhere. Close it on
+    # LAN/WAN and keep it open on the tailnet only, for mosh's own UDP range
+    # - the service-graph's udpElements pick the interface ranges up
+    # (its nft tailnet chain then accepts the range on tailscale0/wt0). The
+    # retired phone-pairing app that also rode this range is gone (2026-11-14,
+    # audit #9); the tailscale0-only opening stays for real mosh.
+    programs.mosh.openFirewall = false;
+    networking.firewall.interfaces.tailscale0.allowedUDPPortRanges = [
+      {
+        from = 60000;
+        to = 61000;
+      }
+    ];
 
     # No global nixpkgs.config.allowBroken (was here; 2026-10-24 audit #7): a broken package
     # is one whose build is known to fail, and silently shipping it pins the host to a
@@ -99,7 +115,28 @@
     ];
 
     users.users.root.openssh.authorizedKeys.keys = [
-      "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQCYoxGrmlgUcVfncMnlDONPk5RwSEqbiBpvT3c2m9MIDsYdYlLfnRN5YJPZgp8CHcPnPK2rboRiHAO00j545ci2CDeAp6zGKoOhX0q/3fES3ySqMG7lJ+cplxoXekSL9GNOQqSREDymqrMfqGy9OnupqcAZForX/k1aegi99TgZwbGMAK/UIzfdkQr49VVzYbaNR14rikIfjvi23s4bdP/KgeAs0T9KEKKSAd9WJQxUr/dmTjNBODzW10llgmCCVRNk3Pj4A1qiGiz0wkjG7XmZT0QjHyrX2GzSYuhW1l8s6mY3tTBBKVoj+peBphgxGBbEwUCQh0yPVBGstM5fHqN1bvOjRfYNQboVSmLhicX7Bk0WNLPS6DtqHZTXGNuYM8NcHn4xUIX5GwlsS6Mfo2tDMcX83w1Jv0BuImfcUMl6jvYCzcpEdGENYHWisIvQLSlAK6UEIYGeG8CH/iRqRPQIrOW49EQJYlW2VSLuTf8SA6c9Z2xdSIsli9JOfr79VUdYpgrdiv7vFjiX5d+hcJVC0rjQkF6XlAWVH5yMfpr1OXFbpKqILygx9Zcj7IhMHodQsjtr6+FjIs5Xm5Nt1nY9Cpke/q3lHcgq0PVgwvMPMhTOxfv6XoKQGmDTJWsmAP8n4BotZm7H2OlO29/zJnrgJ8+ZienkAX5s2cAaT16Kvw== akos@laptop"
+      # Single owner: users/akos-laptop.pub. Also trusted for hp's hermes + datalab agent
+      # terminals (hosts/hp/default.nix) and for akos@legion5 - there via a hand-maintained
+      # line in ~/.ssh/authorized_keys whose comment field reads "akos@nixos" (same RSA
+      # blob, SHA256:bS9Kfe1zXSvIOEFV5riiRS1yXPJJfR0SA4qNT9JrZYk). Verified byte-for-byte
+      # 2026-11-14 closing audit #14; matching by comment is the trap that made the old
+      # claim read as false - the "akos@laptop" ED25519 line next to it is a DIFFERENT key,
+      # and users/akos.nix ships hub+mobile only, so the legion5 trust is out-of-band, not
+      # a deploy artifact.
+      (lib.removeSuffix "\n" (builtins.readFile ../users/akos-laptop.pub))
+      # The herdr HUB key (private half: sops herdr/hub_ssh_key, mounted only on hp by
+      # MODULES.services.herdr.sshKeySecret - modules/services/herdr.nix). hp's TUI machine
+      # catalog dials every fleet box as root over the `Host herdr-*` aliases, and measured
+      # 2026-11-09 hp's root had NO usable own key for that (/root/.ssh/id_ed25519 is a
+      # symlink to the nix-builder private key, whose public half is trusted only on the
+      # AIRLAB builders) and the hub path runs without agent forwarding on purpose.
+      # Hub-only by construction: IdentitiesOnly pins it to herdr-* aliases and nothing
+      # else references it. It yields a root shell on every fleet box - accepted as the
+      # hub-operator tradeoff (owner decision 2026-11-09: single-holder key, tailnet-only
+      # reach, no agents run under root here).
+      # Single owner: users/herdr-hub.pub (the same line users/akos.nix and the
+      # hermes sshAccess trust read).
+      (lib.removeSuffix "\n" (builtins.readFile ../users/herdr-hub.pub))
     ];
   };
 }

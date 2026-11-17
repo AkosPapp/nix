@@ -13,16 +13,17 @@
 # root (kilo, bwrap, seccomp helpers), which fetchzip refuses outright, and
 # a raw-file hash is verifiable against upstream's own
 # https://github.com/Kilo-Org/kilocode/releases/download/v<vers>/kilo-cli-SHA256SUMS
-# (kilo-linux-x64.tar.gz = 503561fb...c02a, checked 2026-11-05). Bump by
-# swapping the tag + re-hashing the release asset and `kilo --version`-
-# checking the binary still runs (verified 7.8.18 on legion5 2026-11-05).
+# (kilo-linux-x64.tar.gz = 4c08aa46...de08 for v7.8.27, verified against upstream's
+# SHA256SUMS 2026-11-09; the previous 7.8.18 asset was 503561fb...c02a, checked
+# 2026-11-05). Bump by swapping the tag + re-hashing the release asset and
+# `kilo --version`-checking the binary still runs (verified 7.8.18 on legion5 2026-11-05).
 stdenv.mkDerivation (finalAttrs: {
   pname = "kilo-cli";
-  version = "7.8.18";
+  version = "7.8.27";
 
   src = fetchurl {
     url = "https://github.com/Kilo-Org/kilocode/releases/download/v${finalAttrs.version}/kilo-linux-x64.tar.gz";
-    hash = "sha256-UDVh+4xLjt4mcDRXqRK5jPGMnJ6JYWSfNxjPdna1wCo=";
+    hash = "sha256-TAiqRt2HRToyn0iw8A000Pp7jwrJEP6JN4FNToWC3gg=";
   };
 
   # The kiosk bwrap + seccomp helpers must live NEXT TO the kilo binary (it

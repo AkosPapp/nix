@@ -22,9 +22,12 @@
       containers.fastdds_discovery = {
         image = "ros:humble-ros-base-jammy";
         extraOptions = [
-          "--privileged" # Required for network access
+          # 2026-11-12 review: discovery uses ordinary high TCP/UDP ports;
+          # it needs neither host devices nor capabilities nor the host IPC namespace.
+          "--user=65534:65534"
+          "--cap-drop=ALL"
+          "--security-opt=no-new-privileges"
           "--network=host" # Use host networking for discovery
-          "--ipc=host" # Share IPC namespace
         ];
         # Start FastDDS discovery server on all interfaces
         cmd = [
@@ -35,11 +38,11 @@
           "-l"
           "0.0.0.0"
           "-p"
-          "11811"
+          (toString config.PORTS.fastddsDiscovery)
           "-t"
           "0.0.0.0"
           "-q"
-          "42100"
+          (toString config.PORTS.fastddsData)
         ];
       };
     };

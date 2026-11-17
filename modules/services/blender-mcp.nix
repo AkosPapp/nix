@@ -1,6 +1,6 @@
 # Blender MCP ("MCP for Blender", ahujasid/blender-mcp): registers the
 # `mcp-for-blender` stdio server with EVERY coding-agent harness this repo
-# configures (opencode, kilo, pi, omp, claude-code, cline), and keeps the
+# configures (opencode, kilo, pi, omp, claude-code, cline, codex, amp), and keeps the
 # matching Blender ADDON installed + enabled in the user's Blender so the
 # server has something to talk to.
 #
@@ -16,14 +16,16 @@
 #
 # Feed design: each harness module grew a generic `mcp.servers` option (its
 # OWN config dialect, merged at activation with user entries surviving); this
-# module writes the `blender` entry through them instead of learning six merge
+# module writes the `blender` entry through them instead of learning eight merge
 # units. Entry shapes mirror what each app's own writer produces (each
-# verified 2026-11-06 against the pinned versions):
+# verified 2026-11-06, codex/amp 2026-11-09, against the pinned versions):
 #   opencode/kilo  {type="local"; command=[...]; enabled=true;}  (OpenCode dialect)
 #   pi             {command; args;}                               (~/.pi/agent/mcp.json)
 #   omp            {type="stdio"; command; args;}                 (~/.omp/agent/mcp.json)
 #   claude-code    {type="stdio"; command; args; env={};}         (~/.claude.json user scope)
 #   cline          {command; args; alwaysAllow=[]; disabled=false;} (cline_mcp_settings.json)
+#   codex          {command; args;}  ([mcp_servers.<name>], deny_unknown_fields)
+#   amp            {command; args;}  (amp.mcpServers settings map)
 #
 # Server/package notes:
 #   * The binary comes from packages/mcp-for-blender.nix (PyPI sdist; not in
@@ -155,10 +157,10 @@ in {
     enable = mkEnableOption ''
       Blender MCP wiring: the mcp-for-blender stdio server registered with
       every configured coding-agent harness (opencode, kilo, pi, omp,
-      claude-code, cline) plus the matching Blender add-on kept installed and
-      enabled in the managed users' Blender prefs. Requires Blender installed
-      on the host (users/akos.nix ships it); only hosts where Blender exists
-      should enable this.
+      claude-code, cline, codex, amp) plus the matching Blender add-on kept
+      installed and enabled in the managed users' Blender prefs. Requires
+      Blender installed on the host (users/akos.nix ships it); only hosts where
+      Blender exists should enable this.
     '';
 
     package = mkOption {
@@ -229,7 +231,7 @@ in {
     # the absolute store path regardless).
     environment.systemPackages = [cfg.package];
 
-    # The six harness feeds (each module merges these into the user's own
+    # The eight harness feeds (each module merges these into the user's own
     # file; user-added servers survive, see the mcp.servers options).
     MODULES.services.opencode.mcp.servers = {blender = opencodeEntry;};
     MODULES.services.kilo.mcp.servers = {blender = opencodeEntry;};
@@ -239,6 +241,11 @@ in {
       blender = stdioEntry // {env = {};};
     };
     MODULES.services.cline.mcp.servers = {blender = clineEntry;};
+    # codex's RawMcpServerConfig and amp's settings entries are both plain
+    # command/args stdio records (deny_unknown_fields on codex's side, so no
+    # `type` key) - the piEntry shape verbatim.
+    MODULES.services.codex.mcp.servers = {blender = piEntry;};
+    MODULES.services.amp.mcp.servers = {blender = piEntry;};
 
     systemd.services.blender-mcp-addon = mkIf cfg.installAddon {
       description = "Install + enable the MCP for Blender add-on (MODULES.services.blenderMcp)";

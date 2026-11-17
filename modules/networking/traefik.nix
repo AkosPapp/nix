@@ -25,6 +25,41 @@ in {
   options.MODULES.networking.traefik = {
     enable = mkEnableOption "Traefik reverse proxy";
 
+    accessLogs = {
+      enable = mkOption {
+        type = types.bool;
+        default = false;
+        description = ''
+          Write one JSON access-log line per request to
+          /var/log/traefik/access.log (mode 0664 traefik:traefik - readable by the Alloy
+          group; the journald copy of the same lines stays the `unit=traefik.service`
+          fallback on hosts without the Loki spine). The edge-analytics pipeline in
+          modules/services/loki.nix tails this file: it is the ONLY place the fleet's
+          public requests exist with the real client IP (X-Forwarded-For via the trusted
+          cloudflare/funnel entry points -> ClientHost) plus Cloudflare's country header.
+        '';
+      };
+
+      keepHeaders = mkOption {
+        type = types.listOf types.str;
+        default = [
+          "User-Agent"
+          "Referer"
+          "Cf-Ipcountry"
+          "Cf-Ray"
+          "Cf-Connecting-Ip"
+          "Sec-CH-UA-Mobile"
+          "Sec-CH-UA-Platform"
+        ];
+        example = ["User-Agent"];
+        description = ''
+          Request headers recorded into the JSON line (canonicalized names; logged as
+          request_<Name>). Everything not listed is dropped by Traefik itself, so cookies
+          and Authorization never reach /var/log or Loki.
+        '';
+      };
+    };
+
     domain = mkOption {
       type = types.str;
       default = config.networking.hostName;
@@ -105,13 +140,14 @@ in {
             stripPrefixPath = mkOption {
               type = types.nullOr types.str;
               default = null;
-              example = "/litellm";
+              example = "/omniroute";
               description = ''
                 What `stripPrefix` removes; `pathPrefix` itself when null. Set it *shorter* than
                 `pathPrefix` to claim a deeper path than the backend serves from its own root:
-                litellm.nix registers the funnel route at `/litellm/v1` - so nothing else the proxy
-                serves is reachable from the Funnel at all - while the backend still has to receive
-                its own `/v1/...`, which means stripping only `/litellm`. It has to be a prefix of
+                omniroute.nix registers the funnel route at `/omniroute/v1` - so nothing else the
+                proxy serves is reachable from the Funnel at all - while the backend still has to
+                receive its own `/v1/...`, which means stripping only `/omniroute`. It has to be a
+                prefix of
                 `pathPrefix` (asserted), otherwise the backend would be handed a path it never
                 serves and the route would 404 on every request.
               '';
@@ -225,7 +261,30 @@ in {
           };
 
           log.level = "INFO";
-          accessLog = {};
+          # Unconfigured, Traefik's accessLog writes CLF lines to stdout -> journal (the
+          # unit=traefik.service spine). Enabling MODULES.networking.traefik.accessLogs
+          # switches to JSON lines in a dedicated file - the edge-analytics pipeline below
+          # tails it, and permissions need no wiring: Traefik creates the directory 0755
+          # and the file 0664 (openAccessLogFile in pkg/middlewares/accesslog/logger.go),
+          # so the DynamicUser alloy reads without group membership.
+          accessLog =
+            if cfg.accessLogs.enable
+            then {
+              # The directory must pre-exist: Traefik's openAccessLogFile does MkdirAll,
+              # but the unit runs as the (static) traefik user, which cannot mkdir under
+              # root-owned /var/log - measured on hp 2026-11-13: every boot logged
+              # "mkdir /var/log/traefik: permission denied" and the whole edge-analytics
+              # pipeline (Alloy -> Loki job=traefik-access) silently tailed nothing.
+              filePath = "/var/log/traefik/access.log";
+              format = "json";
+              fields.headers = {
+                # Redact by default (the fleet doctrine): cookies and Authorization must
+                # never reach /var/log, let alone Loki.
+                defaultMode = "drop";
+                names = genAttrs cfg.accessLogs.keepHeaders (_: "keep");
+              };
+            }
+            else {};
         };
 
         dynamicConfigOptions.http = {
@@ -279,6 +338,13 @@ in {
         };
       };
 
+      # accessLogs' file dir: root-owned /var/log cannot be mkdir'd by the traefik unit
+      # (see the accessLog comment), so tmpfiles owns it. 0755 + file 0664 is exactly
+      # what the Alloy tail (DynamicUser) needs to read the log without group wiring.
+      systemd.tmpfiles.rules = lib.optionals cfg.accessLogs.enable [
+        "d /var/log/traefik 0755 traefik traefik - -"
+      ];
+
       systemd.services.traefik = {
         # lego (Traefik's ACME client) reads this to trust step-ca's certificate, which is signed by
         # our own root and so isn't in any default trust store it ships with.
@@ -297,6 +363,175 @@ in {
         config.PORTS.traefikHttps
       ];
     }
+
+    (mkIf (cfg.accessLogs.enable && config.MODULES.services.loki.enable) (let
+      host = config.networking.hostName;
+      p = config.PORTS;
+      geoStage =
+        if config.MODULES.services.loki.geoipDatabase != null
+        then ''
+          // Funnel/tailnet lines carry no CF-IPCountry; resolve them from the mmdb when
+          // the operator provided one (MODULES.services.loki.geoipDatabase).
+          stage.match {
+            selector = "{country!~\"..\"}"
+            stage.geoip {
+              source  = "client_ip"
+              db      = "${config.MODULES.services.loki.geoipDatabase}"
+              db_type = "country"
+            }
+            stage.labels {
+              values = { country = "geoip_country_code" }
+            }
+          }
+        ''
+        else "";
+    in {
+      # Where the public's requests actually come from - the analytics spine: Traefik's
+      # JSON access log -> Alloy -> Loki job="traefik-access". ClientHost is the REAL
+      # client IP on the cloudflare/funnel entry points (forwardedHeaders.trustedIPs
+      # above), and Cloudflare stamps the client country at its edge, so no geo database
+      # is needed for the public door. Everything here follows the low-cardinality-label
+      # contract of modules/services/loki.nix: entrypoint/router/country/device_class/
+      # status_class are bounded sets; IPs, URLs and full UAs ride as structured
+      # metadata. This is the LOG-side twin of the suricata edge tap (service-graph):
+      # Traefik says what it served, the DPI tap says what crossed the wire.
+      MODULES.services.loki.extraAlloyBlocks = [
+        ''
+            loki.source.file "traefik_access" {
+              targets = [
+                { __path__ = "/var/log/traefik/access.log", job = "traefik-access", host = "${host}" },
+              ]
+              forward_to = [loki.process.traefik_access.receiver]
+            }
+
+            loki.process "traefik_access" {
+              forward_to = [loki.write.fleet.receiver]
+
+              stage.json {
+                expressions = {
+                  entrypoint  = "entryPointName",
+                  router      = "RouterName",
+                  method      = "RequestMethod",
+                  status      = "DownstreamStatus",
+                  client_ip   = "ClientHost",
+                  url         = "RequestPath",
+                  vhost       = "RequestHost",
+                  user_agent  = "request_User-Agent",
+                  country     = "request_Cf-Ipcountry",
+                  cf_ray      = "request_Cf-Ray",
+                  ua          = "request_User-Agent",
+                }
+              }
+
+              stage.label_drop {
+                values = ["filename"]
+              }
+              // ua/status are promoted to labels ONLY to drive the classifiers below and are
+              // dropped again afterwards (they ride on as structured metadata) - selectors in
+              // stage.match read labels, not the extracted map.
+              stage.labels {
+                values = {
+                  entrypoint = "",
+                  router     = "",
+                  vhost      = "",
+                  country    = "",
+                  ua         = "",
+                  status     = "",
+                }
+              }
+              stage.structured_metadata {
+                values = {
+                  client_ip  = "",
+                  url        = "",
+                  user_agent = "",
+                  cf_ray     = "",
+                  status     = "",
+                }
+              }
+
+          ${geoStage}
+              // device_class + status_class exactly as the suricata EVE classifier defines
+              // them, so the dashboards' legends match across both sources (the "Public Edge"
+              // panel mixes traefik-access and suricata-edge streams in one graph). Duration
+              // is a Go nanosecond duration in the line ("12.3ms"); it stays in the JSON for
+              // query-side parsing - no metric is minted from it here.
+              stage.static_labels {
+                values = { device_class = "other" }
+              }
+              stage.match {
+                selector = "{ua=~\"(?i).*(mozilla|chrome|safari|firefox|edg).*\"}"
+                stage.static_labels {
+                  values = { device_class = "desktop" }
+                }
+              }
+              stage.match {
+                selector = "{ua=~\"(?i).*(ipad|tablet).*\"}"
+                stage.static_labels {
+                  values = { device_class = "tablet" }
+                }
+              }
+              stage.match {
+                selector = "{ua=~\"(?i).*(mobile|iphone|ipod|android).*\"}"
+                stage.static_labels {
+                  values = { device_class = "mobile" }
+                }
+              }
+              stage.match {
+                selector = "{ua=~\"(?i).*(bot|crawl|spider|scan|curl|wget|python|aiohttp|go-http|okhttp|java|libwww|masscan|zgrab|nuclei|httpx|censys|shodan).*\"}"
+                stage.static_labels {
+                  values = { device_class = "bot" }
+                }
+              }
+              stage.label_drop {
+                values = ["ua"]
+              }
+              stage.match {
+                selector = "{status=~\"2.*\"}"
+                stage.static_labels {
+                  values = { status_class = "2xx" }
+                }
+              }
+              stage.match {
+                selector = "{status=~\"3.*\"}"
+                stage.static_labels {
+                  values = { status_class = "3xx" }
+                }
+              }
+              stage.match {
+                selector = "{status=~\"4.*\"}"
+                stage.static_labels {
+                  values = { status_class = "4xx" }
+                }
+              }
+              stage.match {
+                selector = "{status=~\"5.*\"}"
+                stage.static_labels {
+                  values = { status_class = "5xx" }
+                }
+              }
+              stage.label_drop {
+                values = ["status"]
+              }
+            }
+        ''
+      ];
+
+      # The "where do requests come from" board (uid fleet-edge, folder "Fleet"),
+      # git-provisioned by modules/services/grafana.nix. Country/device/IP panels read
+      # job=traefik-access; the DPI cross-check pairs it with the suricata loopback tap.
+      MODULES.services.grafana.providedDashboards = lib.mkIf config.MODULES.services.grafana.enable {
+        "fleet-edge.json" = ../../dashboards/fleet-edge.json;
+      };
+
+      # Access-log analytics only pay off where there IS public traffic to analyze; the
+      # journald copy already covers tailnet-only hosts.
+      assertions = [
+        {
+          assertion = cfg.cloudflare.services != {} || cfg.funnel.enable;
+          message = "MODULES.networking.traefik.accessLogs ships edge analytics, but this host publishes nothing publicly (no cloudflare services, no funnel). Tailnet-only access logs already ride journald; leave accessLogs off.";
+        }
+      ];
+    }))
 
     (mkIf cfg.funnel.enable {
       assertions =

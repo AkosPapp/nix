@@ -11,7 +11,7 @@
 # - Tailscale's MagicDNS and the other hosts' Traefik zones only while tailscale is connected
 # - netbird's zone via its DNS server (MODULES...splitDns.netbird.dnsServer) only while wt0 is
 #   up, the route to it leaves through wt0, and it answers the zone. netbird's DNS client is
-#   disabled in users/akos.nix.
+#   disabled by modules/networking/netbird.nix.
 # dnsmasq is restarted only when the generated include actually changes, and every *change* of
 # the tailscale/netbird/dnsmasq-forwarding verdict is logged by the updater (see the verdict
 # block below), because a suppressed forward is otherwise invisible from the client - and so is
@@ -61,6 +61,7 @@
       config.services.tailscale.package
       config.services.netbird.package
       pkgs.coreutils
+      pkgs.gnused
       pkgs.jq
       pkgs.iproute2
       pkgs.dnsutils
@@ -194,6 +195,16 @@
         *"inet ${cfg.labForward.addressPrefix}"*) echo "server=/${cfg.labForward.zone}/${cfg.labForward.server}" ;;
       esac
     ''}
+      ${lib.concatStringsSep "\n    " (lib.mapAttrsToList (n: ip: ''
+        # Static answer for MagicDNS-suffixed probes of the bare name (see tailnetRecords).
+        echo "address=/${n}/${ip}"
+      '')
+      cfg.tailnetRecords)}
+      ${lib.concatStringsSep "\n    " (lib.mapAttrsToList (n: ip: ''
+        # EXACT-NAME static answer (see tailnetHostRecords): host-record, never the wildcard.
+        echo "host-record=${n},${ip}"
+      '')
+      cfg.tailnetHostRecords)}
       ${lib.optionalString cfg.netbird.enable ''
       if [ "$netbird_up" = 1 ]; then
         echo "server=/$netbird_zone/$netbird_dns"
@@ -206,6 +217,14 @@
       # fallback at something inside the tunnel would deadlock its own bootstrap.
       echo "server=/${cfg.netbird.bootstrapHost}/9.9.9.9"
       echo "server=/${cfg.netbird.bootstrapHost}/1.1.1.1"
+    ''}
+      ${lib.optionalString (cfg.netbird.extraZones != []) ''
+      # Zones the SAME netbird DNS server is authoritative for, gated by the same probe (its
+      # SOA answer for `zone` proves the server is reachable and recursing; if it ever stops
+      # answering, these fall back to the public servers - a fail-closed no worse than today).
+      if [ "$netbird_up" = 1 ]; then
+      ${lib.concatMapStringsSep "\n        " (z: "echo \"server=/${z}/${cfg.netbird.dnsServer}\"") cfg.netbird.extraZones}
+      fi
     ''}
     } > "$conf.new"
 
@@ -420,6 +439,20 @@ in {
         '';
       };
 
+      extraZones = mkOption {
+        type = types.listOf types.str;
+        default = [];
+        example = ["futurelab"];
+        description = ''
+          Additional zones forwarded to `dnsServer` under the SAME netbird-liveness gate as
+          `zone` (hp 2026-11-11: the lab's `futurelab` zone - r4uai00/r4uai01 live there -
+          which is how a tailnet client with no NetBird app resolves the robots: Tailscale
+          split-DNS sends *.futurelab to this host's dnsmasq, dnsmasq forwards over wt0 to
+          the lab server, the answer routes back through the tailnet transit). Emitted only
+          while the netbird probe answers, so a dead tunnel cannot black-hole the zone.
+        '';
+      };
+
       bootstrapHost = mkOption {
         type = types.str;
         default = "netbird.${cfg.netbird.zone}";
@@ -429,6 +462,41 @@ in {
           it has to walk through to come up.
         '';
       };
+    };
+
+    tailnetRecords = mkOption {
+      type = types.attrsOf types.str;
+      default = {};
+      example = {
+        datalab = "128.130.194.213";
+        r4uai00 = "10.210.0.10";
+      };
+      description = ''
+        Static address= records served to tailnet clients whose MagicDNS points a suffix (or
+        the whole tailnet) at this host's dnsmasq: name -> IPv4. Emitted UNCONDITIONALLY (not
+        gated on tailscale/netbird like the dynamic forwards), because a tailnet client reaching
+        this resolver already proves the path exists, and the names must answer before/while
+        the lab or TU networks are reachable - `datalab` is public anyway; the robot bare names
+        exist so the phone can type `r4uai00` without the zone suffix. hp 2026-11-11: the phone
+        resolver feature; console split-DNS maps which suffixes arrive here.
+      '';
+    };
+
+    tailnetHostRecords = mkOption {
+      type = types.attrsOf types.str;
+      default = {};
+      example = {
+        "example.org" = "100.101.102.103";
+      };
+      description = ''
+        Like `tailnetRecords` but EXACT-NAME (dnsmasq `host-record=`, not the wildcard
+        `address=`): name -> IPv4. Use it for multi-label domains whose subdomains must keep
+        resolving normally - `address=/akosp.app/` would have hijacked xmpp.akosp.app and
+        m.akosp.app behind the same wildcard, `host-record=` answers only the apex itself.
+        The 2026-11-15 use case: XMPP clients on the tailnet resolving the JID domain get the
+        host's tailnet IP and connect to c2s 5222 directly (STARTTLS, LE cert), instead of
+        Cloudflare's edge which serves no XMPP port at all.
+      '';
     };
 
     netbirdInputGuard = mkOption {

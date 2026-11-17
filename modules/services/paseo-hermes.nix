@@ -34,7 +34,7 @@
   '';
 
   # The provider config the daemon serves Hermes from. NO SECRETS in here (it is a Nix store
-  # file): hermes-acp reads the LiteLLM key itself from $HERMES_HOME/.env, same as the gateway.
+  # file): hermes-acp reads the gateway key itself from $HERMES_HOME/.env, same as the agent.
   providerConfig = pkgs.writeText "paseo-hermes-config.json" (builtins.toJSON {
     version = 1;
     agents.providers.hermes = {

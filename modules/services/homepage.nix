@@ -18,6 +18,23 @@ in {
       default = {};
       description = "Additional services to show on the homepage dashboard";
     };
+
+    omnirouteKeyFile = mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = lib.literalExpression "config.MODULES.services.omniroute.keys.homepage.envFilePath";
+      description = ''
+        Path to a dotenv file holding the OmniRoute key the gateway tile's /v1/models
+        probe authenticates with, as `HOMEPAGE_VAR_OMNIROUTE_API_KEY=sk-...`. On the
+        GATEWAY host set this to a nix-minted per-service key (audit #7, 2026-11-14):
+        the file rides services.homepage-dashboard.environmentFiles, which systemd
+        parses root-side at every start (the homepage process itself never reads the
+        keys dir, so it may stay 0700 root), and the widget's
+        {{HOMEPAGE_VAR_OMNIROUTE_API_KEY}} placeholder is substituted from the unit
+        environment. null (default) = the sops-mounted shared omniroute_api_key via
+        the old HOMEPAGE_FILE_ mount, unchanged for non-gateway hosts.
+      '';
+    };
   };
 
   config = lib.mkMerge [
@@ -38,6 +55,13 @@ in {
         User = "homepage-dashboard";
         Group = "homepage-dashboard";
       };
+      # audit #7: with omnirouteKeyFile set, the key arrives as a systemd environmentFile -
+      # a MISSING one fails the start, and on a wiped dataset the mint unit creates it only
+      # after the gateway is up. Ordering (not Requires: the tile works without the key, and
+      # After= against a unit that does not exist is a no-op on non-gateway hosts).
+      systemd.services.homepage-dashboard.after =
+        lib.optionals (config.MODULES.services.omniroute.enable && config.MODULES.services.homepage.omnirouteKeyFile != null)
+        ["omniroute-seed-providers.service"];
 
       services.homepage-dashboard = {
         enable = true;
@@ -73,10 +97,29 @@ in {
             "Services" = (
               mapAttrsToList
               (name: config: {
-                # Add default href/icon if not set by user
-                ${name} = config;
+                # Add default href/icon if not set by user. `enabled` is this module's
+                # control key, not homepage-dashboard's - strip it from the entry.
+                ${name} =
+                  if lib.isAttrs config
+                  then builtins.removeAttrs config ["enabled"]
+                  else config;
               })
-              config.MODULES.services.homepage.services
+              # A module can hide a service by merging `enabled = false` into its entry
+              # (homepage-dashboard itself has no per-service hide flag - every entry in
+              # services.yaml renders, checked against the v1.12.3 source). Used for
+              # gateway alias subdomains (omniroute.nix's subdomainAliases): litellm.hp
+              # answers from OmniRoute now and must not earn a duplicate tile.
+              (lib.filterAttrs
+                (
+                  _: config:
+                    (
+                      if lib.isAttrs config
+                      then config.enabled or true
+                      else true
+                    )
+                    != false
+                )
+                config.MODULES.services.homepage.services)
             );
           }
         ];
@@ -217,40 +260,54 @@ in {
         key = "{{HOMEPAGE_FILE_FIREFLY_API_TOKEN}}";
       };
     })
-    (mkIf (cfg.enable && config.MODULES.services.litellm.enable && config.MODULES.services.litellm.masterKeySecret != null) {
-      # /v1/models needs the gateway's master key. Same pattern as grafana above: a second
-      # declaration of the same sops value, now readable by the homepage-dashboard uid alone -
-      # the 0444 version made every local user a gateway admin (2026-10-24 audit #5). Minting
-      # a read-only virtual key for the widget remains the cheap next step if hp ever gains
-      # other local users.
-      sops.secrets."homepage/litellm_master_key" = {
-        key = config.MODULES.services.litellm.masterKeySecret;
+    (mkIf (cfg.enable && config.MODULES.services.omniroute.enable) (let
+      # audit #7 (2026-11-14): two key paths for the /v1/models probe. Minted (gateway
+      # host): the keys.<n>.envFilePath dotenv (line `HOMEPAGE_VAR_OMNIROUTE_API_KEY=...`,
+      # set the key's envVar to match) rides environmentFiles - systemd parses it root-
+      # side at every start, so the homepage process never needs to read the (0700 root)
+      # keys dir and a re-mint lands on a plain restart; the widget placeholder then uses
+      # homepage's process-env substitution ({{HOMEPAGE_VAR_*}} - both prefixes verified
+      # in the live 1.12.3 bundle). sops (everywhere else, default): the old
+      # HOMEPAGE_FILE_ mount, homepage-dashboard-owned 0400.
+      minted = cfg.omnirouteKeyFile != null;
+    in {
+      # Homepage has no gateway widget, but /v1/models is a plain JSON endpoint (any
+      # valid OmniRoute inference key authenticates), so customapi can report how many
+      # models the gateway currently routes. That count is the gateway's whole
+      # connected inventory, not anything host-local. Same pattern as grafana above:
+      # a second declaration of the shared sops value, readable by the
+      # homepage-dashboard uid alone (2026-10-24 audit #5 doctrine). (Was litellm's
+      # master-key pair of blocks until phase 3, 2026-11-09.)
+      sops.secrets."homepage/omniroute_api_key" = mkIf (!minted) {
+        key = "omniroute_api_key";
         owner = "homepage-dashboard";
         mode = "0400";
       };
 
-      systemd.services.homepage-dashboard.environment.HOMEPAGE_FILE_LITELLM_MASTER_KEY =
-        config.sops.secrets."homepage/litellm_master_key".path;
+      services.homepage-dashboard.environmentFiles =
+        lib.optionals minted [cfg.omnirouteKeyFile];
 
-      MODULES.services.homepage.services.litellm.widget.headers = {
-        Authorization = "Bearer {{HOMEPAGE_FILE_LITELLM_MASTER_KEY}}";
-      };
-    })
-    (mkIf (cfg.enable && config.MODULES.services.litellm.enable) {
-      # Homepage has no LiteLLM widget, but /v1/models is a plain JSON endpoint (authenticated
-      # with the master key set up in the block above), so customapi can report how many models
-      # the gateway is currently routing. That count is the whole catalogue across every host in
-      # the flake, not what happens to be loaded: the Ollama instances behind it are
-      # on-demand, so "available" and "resident in memory" are deliberately different
-      # things here and only the former is observable from outside.
-      MODULES.services.homepage.services.litellm = {
-        icon = "${traefik.urlOf "litellm"}/ui/favicon.ico";
-        # The origin has no landing page of its own at the root, so link straight to the UI.
-        href = "${traefik.urlOf "litellm"}/ui";
-        description = "LLM gateway";
+      systemd.services.homepage-dashboard.environment.HOMEPAGE_FILE_OMNIROUTE_API_KEY =
+        mkIf (!minted) config.sops.secrets."homepage/omniroute_api_key".path;
+
+      MODULES.services.homepage.services.omniroute = {
+        icon = "${traefik.urlOf "omniroute"}/favicon.svg";
+        # The dashboard itself - unlike litellm's /ui, the gateway's UI is its root.
+        href = traefik.urlOf "omniroute";
+        description = "AI gateway";
         widget = {
           type = "customapi";
-          url = "http://127.0.0.1:${toString config.PORTS.litellm}/v1/models";
+          url = "http://127.0.0.1:${toString config.PORTS.omniroute}/v1/models";
+          headers = {
+            # The placeholder names whichever env channel feeds the key (see above):
+            # minted -> substituted from the unit environment the dotenv populated;
+            # sops -> substituted from the 0400 mount homepage reads itself.
+            Authorization = "Bearer {{${
+              if minted
+              then "HOMEPAGE_VAR"
+              else "HOMEPAGE_FILE"
+            }_OMNIROUTE_API_KEY}}";
+          };
           mappings = [
             {
               field = "data";
@@ -260,18 +317,12 @@ in {
           ];
         };
       };
-    })
+    }))
     (mkIf (cfg.enable && config.MODULES.services.open-webui.enable) {
       # No widget: homepage has no open-webui integration, and everything Open WebUI reports
       # about itself past /health sits behind an API key that would have to be minted by hand in
       # the UI first.
       MODULES.services.homepage.services.open-webui.icon = "open-webui.png";
-    })
-    (mkIf (cfg.enable && config.MODULES.services.omniroute.enable) {
-      MODULES.services.homepage.services.omniroute = {
-        icon = "${traefik.urlOf "omniroute"}/favicon.svg";
-        description = "AI gateway";
-      };
     })
     (mkIf (cfg.enable && config.MODULES.services.coroot.enable) {
       MODULES.services.homepage.services.coroot = {
@@ -341,6 +392,10 @@ in {
     {
       # Every Traefik service gets a tile that links to it; the blocks above override the icon
       # (and href, where the landing page isn't the root) for the ones that need it.
+      # (A module that wants one of these tiles GONE - e.g. omniroute.nix hiding its
+      # subdomainAliases duplicates - merges `enabled = false` into the entry; the
+      # render path below drops those. traefik.services values are plain backend
+      # strings here, so the flag cannot ride this map itself.)
       MODULES.services.homepage.services =
         lib.mapAttrs (name: _: {
           href = lib.mkDefault (traefik.urlOf name);

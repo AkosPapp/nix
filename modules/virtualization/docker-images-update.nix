@@ -17,7 +17,7 @@
     else "${config.virtualisation.podman.package or pkgs.podman}/bin/podman";
 
   # The unit oci-containers actually starts for a container: serviceName when set
-  # (litellm.nix/omniroute.nix/trilium.nix/joplin.nix/paperless.nix pin theirs), docker-<name>
+  # (omniroute.nix/trilium.nix/joplin.nix/paperless.nix pin theirs), docker-<name>
   # otherwise (fastdds.nix leaves it alone).
   containerUnit = name: c: c.serviceName or "docker-${name}";
 

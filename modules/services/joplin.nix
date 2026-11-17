@@ -162,7 +162,7 @@ in {
 
     virtualisation.oci-containers.containers.joplin = {
       inherit (cfg) image;
-      # Keeps the unit at joplin.service, like litellm.nix, omniroute.nix and trilium.nix.
+      # Keeps the unit at joplin.service, like omniroute.nix and trilium.nix.
       serviceName = "joplin";
 
       volumes = [

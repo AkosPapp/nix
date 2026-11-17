@@ -238,17 +238,17 @@
   # The fleet's gateways in pi dialect - the same endpoints/keys as
   # MODULES.services.opencode.defaultProviders, spelled from the catalogue. The harness
   # provider for this fleet's LiteLLM gateway was dropped 2026-11-05 (phase 2 of the
-  # OmniRoute replacement; litellm.nix stays for service consumers until phase 3):
+  # OmniRoute replacement; litellm.nix itself was deleted in phase 3, 2026-11-09):
   # subscriptions go through omniroute below, Aqueduct goes direct, and a consumer that
-  # still wants the old gateway adds its own `providers.litellm = {...}`.
+  # still wants the old gateway is out of luck - its replacement is omniroute.
   defaultProviders = {
     futurelab = {
       displayName = "FutureLab (Aqueduct)";
       baseUrl = "https://futurelab.robo4you.at/v1";
       # One of the three Aqueduct virtual keys (futurelab_api_key1/2/3), split per harness
       # so direct-to-Aqueduct traffic doesn't stack on one quota: kilo 1, omp 2,
-      # opencode 3, pi 1. The gateways carry all three and rotate per request
-      # (litellm.nix's replica deployments, omniroute.nix's extraApiKeys).
+      # opencode 3, pi 1. The gateway carries all three and rotates per request
+      # (omniroute.nix's extraApiKeys).
       apiKeySecret = "futurelab_api_key1";
       # One-model endpoint; nothing to discover.
       models = lib.mapAttrs' (
@@ -534,7 +534,7 @@ in {
       defaultText = literalExpression "the futurelab provider's first catalogue model (the only static provider; discovery-only omniroute cannot give a deterministic default)";
       description = ''
         "provider/id" pi starts with, written as settings.json defaultProvider +
-        defaultModel (the split is at the FIRST slash, so a LiteLLM model id that itself
+        defaultModel (the split is at the FIRST slash, so a gateway model id that itself
         contains slashes round-trips correctly). Pinned because pi otherwise boots
         whatever provider key sorts first - with the backup catalogue that is futurelab.
       '';

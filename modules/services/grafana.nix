@@ -4,7 +4,7 @@
   pkgs,
   ...
 }: let
-  inherit (lib) mkEnableOption mkIf mkOption types;
+  inherit (lib) mkEnableOption mkIf mkOption types literalExpression;
 
   cfg = config.MODULES.services.grafana;
 
@@ -49,6 +49,22 @@ in {
         Directory Grafana provisions dashboards from. Synced via Syncthing to every other
         machine that also enables Grafana, so dropping a dashboard JSON file here (or editing
         one) propagates everywhere automatically.
+      '';
+    };
+
+    providedDashboards = mkOption {
+      type = types.attrsOf types.path;
+      default = {};
+      example = literalExpression ''{ "fleet-ids.json" = ../../dashboards/ids.json; }'';
+      description = ''
+        Git-provisioned dashboards: name -> store path of a dashboard JSON. Rendered into
+        /etc/grafana-fleet-dashboards and served by a second (read-only) file provider,
+        so fleet dashboards are reviewed and versioned like modules instead of drifting
+        through the Syncthing-synced `dashboardsDir`. Concern-owner modules contribute
+        here (the IDS board from service-graph, the edge board from traefik). NOTE: the
+        JSONs live in the top-level dashboards/ dir, NOT under modules/ - the flake
+        auto-imports EVERY file under modules/ as a NixOS module (module_files glob), so
+        a .json there gets `import`ed as Nix and fails the whole eval.
       '';
     };
 
@@ -101,6 +117,11 @@ in {
           {
             name = "Prometheus";
             type = "prometheus";
+            # Deliberately NO uid pin: existing rows were provisioned without one, and
+            # changing the uid key would orphan the live row (dashboards break). Fleet
+            # dashboards therefore reference prometheus by TYPE ({"type":"prometheus"}),
+            # which resolves to this isDefault row; loki/loki-fleet are uid-pinned and
+            # referenced by uid.
             access = "proxy";
             url = "http://127.0.0.1:${toString config.PORTS.prometheus}";
             isDefault = true;
@@ -122,6 +143,20 @@ in {
                 foldersFromFilesStructure = true;
               };
             }
+            {
+              # Git-tracked fleet boards (MODULES.services.grafana.providedDashboards):
+              # read-only from /etc, deleted from the UI when the repo drops them.
+              name = "fleet";
+              folder = "Fleet";
+              type = "file";
+              disableDeletion = true;
+              allowUiUpdates = false;
+              updateIntervalSeconds = 30;
+              options = {
+                path = "/etc/grafana-fleet-dashboards";
+                foldersFromFilesStructure = false;
+              };
+            }
           ];
         };
       };
@@ -129,6 +164,17 @@ in {
 
     # world-readable so the grafana user can read files regardless of which uid Syncthing writes as
     systemd.tmpfiles.rules = ["d ${cfg.dashboardsDir} 0755 ${config.services.syncthing.user} ${config.services.syncthing.group} - -"];
+
+    # Git-tracked boards land in /etc for the "fleet" provider above. The entry must be
+    # an attrset ({source = ...}): assigning a bare PATH to an environment.etc submodule
+    # makes the module loader `import` the path as a MODULE FILE (measured 2026-11-12:
+    # the dashboard JSON then dies Nix parsing).
+    environment.etc =
+      lib.mapAttrs' (name: source: {
+        name = "grafana-fleet-dashboards/${name}";
+        value = {inherit source;};
+      })
+      cfg.providedDashboards;
 
     # Pulls every dashboard currently in Grafana's own DB out into dashboardsDir, so it's picked
     # up by the "synced" file provisioner above and propagated to every other machine via

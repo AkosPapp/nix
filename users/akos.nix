@@ -65,6 +65,16 @@
       #   sops set sops/secrets.yaml '["passwords","akos"]' '"$(mkpasswd -m yescrypt)"'
       # (in this repo, as a recipient) and re-deploying.
       hashedPasswordFile = config.sops.secrets."passwords/akos".path;
+      # The herdr HUB's outbound key (hp; private half lives ONLY in sops there, mounted by
+      # MODULES.services.herdr.sshKeySecret) is trusted for akos too, because hp's catalog
+      # row for this laptop is machines.legion5.user = "akos" (hosts/hp/default.nix): the
+      # phone-driven hub must reach akos's herdr server - where this laptop's agents
+      # actually live - not root's empty one here. Public half only; same human owns both
+      # ends; revocation = delete the line, redeploy.
+      openssh.authorizedKeys.keys = [
+        (lib.removeSuffix "\n" (builtins.readFile ./herdr-hub.pub))
+        (lib.removeSuffix "\n" (builtins.readFile ./herdr-mobile.pub))
+      ];
     };
     sops.secrets."passwords/akos" = {
       neededForUsers = true;
@@ -124,9 +134,22 @@
       # (OMPI_<NAME>_API_KEY env exports by the module's omp wrapper), and the
       # default model is pinned through a PI_CONFIG_FILES settings overlay so
       # omp does not boot on "first model with a valid key" (pi.nix doctrine).
+      # Pinned to the GATEWAY route for the fleet default model, not the
+      # module's derived futurelab-direct one: omp's provider/id spelling is
+      # "omniroute/<gateway model id>", and the gateway lists
+      # "futurelab/qwen3.8-flash-next" because omniroute.nix seeds that model
+      # row (its discovery-only provider is otherwise inventory-driven).
+      # smallModel follows defaultModel by the module's own default.
       services.omp = {
         enable = true;
         users = ["akos"];
+        defaultModel = "omniroute/futurelab/qwen3.8-flash-next";
+        # The Codex route falls back to the gateway route (omp's
+        # retry.fallbackChains, declared 2026-11-10). The direct-futurelab
+        # fallback was removed 2026-11-12: on a gateway 429 it retried the
+        # SAME upstream whose credentials were cooling down anyway - it only
+        # added noise to every rate-limit retry.
+        fallbackChains."omniroute/codex/gpt-6.1-sol" = ["omniroute/futurelab/qwen3.8-flash-next"];
       };
       # Claude Code against OmniRoute's Anthropic wire (/v1/messages, probed live
       # 2026-11-05): the wrapper exports ANTHROPIC_BASE_URL/AUTH_TOKEN (the sops
@@ -155,8 +178,49 @@
         enable = true;
         users = ["akos"];
       };
+      # OpenAI Codex CLI: /etc/codex/config.toml is codex's OWN system config
+      # layer (lowest precedence - the user's ~/.codex/config.toml and /model
+      # still win), rendered with the same two gateways as pi/omp/opencode; the
+      # module's codex wrapper exports CODEX_<NAME>_API_KEY from the sops
+      # mounts. 0.167 dropped the chat wire API, but both gateways answer
+      # /v1/responses (measured 2026-11-09), so one dialect covers the set.
+      # See modules/services/codex.nix.
+      services.codex = {
+        enable = true;
+        users = ["akos"];
+      };
+      # Amp (Sourcegraph): settings.json merged declaratively (updates off, MCP
+      # servers), but model routing is CLOUD state (threads and provider
+      # connections live on ampcode.com, which also originates the model
+      # requests - a tailnet gateway is invisible there). So: the OmniRoute
+      # public Funnel URL is the connection's base (the module derives it from
+      # omniroute.public), the shared omniroute_api_key is the connection's key
+      # by default, and an amp_api_key in sops would let the activation sync the
+      # connection + rotate its key; until that key exists the user does a
+      # one-time `amp login` and manages Model Routing in the web UI.
+      # See modules/services/amp.nix.
+      services.amp = {
+        enable = true;
+        users = ["akos"];
+        # Which Amp models ride the gateway. Amp's mapping syntax allows the
+        # `-> providerId` override ONLY on EXACT include lines (wildcard/exclude
+        # lines reject arrows), so these are self-mapped exact rows: the id Amp
+        # matches IS the OmniRoute model id the gateway receives (the
+        # mapping may name any id, not just Amp's catalog - docs/customize/
+        # model-routing). The two rows below are the models every other harness
+        # pins and both answer their fronts today (futurelab direct +
+        # codex/gpt-6-astra via the gateway's codex connection, listed by
+        # /v1/models 2026-11-09); add one line per extra model you run through
+        # it. If Amp's picker doesn't offer one (token limits unknown to Amp and
+        # the endpoint's /models), set its Model Metadata Overrides in the web
+        # Model Routing dialog once - the CLI cannot.
+        modelMapping = [
+          "futurelab/qwen3.8-flash-next -> futurelab/qwen3.8-flash-next"
+          "codex/gpt-6-astra -> codex/gpt-6-astra"
+        ];
+      };
       # Blender MCP: registers the mcp-for-blender stdio server with every
-      # harness above (opencode/kilo/pi/omp/claude-code/cline) and keeps the
+      # harness above (opencode/kilo/pi/omp/claude-code/cline/codex/amp) and keeps the
       # matching Blender add-on installed + enabled here, where blender is
       # installed (cad block below). Off on hosts without the akos user, so
       # the "blender installed" precondition holds by construction.
@@ -327,6 +391,11 @@
       nautilus
       transmission-remote-gtk
       thunderbird
+      # XMPP desktop client for akos@akosp.app (Prosody on hp, modules/services/xmpp.nix):
+      # nbxmpp does XEP-0156 host-meta discovery + the wss://xmpp.akosp.app/xmpp-websocket
+      # transport the tunnel serves, i.e. the exact path xmpp-check validates; also the
+      # OMEMO-capable reference for the phone (Conversations/Cheogram).
+      gajim
 
       # cad tools
       freecad
@@ -354,10 +423,7 @@
     # qemu
     boot.binfmt.emulatedSystems = ["aarch64-linux"];
 
-    services.netbird.enable = true;
-    services.netbird.clients.default.autoStart = true;
-    services.netbird.clients.default.environment.NB_DISABLE_DNS = "true";
-    services.netbird.clients.default.config.DisableDNS = true;
+    MODULES.networking.netbird.enable = true;
 
     # Brave and Firefox do their own DNS resolution and bypass systemd-resolved - Firefox with
     # its built-in DoH (default: maximal), Brave with "Use secure DNS" - so both get a public

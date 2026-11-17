@@ -412,7 +412,10 @@ in {
         };
       };
       # znapzend shells out to plain `ssh`, which always reads the SYSTEM client config.
-      # NixOS ships no /etc/ssh/ssh_config by default, so this entry is ours alone.
+      # Since 2026-11-09 the file itself belongs to modules/networking/ssh-client.nix
+      # (herdr's machine catalog writes the same path - two owners of
+      # environment.etc."ssh/ssh_config" is the redefine trap), so znapzend contributes
+      # its blocks through MODULES.networking.sshClient.blocks like every other consumer.
       # The jobs above were rewritten to address `znap-<host>`; these blocks map each
       # alias back to the real name and pin the replication identity ONLY under that
       # alias. An earlier draft Match'ed the real hostnames for uid 0, which also caught
@@ -431,9 +434,8 @@ in {
       # accept-new pins the peer key on the daemon's first connect (documented bootstrap,
       # then it behaves StrictHostKeyChecking=yes); BatchMode keeps failures loud in the
       # journal instead of hanging on a prompt.
-      environment.etc."ssh/ssh_config".text =
-        # managed by modules/system/znapzend.nix
-        lib.concatMapStrings (h: ''
+      MODULES.networking.sshClient.blocks =
+        map (h: ''
           Host znap-${h}
             HostName ${h}
             StrictHostKeyChecking accept-new

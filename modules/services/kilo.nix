@@ -47,8 +47,9 @@
 
   catalog = config.MODULES.services.modelCatalog.models;
 
-  # Catalogue entry for a wire id (the directName - the "futurelab/..." key
-  # only ever existed in LiteLLM's spelling; see model-catalog.nix). {} when
+  # Catalogue entry for a wire id (the directName - the bare Aqueduct id; the
+  # "futurelab/..." catalogue key is the gateway's prefix spelling, see
+  # model-catalog.nix). {} when
   # the id is not in the shared table, so renders fall back to the explicit
   # per-model options below.
   catalogFor = n: let

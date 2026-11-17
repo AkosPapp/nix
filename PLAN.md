@@ -4,6 +4,12 @@ One document for everything decided this session. Supersedes `ZFS-BACKUP-PLAN.md
 (deleted; contents folded into §4). `SECURITY-AUDIT-2026-10-24.md` remains as the
 findings list this plan acts on.
 
+> Status note (2026-11-09, litellm phase 3): every `litellm` row/§ reference below
+> describes the gateway as it stood when this plan was written; litellm.nix is now
+> deleted and OmniRoute (modules/services/omniroute.nix) holds the gateway role, its
+> limits row and its jail. The containment doctrine itself is unchanged and applies
+> to the new unit names verbatim.
+
 Verified against this nixpkgs (26.05):
 
 | thing                                        | status                                                                            |

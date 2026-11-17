@@ -1,0 +1,232 @@
+{
+  "uid": "fleet-ids",
+  "title": "Network IDS (Suricata service-graph taps)",
+  "tags": ["fleet", "ids", "suricata", "security"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "description": "Provisioned by modules/security/service-graph.nix. Loki panels query the FLEET Loki (both taps: hp + akos01); Prometheus panels (job=alloy) only show THIS host's engine stats - Alloy scrapes localhost. Prometheus is referenced by type (the default datasource), Loki by uid.",
+  "links": [
+    {
+      "title": "Public edge board",
+      "type": "dashboards",
+      "tags": ["fleet", "edge"]
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "host",
+        "label": "tap host",
+        "type": "query",
+        "datasource": { "type": "loki", "uid": "loki-fleet" },
+        "query": { "label": "host", "refId": "LokiVariableQueryEditor-VariableQuery", "type": 1 },
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": ["All"], "value": ["$__all"] }
+      },
+      {
+        "name": "event_type",
+        "label": "event type",
+        "type": "query",
+        "datasource": { "type": "loki", "uid": "loki-fleet" },
+        "query": { "label": "event_type", "refId": "LokiVariableQueryEditor-VariableQuery", "type": 1 },
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": ["All"], "value": ["$__all"] }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Alerts (range)",
+      "id": 1,
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "loki", "uid": "loki-fleet" },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "fieldConfig": { "defaults": { "unit": "short", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 500 }] } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki-fleet" },
+          "queryType": "range",
+          "expr": "sum(count_over_time({job=~\"suricata.*\", host=~\"$host\", event_type=\"alert\"} [$__range]))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "SG-DRIFT / edge alerts per hour (all hosts)",
+      "id": 2,
+      "gridPos": { "h": 5, "w": 12, "x": 6, "y": 0 },
+      "datasource": { "type": "loki", "uid": "loki-fleet" },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["sum"] }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 20, "showPoints": "never" } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki-fleet" },
+          "queryType": "range",
+          "legendFormat": "{{host}} {{sig}}",
+          "expr": "sum by (host, sig) (count_over_time({job=~\"suricata.*\", host=~\"$host\", event_type=\"alert\"} [$__auto]))"
+        }
+      ]
+    },
+    {
+      "type": "bargauge",
+      "title": "Top alert signatures (range)",
+      "id": 3,
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "loki", "uid": "loki-fleet" },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "displayMode": "gradient", "orientation": "horizontal" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki-fleet" },
+          "queryType": "instant",
+          "legendFormat": "{{sig}} @ {{host}}",
+          "expr": "topk(10, sum by (sig, host) (count_over_time({job=~\"suricata.*\", host=~\"$host\", event_type=\"alert\"} [$__range])))"
+        }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "Recent alert events (peer IPs/ports in structured metadata + line JSON)",
+      "id": 4,
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 5 },
+      "datasource": { "type": "loki", "uid": "loki-fleet" },
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending", "enableLogDetails": true, "dedupStrategy": "signature" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki-fleet" },
+          "queryType": "range",
+          "maxLines": 200,
+          "expr": "{job=~\"suricata.*\", host=~\"$host\", event_type=\"alert\"}"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Undeclared SYN sources (top talkers, range)",
+      "id": 5,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "datasource": { "type": "loki", "uid": "loki-fleet" },
+      "options": { "sortBy": [{ "displayName": "SYNs", "desc": true }] },
+      "fieldConfig": { "defaults": {}, "overrides": [{ "matcher": { "id": "byName", "options": "Time" }, "properties": [{ "id": "custom.hidden", "value": true }] }] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki-fleet" },
+          "queryType": "instant",
+          "format": "table",
+          "expr": "topk(20, sum by (src_ip, dest_ip, dest_port) (count_over_time({job=~\"suricata.*\", host=~\"$host\", event_type=\"alert\"} | json | __error__=\"\" [$__range])))"
+        }
+      ],
+      "transformations": [
+        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "src_ip": "source", "dest_ip": "dest", "dest_port": "dport", "Value": "SYNs" } } }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "DPI: HTTP events per vhost (EVE http)",
+      "id": 6,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "datasource": { "type": "loki", "uid": "loki-fleet" },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 15, "showPoints": "never" } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki-fleet" },
+          "queryType": "range",
+          "legendFormat": "{{vhost}} @ {{host}}",
+          "expr": "sum by (vhost, host) (rate({job=~\"suricata.*\", host=~\"$host\", event_type=\"http\"} [$__auto]))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "DPI: TLS handshakes per SNI (EVE tls)",
+      "id": 7,
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 21 },
+      "datasource": { "type": "loki", "uid": "loki-fleet" },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 15, "showPoints": "never" } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki-fleet" },
+          "queryType": "range",
+          "legendFormat": "{{sni}} @ {{host}}",
+          "expr": "sum by (sni, host) (count_over_time({job=~\"suricata.*\", host=~\"$host\", event_type=\"tls\"} [$__auto]))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "This host's engine: capture + drops (Prometheus/job alloy)",
+      "id": 8,
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 21 },
+      "datasource": { "type": "prometheus" },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": { "defaults": { "unit": "pps", "custom": { "fillOpacity": 10, "showPoints": "never" } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus" },
+          "legendFormat": "decoded {{tap}}",
+          "expr": "sum by (tap) (rate(suricata_decoder_packets_total[$__rate_interval]))"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus" },
+          "legendFormat": "kernel drops {{tap}}",
+          "expr": "sum by (tap) (increase(suricata_capture_kernel_drops_total[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "This host's engine: uptime + TCP sessions + alerts/min",
+      "id": 9,
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 28 },
+      "datasource": { "type": "prometheus" },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "fieldConfig": {
+        "defaults": { "custom": { "showPoints": "never" } },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "/sessions.*/" }, "properties": [{ "id": "unit", "value": "short" }] },
+          { "matcher": { "id": "byRegexp", "options": "/uptime.*/" }, "properties": [{ "id": "unit", "value": "s" }] }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus" },
+          "legendFormat": "uptime {{tap}}",
+          "expr": "suricata_uptime_seconds"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus" },
+          "legendFormat": "sessions {{tap}}",
+          "expr": "suricata_tcp_sessions"
+        },
+        {
+          "refId": "C",
+          "datasource": { "type": "prometheus" },
+          "legendFormat": "alerts/min {{tap}}",
+          "expr": "increase(suricata_detect_alerts_total[1m])"
+        }
+      ]
+    }
+  ]
+}

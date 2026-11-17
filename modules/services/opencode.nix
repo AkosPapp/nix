@@ -18,7 +18,7 @@
         description = ''
           Context window, if known, so opencode compacts before the provider truncates; output is
           then capped to a quarter of it (max 8192). Left null for a model whose real limit this
-          host can't know up front - e.g. an aggregate LiteLLM model_name that can resolve to
+          host can't know up front - e.g. an aggregate gateway model id that can resolve to
           different backends - in which case opencode falls back to its own default.
         '';
       };
@@ -87,14 +87,14 @@
 
       baseURL = mkOption {
         type = types.str;
-        example = "https://litellm.hp/v1";
+        example = "https://omniroute.hp/v1";
         description = "OpenAI-compatible endpoint this provider talks to.";
       };
 
       apiKeySecret = mkOption {
         type = types.nullOr types.str;
         default = null;
-        example = "opencode/litellm_api_key";
+        example = "omniroute_api_key";
         description = ''
           sops secret holding this provider's API key, read with opencode's own `{file:...}`
           config substitution at startup - so the key sits only in the sops-nix-decrypted file
@@ -129,7 +129,7 @@
       discoverModelInfoFormat = mkOption {
         type = types.nullOr types.str;
         default = null;
-        example = "litellm";
+        example = "omniroute";
         description = ''
           The plugin's `modelInfoFormat`: enrich discovered models with per-model limits,
           modalities, costs and reasoning variants from the provider's own metadata
@@ -171,7 +171,7 @@
         default = {};
         description = ''
           Catalogue entries to offer for this provider, keyed by the model name it expects on the
-          wire (e.g. a LiteLLM model_name like "local/coder" or "futurelab/qwen3.8-flash-next").
+          wire (e.g. a gateway model id like "local/coder" or "futurelab/qwen3.8-flash-next").
           Without `discoverModels`, anything left out here does not show up in the picker; with
           it, the gateway's own inventory is injected and these entries override the discovered
           ones for the models they name.
@@ -217,9 +217,8 @@
   defaultProviders = {
     # Primary catalogue: OmniRoute direct - hosted subscription logins are its job (see
     # omniroute.nix) and it is the harnesses' gateway from 2026-11-05 on; this module's
-    # LiteLLM-gateway provider was dropped in phase 2 of that replacement (litellm.nix
-    # stays for service consumers until phase 3, and a consumer that still wants it adds
-    # its own `providers.litellm = {...}`). Model ids are
+    # LiteLLM-gateway provider was dropped in phase 2 of that replacement, and litellm.nix
+    # itself is gone with phase 3 (2026-11-09). Model ids are
     # OmniRoute's own "<connection-slug>/<model>" spellings (its /v1/models namespaces every
     # route by connection - codex/, github/, cline/, kilocode/, the auto/ combos, plus short
     # aliases like gh/ for some connections), so the picker reads
@@ -247,7 +246,8 @@
     # The Aqueduct endpoint direct, alongside the omniroute/futurelab/... discovery
     # route: harnesses keep the direct provider because it answers even while the
     # gateway is down. Keyed by directName: the "futurelab/" vendor
-    # prefix was only ever LiteLLM's wildcard spelling, and only models that list a
+    # prefix is the gateway's connection spelling (both LiteLLM's wildcard and
+    # OmniRoute's connection namespace it that way), and only models that list a
     # directName appear here.
     futurelab = {
       displayName = "FutureLab (Aqueduct)";
