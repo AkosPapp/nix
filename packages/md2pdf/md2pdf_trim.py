@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""md2pdf trailing-blank-page trim (packages/md2pdf.nix).
+"""md2pdf trailing-blank-page trim (packages/md2pdf/default.nix).
 
 `---` is a page break in md2pdf (see md2pdf.css), so a document ending on a
 separator - or content that exactly fills a page followed by a separator -

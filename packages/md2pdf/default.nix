@@ -18,10 +18,10 @@
 #
 # A `---` thematic break is a PAGE separator in this pipeline (md2pdf.css:
 # break-after: page; owner ask 2026-11-21), and ```mermaid blocks render
-# through mermaid-cli as vector SVGs (packages/md2pdf_mermaid.py pre-pass -
+# through mermaid-cli as vector SVGs (md2pdf_mermaid.py pre-pass -
 # why pre-pass, not inline SVG/filter, is documented in that file). A
 # document ending on a separator leaves one blank final page from Chromium;
-# packages/md2pdf_trim.py deletes trailing text-free AND drawing-free pages
+# md2pdf_trim.py deletes trailing text-free AND drawing-free pages
 # (a diagram-only page carries drawing operators and always survives).
 #
 # Why this pipeline (iteratively verified on legion5 2026-10-27, 111.md's
@@ -53,7 +53,7 @@ let
   '';
 
   # Default print stylesheet (A4, page numbers, styled tables, formula break
-  # rules). Lives in packages/md2pdf.css so it stays editable as plain CSS.
+  # rules). Lives in md2pdf.css so it stays editable as plain CSS.
   defaultCss = builtins.toFile "md2pdf.css" (builtins.readFile ./md2pdf.css);
 
   # Postprocessor that gives the chromium-generated outline clean bookmark
@@ -146,7 +146,7 @@ in
           # shellcheck disable=SC2064
           trap "$RM -rf ''$tmp" EXIT
 
-          # Mermaid pre-pass (see packages/md2pdf_mermaid.py): rewrite
+          # Mermaid pre-pass (see md2pdf_mermaid.py): rewrite
           # ```mermaid fences into raw <img> tags of mmdc-rendered SVGs;
           # pandoc then sees plain markdown + raw HTML. A diagram that fails
           # to render degrades to its literal code block (loud on stderr,

@@ -1,5 +1,5 @@
 /* md2pdf default print stylesheet: A4 geometry, page numbers, styled tables,
-   math kept atomic (see packages/md2pdf.nix). Users layer their own -c file on top. */
+   math kept atomic (see packages/md2pdf/default.nix). Users layer their own -c file on top. */
 
 @page {
   size: A4;

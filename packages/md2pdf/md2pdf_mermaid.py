@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""md2pdf mermaid pre-pass (packages/md2pdf.nix).
+"""md2pdf mermaid pre-pass (packages/md2pdf/default.nix).
 
 Rewrites ```mermaid fenced blocks in a markdown file into raw-HTML <img>
 tags pointing at SVGs rendered by mmdc (mermaid-cli), so the existing

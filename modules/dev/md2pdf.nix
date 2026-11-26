@@ -17,7 +17,7 @@ in {
 
     package = lib.mkOption {
       type = lib.types.package;
-      default = pkgs.callPackage ../../packages/md2pdf.nix {};
+      default = pkgs.callPackage ../../packages/md2pdf/default.nix {};
       description = ''
         The md2pdf derivation to install. Override to retarget the MathJax
         pin or the bundled stylesheet without forking the module.
