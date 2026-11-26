@@ -225,12 +225,25 @@
       networkmanager-openconnect
       oath-toolkit
 
+      # PDF worksheet kit for the TU coursework (~/TU, ANA/ADM): the dev-shell
+      # flake that used to provide it was deleted 2026-11-26 (owner ask) and
+      # its tools moved here - poppler for task-text extraction, qpdf for
+      # repair/page surgery; pypdf+fontTools ride in the profile python below
+      # (fontTools silences the CFF-encoding warnings), and `uv` (already in
+      # the list) stays the escape hatch for `uv run --with <pkg>`. md2pdf +
+      # brave deliberately stay the system ones (own CSS, local MathJax -
+      # the flake never overrode them either).
+      poppler-utils
+      qpdf
+
       (python313.withPackages (
         ps:
           with ps; [
             pdfrw
             pagelabels
             ipykernel
+            pypdf
+            fonttools
           ]
       ))
       uv
