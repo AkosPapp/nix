@@ -117,6 +117,15 @@ in {
     # gate (the funnel's /install/mcp), so like installerMint it needs no firewall
     # edge and rides the edge tap's funnel-port scope already in place.
     mcpPerplexity = 8150;
+    # Hermes' virtual desktop (modules/services/hermes-desktop.nix) - all three
+    # loopback-only, tailnet reaches them via Traefik / tailscale serve:
+    # x11vnc's RFB (5901, not 5900: that's the classic :0 display mapping and
+    # stays free for any future real VNC consumer), the noVNC websockify proxy
+    # + web files Traefik routes as hermes-desktop.hp, and the Playwright MCP
+    # HTTP server the agent drives the desktop's browser through.
+    hermesVnc = 5901;
+    hermesNovnc = 8152;
+    hermesPlaywright = 8153;
     # Prosody's HTTP face (websocket/BOSH/file-share/host-meta, modules/services/xmpp.nix):
     # loopback-only, reached through the Cloudflare Tunnel via Traefik's `cloudflare` entry
     # point. Not 5280 - that is prosody's public-by-default port and the number the retired

@@ -51,18 +51,59 @@ h2 {
   break-after: avoid;
 }
 
+/* h3/h4: same blue-bar look as h2, stepped down so the outline depth stays
+   visible (h2 4px/#2563eb -> h3 3px/#60a5fa -> h4 2px/#93c5fd). */
 h3 {
   font-family: "Noto Sans", sans-serif;
   font-size: 1.05em;
+  font-weight: 700;
+  color: #1e40af;
+  margin: 1.3em 0 0.45em 0;
+  padding: 0.08em 0.5em;
+  background: #f0f6ff;
+  border-left: 3px solid #60a5fa;
+  border-radius: 0 4px 4px 0;
+  break-after: avoid;
+}
+
+h4 {
+  font-family: "Noto Sans", sans-serif;
+  font-size: 0.98em;
+  font-weight: 600;
   color: #374151;
+  margin: 1.25em 0 0.35em 0;
+  padding: 0.05em 0.5em;
+  border-left: 2px solid #93c5fd;
   break-after: avoid;
 }
 
 /* ---------- Horizontal rules ---------- */
+/* In md2pdf a `---` thematic break is a PAGE separator, not a rule (owner
+   ask 2026-11-21): it ends the current page and carries no visible line.
+   A document that ENDS on a separator makes Chromium emit a blank final
+   page - instead of a :last-child guard here (which Chromium's break
+   placement defeated in testing, killing the break before the LAST real
+   content too), the blank page is trimmed by md2pdf's pypdf post-pass. */
 hr {
   border: none;
-  border-top: 1px dashed #d1d5db;
-  margin: 1.4em 0;
+  margin: 0;
+  break-after: page;
+  page-break-after: always;
+}
+
+/* ---------- Mermaid diagrams (pre-passed to <img><svg>, see md2pdf.nix) ---------- */
+.md2pdf-mermaid {
+  text-align: center;
+  break-inside: avoid;
+  margin: 1em 0;
+}
+
+.md2pdf-mermaid img {
+  max-width: 100%;
+  /* the <img> carries explicit width/height attrs (no intrinsic-size collapse
+     in Chromium for SVGs); height:auto keeps the aspect ratio inside the
+     print column */
+  height: auto;
 }
 
 /* ---------- Inline emphasis ---------- */

@@ -30,7 +30,7 @@
 # Server/package notes:
 #   * The binary comes from packages/mcp-for-blender.nix (PyPI sdist; not in
 #     nixpkgs), NOT `uvx` - store paths inline so no PATH/network at spawn
-#     time, the playwright-mcp doctrine (modules/services/opencode.nix).
+#     time, the playwright-mcp doctrine (modules/services/playwright-mcp.nix).
 #   * PORTS.blenderMcp (modules/networking/ports.nix) is the single source for
 #     the addon's socket port; the addon's own default is the same number and
 #     its sidebar field must match if ever overridden.

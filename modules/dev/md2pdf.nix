@@ -10,8 +10,9 @@ in {
     enable = lib.mkEnableOption ''
       md2pdf, a Markdown -> PDF converter that renders LaTeX math for real
       (pandoc -> HTML with bundled MathJax -> headless Chromium print-to-pdf;
-      emoji and CJK included). Installs the `md2pdf` binary into
-      environment.systemPackages.
+      emoji and CJK included), renders mermaid diagrams through mermaid-cli
+      as vector SVGs, and treats a '---' line as a PAGE break. Installs the
+      `md2pdf` binary into environment.systemPackages.
     '';
 
     package = lib.mkOption {

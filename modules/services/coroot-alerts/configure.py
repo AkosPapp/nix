@@ -14,12 +14,27 @@ this script drives the REST API the same way the UI does, idempotently:
   PUT  /api/project/<id>/integrations/webhook  -> hp receiver url + token header + JSON
                                                   templates for alerts and incidents
   POST /api/project/<id>/application_categories-> route alerts+incidents to the webhook
-                                                  for every category (coroot routes per
-                                                  category; the integration's on/off flags
-                                                  merely "allow" the destination - without
-                                                  this POST nothing is ever sent). The body
-                                                  is the GET view echoed back with webhook
-                                                  routing forced on.
+                                                  for every category, EXCEPT the quiet
+                                                  ones (coroot routes per category; the
+                                                  integration's on/off flags merely
+                                                  "allow" the destination - without this
+                                                  POST nothing is ever sent). The body is
+                                                  the GET view echoed back with webhook
+                                                  routing forced on; a quiet category is
+                                                  instead upserted (idempotent, same API
+                                                  the UI "new category" uses) with all
+                                                  three notification kinds off, and the
+                                                  loop skips it - so the hourly pass can
+                                                  never re-arm an app nobody expects up.
+
+Quiet categories come from the "quiet_categories" credential (mounted by the unit from the
+Nix-rendered JSON, MODULES.services.corootAlerts.quietCategories): an object of
+name -> custom_patterns (app ids are "<namespace>/<name>", "_" for the empty systemd
+namespace, matched per space-separated glob by db/application_categories.go). The
+notification pipeline drops every alert/incident whose app's category has notifications
+off (notifications/alerts.go, incidents.go), so nothing reaches the webhook (and hence no
+Matrix message); the alerts and incidents themselves are still computed and visible in the
+Coroot UI. Malformed config (not an object of str -> str) fails the pass loudly.
 
 All settings are DB-persisted, so an occasional failure just retries next hour; exit 0
 only when every step succeeded (the unit's Restart=OnFailure drives the backoff).
@@ -42,6 +57,12 @@ KEY = (CREDS / "admin_key").read_text().strip()
 TOKEN = (CREDS / "webhook_token").read_text().strip()
 if not (KEY and TOKEN):
     raise SystemExit("empty bearer key or webhook token credential")
+
+# Absent credential (quietCategories = {}, the fleet default) -> nothing quiet.
+QUIET_FILE = CREDS / "quiet_categories"
+QUIET = json.loads(QUIET_FILE.read_text()) if QUIET_FILE.exists() else {}
+if not isinstance(QUIET, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in QUIET.items()):
+    raise SystemExit("quiet_categories credential must be a JSON object of name -> custom_patterns")
 
 
 def call(method, path, body=None):
@@ -88,7 +109,32 @@ def main():
                 "incident_template": TEMPLATE,
             },
         )
+        for name, patterns in QUIET.items():
+            # Upsert: POST application_categories is save-or-update by name, so this both
+            # creates the category and re-syncs its patterns and its OFF switches every
+            # pass. Dropping one glob here makes its apps fall back to "application"
+            # (CalcApplicationCategory matches custom patterns first) and notify again.
+            call(
+                "POST",
+                f"/api/project/{pid}/application_categories",
+                {
+                    "action": "",
+                    "id": name,
+                    "name": name,
+                    "builtin": False,
+                    "default": False,
+                    "builtin_patterns": "",
+                    "custom_patterns": patterns,
+                    "notification_settings": {
+                        "alerts": {"enabled": False, "webhook": {"enabled": False}},
+                        "incidents": {"enabled": False, "webhook": {"enabled": False}},
+                        "deployments": {"enabled": False},
+                    },
+                },
+            )
         for cat in call("GET", f"/api/project/{pid}/application_categories") or []:
+            if cat["name"] in QUIET:
+                continue  # the one loop that could re-arm a quiet app - skip it
             ns = cat.get("notification_settings") or {}
             for kind in ("alerts", "incidents"):
                 block = ns.setdefault(kind, {})
@@ -108,7 +154,11 @@ def main():
                     "notification_settings": ns,
                 },
             )
-    print(f"coroot-alert-configure: wired {len(projects)} project(s) -> {WEBHOOK_URL}", flush=True)
+    print(
+        f"coroot-alert-configure: wired {len(projects)} project(s) -> {WEBHOOK_URL}"
+        f" ({len(QUIET)} quiet categor{'y' if len(QUIET) == 1 else 'ies'})",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":

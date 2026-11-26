@@ -337,9 +337,36 @@
         units = ["omniroute"];
         dockerName = "omniroute";
         tasks = 128;
-        cpu = "200%";
-        memHigh = "768M";
-        memMax = "1G";
+        cpu = "400%";
+        memHigh = "1536M";
+        memMax = "2G";
+        # 2026-11-25: cpu 200% -> 400%, mem 1G/1536M -> 1536M/2G after a full day of
+        # [HEALTHZ] "event loop stalled 109.7s/191.3s/211.7s" and the WebUI's "Server is
+        # unreachable" reconnect loop. Honest split of what each raise fixes:
+        # * CPU 200% -> 400% removed a real AMPLIFIER. The 4 V8 compression worker_threads
+        # (55s utime each) + GC shared the same 2-core quota as the event loop, and
+        # nr_throttled climbed 16 periods/20s (~12% of wall frozen) - every throttled
+        # period stalls the loop up to 100ms and the lag compounds across a stream burst.
+        # After `docker update --cpus=4` throttle fell to <1 period/30s on hp's 8 cores
+        # (68% idle). But it is NOT the root cause: healthz still times out at ~1.1 cores
+        # with the workers near-idle, so the loop self-blocks without needing the CPU.
+        # * Neither memory NOR GC is implicated: memory.events are all zero (no high/max/
+        # oom) and heapUsed sits ~half of the 1024M heap - "more RAM" does not touch the
+        # stall. The raise is about the leak + guard headroom (see below).
+        # The stall's real signature is app-internal, NOT resource starvation: strace of
+        # the main thread while /healthz timed out shows 68% of syscall time in futex
+        # (3546 calls/10s, 664 ETIMEDOUT) + a 2750/10s munmap churn, with the process at
+        # ~99% stime (1168s kernel vs 2.2s user since boot) and only 46MB total disk I/O.
+        # That is worker-pool / V8-lifecycle futex-and-mmap churn (idle-reap 60s + respawn,
+        # the "WorkerThread" respawn seen in /proc), not sqlite/WAL disk pressure - the
+        # event loop blocks in the kernel and the WebUI's health poll gives up. It is
+        # upstream :latest behavior, unfixed; the cap raises buy headroom, not a cure.
+        # * Memory 1G/1536M -> 1536M/2G runway, unrelated to this stall: a FRESH 22:56
+        # restart already peaks at 950-990M RSS the same day, so the 2026-11-20 "36M/day
+        # leak" is partly load working set. At the old 1536M wall the chat-admission
+        # guard's 85% trip sat at 1.3G - only 350M over the daily peak, one busy burst
+        # from a permanent-503 latch (the 11-11 incident). 1536M High + 2G wall moves the
+        # trip to 1.7G (~750M headroom) and keeps the shed-before-OOM ordering.
         # 2026-11-05: owner raised from 100%/384M/512M with the litellm row - it now also fronts
         # the hosted-subscription traffic (codex OAuth connection), so streaming responses sit
         # behind this cap too.
@@ -358,6 +385,20 @@
         # covers the observed peak +40%. /v1/models and the dashboard kept answering
         # throughout - only inference sheds - which is why this looked like "the futurelab
         # model broke" instead of "the gateway is full".
+        # 2026-11-20: raised to 1G/1536M after that 62% window silently STOPPED HOLDING: the
+        # coroot-node-agent RSS series (container_resources_memory_rss_bytes{container_id=
+        # "/docker/omniroute"}) shows the daily peak CLIMBING 735M -> 989M over 11-13..11-19,
+        # i.e. a ~36M/day leak, not a traffic burst - the 2026-11-11 "steady-state 620-674M"
+        # was already the start of the ramp. At 11-19 23:32 an image recreate reset the ramp
+        # (fresh 10M base); by 11-20 16:23 it hit 958M anon-rss, the kernel OOM-killed it at
+        # the 1G wall, and omniroute.hp served Bad Gateway until the next manual restart.
+        # 1G high sits at the guard's own high-water mark: RSS under the High line is still
+        # below 85% of the 1536M wall, so healthy traffic never sheds; the leak now reaches
+        # the guard (~1.3G = 85%) before the OOM kills it, which turns this class of outage
+        # into visible 503-shedding instead of a silent death. The real leak is upstream
+        # (image is :latest, unfixed) - a restart policy (omniroute.nix) now recovers even
+        # when it walks past the guard to the wall; watch for the 503 "resource_pressure"
+        # alert as the leak's new signature, and re-tighten this row if a fix lands.
       };
       trilium = {
         when = c: (c.MODULES.services.trilium.enable or false);
@@ -490,6 +531,36 @@
         cpu = "200%";
         memHigh = "1G";
         memMax = "1536M";
+      };
+      # Hermes' virtual desktop (modules/services/hermes-desktop.nix), two
+      # rows by lifetime: the display plumbing is small and static (Xvfb's
+      # 1600x1000x24 framebuffer ~6.4M + openbox/xterm/x11vnc), the
+      # Playwright unit carries a HEADED Chromium, whose real working set is
+      # the renderer + tile cache, sized to the same wall the joplin Selkies
+      # container never needed (that one is docker-capped) - 3G is the
+      # everyday-tab ceiling; an agent that opens fifty tabs OOMs the unit
+      # instead of the ZFS ARC's day.
+      hermesDesktop = {
+        when = c: (c.MODULES.services.hermes-desktop.enable or false);
+        units = [
+          "hermes-xvfb"
+          "hermes-openbox"
+          "hermes-desktop-term"
+          "hermes-x11vnc"
+          "hermes-novnc"
+        ];
+        tasks = 128;
+        cpu = "100%";
+        memHigh = "384M";
+        memMax = "640M";
+      };
+      hermesPlaywright = {
+        when = c: (c.MODULES.services.hermes-desktop.enable or false);
+        units = ["hermes-playwright"];
+        tasks = 512; # Chromium's process fleet (zygote off, still one proc/tab)
+        cpu = "300%";
+        memHigh = "2G";
+        memMax = "3G";
       };
       vaultwarden = {
         when = c: (c.services.vaultwarden.enable or false);

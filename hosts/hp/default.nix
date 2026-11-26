@@ -153,6 +153,24 @@
     # apapp@r4uai00:~/.ssh/authorized_keys 2026-11-11 by hand (same key hp/akos01 trust);
     # r4uai01 already carried it (mtime 10:32). The robots are Ubuntu, outside this flake -
     # THIS comment is the registry for that line; revocation = delete it there.
+    # Dated incident (2026-11-19): BOTH robots stopped accepting the hub key from ~Nov 18
+    # 02:06 (robot-side cause unknown - the units kept crash-looping on "Permission denied
+    # (publickey)", and lab-web-ultra-trainer-r4uai01's failed state then rolled back hp's
+    # deploy-rs activation). Fixed by hand through akos@legion5 (whose herdr-* aliases still
+    # authenticate): the hub line from users/herdr-hub.pub re-appended to
+    # apapp@r4uai00:~/.ssh/authorized_keys; r4uai01's copy was already there and its dial
+    # came back without a change. If it recurs, check the robots' sshd (StrictModes / a
+    # rewritten ~/.ssh) BEFORE suspecting hp.
+    # RECURRED 2026-11-23/24 (owner's omp-deploy session): authorized_keys on BOTH
+    # robots carried mtime Nov 20 16:38 with exactly akos's rsa+ed25519 lines - the hub
+    # AND mobile entries were gone (something rewrote the file robot-side on the 20th,
+    # same signature as the 19th). Re-appended users/herdr-hub.pub +
+    # users/herdr-mobile.pub to both boxes through apapp@legion5's still-working
+    # authorized_keys 2026-11-24 (grep-guarded, chmod 600); hp's tunnel + lab-web
+    # units came back. The robot-side rewriter is still unidentified - if this keeps
+    # recurring, find it (cron? an auto-improver on the robot? the
+    # authorized_keys.pre-autoimprover.bak in ~apapp/.ssh hints at a robot-side
+    # tool that edits this file).
     machines.r4uai00 = {
       hostname = "10.210.0.10";
       user = "apapp";
@@ -608,6 +626,29 @@
   # coroot-alert-configure registers the integration on akos01 hourly - no UI step.
   # RUNBOOK-coroot-alerts.md: the sops secrets. (modules/services/coroot-alerts.nix)
   MODULES.services.corootAlerts.enable = true;
+  # The UltraTrainer tunnels are SPAWNED apps (the 2026-11-13 doctrine: the herdr menu
+  # row is the on-switch, so "no instances available" + "no connectivity with 1 upstream
+  # service" fire all day when I'm not training). Coroot has no per-app alert mute, so
+  # they ride the module's quiet-category mechanism: "_/*ultra-trainer*" catches both
+  # lab-web-ultra-trainer-r4uai01 (the robot tunnel) and datalab-web-ultra-trainer (the
+  # TU-head tunnel) in hp's "_" systemd namespace; their alerts+incidents stay computed
+  # and visible in the Coroot UI but are no longer routed to the webhook, i.e. nothing
+  # lands in the Matrix alert rooms. The reconciler on akos01 applies this
+  # (quietCategories merge across flake hosts); owner ask 2026-11-18.
+  MODULES.services.corootAlerts.quietCategories.spawned-on-demand = "_/*ultra-trainer*";
+  # OmniRoute's Coroot-EE LLM SLO incidents are structural noise, owner ask 2026-11-24:
+  # the app carries the fleet's whole inference load (every harness + service + the
+  # bootstrap boxes) through ONE upstream (futurelab, whose key omniroute's own limiter
+  # queues at remainingForQueue=120s; measured: p50 stream 59-86s under load, healthz
+  # event-loop lag spikes to 19s, 4.1h cpu-throttle time at the 200% row). The EE
+  # latency/llm-latency burn-rate engine fires a CRITICAL incident on every busy burst
+  # and resolves it on the next quiet window - 182 incidents since Sep 15, 53 today -
+  # pure fire/resolve ping-pong in the alert feed. The incidents stay computed and
+  # visible in the Coroot UI (that's where the real signal is: the leak ramp and
+  # resource_pressure 503s the limits.nix row tracks); only the webhook spam stops.
+  # If the gateway is ever replaced by something that isn't a queue-heavy LLM proxy,
+  # delete this line and its app falls back to the notifying "application" category.
+  MODULES.services.corootAlerts.quietCategories.llm-gateway = "_/*omniroute*";
 
   # n8n, the n8n-sandbox runner and LibreChat were removed from the fleet on 2026-10-24
   # (PLAN.md §1.5) - the chat UIs that remain are Open WebUI and Omniroute's own.
@@ -697,6 +738,23 @@
     # escalation tool (hermes-agent.nix). hp's syncthing runs as `syncthing` - the default.
     notes.enable = true;
   };
+
+  # The office/document toolkit (modules/services/agent-documents.nix): the pinned
+  # python env + CLI set (`python`/`office-python` shims, soffice, docx, xlsx, pdfdo,
+  # md2office, office2docx, doc2md) on the Hermes units' PATH, the fleet skills pack
+  # at /etc/hermes-skills (skills.external_dirs), and the stdio `documents` MCP
+  # server. This is what makes Hermes' BUNDLED pdf/microsoft-office skills work on
+  # NixOS (their `python -c "import docx,..."` probe hits the shim; the Docker-style
+  # venv fallback can never build here, see the flake's hermes-agent input comment).
+  MODULES.services.agentDocuments.enable = true;
+
+  # Hermes' own virtual desktop (modules/services/hermes-desktop.nix), 2026-11-20:
+  # Xvfb :99 + openbox + x11vnc (loopback, VNC password hermes/desktop_vnc_password
+  # in sops) exported to the browser through noVNC behind Traefik as
+  # https://hermes-desktop.hp (tailnet), plus a headed-Chromium Playwright MCP
+  # server Hermes drives over loopback. The agent's computer-use surface; the
+  # `desktop` skill (agentDocuments) documents it for the agent.
+  MODULES.services.hermes-desktop.enable = true;
 
   # Hermes' calendar, out to the world: a token-gated ICS feed at
   # https://hp.tail546fb.ts.net:8443/ics/<token>/hermes.ics (the token lives in sops as

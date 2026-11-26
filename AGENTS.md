@@ -80,6 +80,30 @@ follow, not to re-litigate):
   nginx serves the tree autoindex-off so a wrong token never names a directory. The
   omp bootstrap (`MODULES.services.omp.bootstrap`) is the first consumer; a new
   curl|bash installer for any tool registers here, NEVER re-implements the endpoint.
+- `modules/services/agent-documents.nix` - the fleet's single document/office
+  capability (owner ask 2026-11-20): one pinned python env (pymupdf/pypdf/
+  openpyxl/python-docx/markitdown, LibreOffice - the python set is pkgs-unstable
+  because stable 26.05 has no libreoffice and a broken markitdown) plus CLI
+  wrappers (`docx`, `xlsx`, `pdfdo`, `doc2md`, `md2office`, `office2docx`, the
+  `python`/`office-python` shims, `soffice`), the Agent Skills pack
+  (documents/pdf/docx/xlsx) fed to BOTH harnesses (omp: ~/.omp/agent/skills
+  symlinks + a stdio `documents` MCP server in mcp.json; Hermes: extraPackages
+  + skills.external_dirs on /etc/hermes-skills + the same MCP via its
+  mcpServers), and the `desktop` skill rendered into the Hermes pack only when
+  hermes-desktop is on. Harnesses never restate a package list or a tool path.
+- `modules/services/hermes-desktop.nix` - Hermes' own virtual workstation on
+  hp: Xvfb :99 + openbox + a live xterm as the hermes uid, x11vnc (loopback,
+  VncAuth password from sops `hermes/desktop_vnc_password`) exported to any
+  browser as https://hermes-desktop.hp (Traefik, tailnet) AND as raw
+  hermes-desktop.hp:5901 (tailscale serve --tcp; the serve map auto-derives
+  the service-graph edge), and a Playwright-MCP HTTP server (pkgs-unstable
+  0.0.83, HEADED Chromium with vision+pdf caps, persistent profile under
+  HERMES_HOME) that Hermes attaches to as a url MCP server - the agent's
+  computer-use surface, watchable (and grabbable) by the owner in the browser.
+  Reuses the hermes sandbox attrset (paseo-hermes precedent) + three local-
+  only widenings (netlink, full /proc, ptrace) documented at the unit; the
+  noVNC proxy runs DynamicUser so the hermes-egress uid chain does not block
+  its loopback dial of 5901.
 - `modules/security/service-graph.nix` - the fleet's single tailnet edge
   table. The nft/iptables allow-jails and the Suricata tap's pass-list are
   both rendered from it, and it derives peer sources (Prometheus scrapers,

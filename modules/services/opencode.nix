@@ -333,58 +333,6 @@ in {
       description = "Group of the mounted provider API-key secrets; see secretOwner.";
     };
 
-    mcp.playwright = {
-      enable = mkEnableOption ''
-        the Playwright MCP server in opencode's config, letting a session drive a real
-        browser (navigate, click, type, screenshot). Off by default: an agent with hands
-        on a browser is a big capability, so each host opts in explicitly.
-      '';
-
-      package = mkOption {
-        type = types.package;
-        default = pkgs.playwright-mcp;
-        defaultText = literalExpression "pkgs.playwright-mcp";
-        description = "playwright-mcp package opencode spawns as the stdio MCP server.";
-      };
-
-      browser = mkOption {
-        type = types.package;
-        default = pkgs.brave;
-        defaultText = literalExpression "pkgs.brave";
-        description = ''
-          Chromium-based browser Playwright launches, handed to it as
-          --executable-path (with --browser chromium, its engine for any such binary).
-          Playwright starts it as its own instance with a separate persistent profile,
-          never attaching to the user's already running browser - logins made in the
-          automation profile survive restarts but stay out of the daily-driver profile.
-        '';
-      };
-
-      userDataDir = mkOption {
-        type = types.str;
-        default = "{env:HOME}/.local/share/opencode/playwright-mcp-profile";
-        description = ''
-          Profile directory for the browser Playwright launches, passed as
-          --user-data-dir. opencode's {env:} substitution expands HOME at load,
-          since /etc/opencode.json is user-agnostic. Must be writable and must be
-          set: without it playwright-mcp puts its default profile under
-          $PLAYWRIGHT_BROWSERS_PATH, which the nixpkgs wrapper pins to the
-          read-only store (measured on legion5 2026-10-27: first navigate failed
-          "ENOENT ... mkdir /nix/store/...-playwright-browsers/mcp-chrome-for-testing-7799135").
-        '';
-      };
-
-      extraArgs = mkOption {
-        type = types.listOf types.str;
-        default = [];
-        example = [
-          "--headless"
-          "--isolated"
-        ];
-        description = "Extra playwright-mcp CLI flags, appended verbatim to the rendered command.";
-      };
-    };
-
     mcp.servers = mkOption {
       type = types.attrsOf types.attrs;
       default = {};
@@ -397,10 +345,11 @@ in {
       };
       description = ''
         Extra entries in the rendered `mcp` map (OpenCode MCP config dialect:
-        type local/remote, command list, enabled), keyed by server name; the
-        playwright entry is composed alongside them. Modules feed this instead
-        of growing bespoke options per server - MODULES.services.blender-mcp
-        adds the blender server from here.
+        type local/remote, command list, enabled), keyed by server name.
+        Modules feed this instead of growing bespoke options per server -
+        MODULES.services.blender-mcp adds the blender server and
+        MODULES.services.playwrightMcp (since 2026-11-19) the playwright one
+        from here.
       '';
     };
   };
@@ -518,32 +467,11 @@ in {
       }
       // lib.optionalAttrs (cfg.defaultModel != null) {model = cfg.defaultModel;}
       // lib.optionalAttrs (cfg.smallModel != null) {small_model = cfg.smallModel;}
-      // lib.optionalAttrs (cfg.mcp.servers != {} || cfg.mcp.playwright.enable) {
-        # The generic map first; the playwright entry is composed below it and
-        # wins on a name clash (it's the more specific option). MODULES.services.blender-mcp
-        # contributes its `blender` entry through cfg.mcp.servers.
-        mcp =
-          cfg.mcp.servers
-          // lib.optionalAttrs cfg.mcp.playwright.enable {
-            # Store paths inline, so no PATH or node/npx at runtime; opencode spawns the
-            # stdio server itself and Playwright only starts the browser once a tool is
-            # called, so headless (e.g. paseo) sessions pay nothing for having it.
-            playwright = {
-              type = "local";
-              command =
-                [
-                  "${lib.getExe cfg.mcp.playwright.package}"
-                  "--browser"
-                  "chromium"
-                  "--executable-path"
-                  "${lib.getExe cfg.mcp.playwright.browser}"
-                  "--user-data-dir"
-                  cfg.mcp.playwright.userDataDir
-                ]
-                ++ cfg.mcp.playwright.extraArgs;
-              enabled = true;
-            };
-          };
+      // lib.optionalAttrs (cfg.mcp.servers != {}) {
+        # The generic map; MODULES.services.blender-mcp and
+        # MODULES.services.playwrightMcp contribute their entries through
+        # cfg.mcp.servers.
+        mcp = cfg.mcp.servers;
       }
     );
 

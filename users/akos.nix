@@ -101,33 +101,15 @@
       system.gpg.enable = true;
       system.pipewire.enable = true;
       security.sops.enable = true;
-      # The module's default provider catalogue (rendered from
-      # modules/services/model-catalog.nix) is exactly what this user wants since
-      # 2026-11-05: OmniRoute direct for the hosted subscriptions plus the futurelab
-      # Aqueduct endpoint - the LiteLLM-gateway provider was dropped from the
-      # harnesses then, so only the model choices are named here.
-      services.opencode = {
-        enable = true;
-        defaultModel = "futurelab/qwen3.8-flash-next";
-        smallModel = "futurelab/qwen3.8-flash-next";
-      };
-      # pi for interactive use, fully declarative (the module owns the package too):
-      # /etc/pi/models.json is symlinked into ~/.pi/agent with the API keys rendered as
-      # $PI_* env references that the module's pi wrapper exports from the sops mounts at
-      # exec (the old "!cat" spelling killed discovery - see the module header) - nothing
-      # secret lands in the store or the home - and settings.json is deep-merged with the
-      # default model pinned to the futurelab endpoint (pi would otherwise boot on
-      # whatever attrsets order renders). Same catalogue and sops keys as
-      # services.opencode above; replaces the paseo-machine daemon's home writes
-      # (legion5 2026-10-29, wrapper spelling 2026-11-05).
-      services.pi = {
-        enable = true;
-        users = ["akos"];
-        # subagent orchestration (by nicobailon): teaches pi to fan work out to
-        # child pi processes and bundles a skill for it - loaded as an extension
-        # via settings.json packages, npm-installed on first pi run.
-        packages = ["npm:pi-subagents"];
-      };
+      # The coding-agent harness set for this user consolidated onto omp ALONE
+      # (owner ask 2026-11-19): opencode, pi, kilo, cline, codex, claude-code and
+      # amp are retired here. The modules stay (hp enables opencode for root, and
+      # blender-mcp feeds every still-enabled harness through the generic
+      # mcp.servers options), and herdr gates its per-harness config syncs on each
+      # module's `enable`, so the retired ones drop out there automatically. omp
+      # covers the whole job: same gateway catalogue and sops keys, modelRoles
+      # pin, MCP servers, fallback chains. To bring a harness back, re-add its
+      # enable block (git history carries the exact pins and rationale comments).
       # oh-my-pi (pi's fork, `omp`): the same gateway pair through ITS native
       # models.yml - built-in discovery replaces pi's extension (openai-models-list
       # reads omniroute's /v1/models), keys stay out of the store the same way
@@ -151,76 +133,17 @@
         # added noise to every rate-limit retry.
         fallbackChains."omniroute/codex/gpt-6.1-sol" = ["omniroute/futurelab/qwen3.8-flash-next"];
       };
-      # Claude Code against OmniRoute's Anthropic wire (/v1/messages, probed live
-      # 2026-11-05): the wrapper exports ANTHROPIC_BASE_URL/AUTH_TOKEN (the sops
-      # key, never the store) plus the model pins the picker maps Opus/Sonnet/Haiku
-      # onto - the antigravity/dvgw ids answer /v1/messages today; bump if the
-      # gateway reshuffles. See modules/services/claude-code.nix.
-      services.claudeCode = {
-        enable = true;
-        users = ["akos"];
-      };
-      # Kilo Code CLI - OpenCode fork, so it reads the same two gateways in
-      # OpenCode provider shape from ~/.config/kilo/kilo.jsonc; {file:<sops>}
-      # apiKey references are global-config-only by design (see the module
-      # header). nixpkgs kilo is broken; the vendor binary ships in
-      # packages/kilo-cli.nix.
-      services.kilo = {
-        enable = true;
-        users = ["akos"];
-      };
-      # Cline CLI: providers.json gets one "openai-compatible" slot, so OmniRoute
-      # owns it (every subscription model answers there; the futurelab pin lives
-      # on for pi/omp/opencode/kilo). file:/ apiKey indirection keeps the key out
-      # of the store; a merge unit re-asserts the slot at activation without
-      # clobbering the user's own providers. See modules/services/cline.nix.
-      services.cline = {
-        enable = true;
-        users = ["akos"];
-      };
-      # OpenAI Codex CLI: /etc/codex/config.toml is codex's OWN system config
-      # layer (lowest precedence - the user's ~/.codex/config.toml and /model
-      # still win), rendered with the same two gateways as pi/omp/opencode; the
-      # module's codex wrapper exports CODEX_<NAME>_API_KEY from the sops
-      # mounts. 0.167 dropped the chat wire API, but both gateways answer
-      # /v1/responses (measured 2026-11-09), so one dialect covers the set.
-      # See modules/services/codex.nix.
-      services.codex = {
-        enable = true;
-        users = ["akos"];
-      };
-      # Amp (Sourcegraph): settings.json merged declaratively (updates off, MCP
-      # servers), but model routing is CLOUD state (threads and provider
-      # connections live on ampcode.com, which also originates the model
-      # requests - a tailnet gateway is invisible there). So: the OmniRoute
-      # public Funnel URL is the connection's base (the module derives it from
-      # omniroute.public), the shared omniroute_api_key is the connection's key
-      # by default, and an amp_api_key in sops would let the activation sync the
-      # connection + rotate its key; until that key exists the user does a
-      # one-time `amp login` and manages Model Routing in the web UI.
-      # See modules/services/amp.nix.
-      services.amp = {
-        enable = true;
-        users = ["akos"];
-        # Which Amp models ride the gateway. Amp's mapping syntax allows the
-        # `-> providerId` override ONLY on EXACT include lines (wildcard/exclude
-        # lines reject arrows), so these are self-mapped exact rows: the id Amp
-        # matches IS the OmniRoute model id the gateway receives (the
-        # mapping may name any id, not just Amp's catalog - docs/customize/
-        # model-routing). The two rows below are the models every other harness
-        # pins and both answer their fronts today (futurelab direct +
-        # codex/gpt-6-astra via the gateway's codex connection, listed by
-        # /v1/models 2026-11-09); add one line per extra model you run through
-        # it. If Amp's picker doesn't offer one (token limits unknown to Amp and
-        # the endpoint's /models), set its Model Metadata Overrides in the web
-        # Model Routing dialog once - the CLI cannot.
-        modelMapping = [
-          "futurelab/qwen3.8-flash-next -> futurelab/qwen3.8-flash-next"
-          "codex/gpt-6-astra -> codex/gpt-6-astra"
-        ];
-      };
+      # The document/office capability (modules/services/agent-documents.nix):
+      # the office CLI set + pinned python env (docx/xlsx/pdfdo/md2office/
+      # soffice/doc2md, the `python`+`office-python` shims) system-wide, the
+      # fleet pdf/docx/xlsx/documents skills symlinked into ~/.omp/agent/skills
+      # (omp's native user-skills root - verified against omp 18.18.9), and a
+      # stdio `documents` MCP server in omp's managed mcp.json. This is the
+      # ChatGPT-documents parity layer for omp: create/edit/inspect PDF, Word,
+      # Excel without an Office install.
+      services.agentDocuments.enable = true;
       # Blender MCP: registers the mcp-for-blender stdio server with every
-      # harness above (opencode/kilo/pi/omp/claude-code/cline/codex/amp) and keeps the
+      # enabled harness (the omp one, since the 2026-11-19 consolidation) and keeps the
       # matching Blender add-on installed + enabled here, where blender is
       # installed (cad block below). Off on hosts without the akos user, so
       # the "blender installed" precondition holds by construction.
@@ -243,9 +166,9 @@
       # helpful tools
       starship
       ripgrep
-      # pi is installed (same unstable pin) and configured by MODULES.services.pi;
-      # opencode comes from MODULES.services.opencode, whose /etc/opencode.json +
-      # $OPENCODE_CONFIG registers the same gateways for the shells.
+      # omp is installed and configured by MODULES.services.omp (the one
+      # interactive harness for this user since 2026-11-19); the retired
+      # harnesses' packages left the profile with their enable blocks.
       httm
       mpv
       fd
@@ -320,15 +243,16 @@
       # dev tools
       pkgs-unstable.foxglove-cli
       pkgs-unstable.foxglove-studio
+      pkgs-unstable.rerun
       pkgs-unstable.vscode
       pkgs-unstable.jetbrains.idea
       pkgs-unstable.zed-editor
       pkgs-unstable.github-copilot-cli
-      # NO pkgs-unstable.claude-code here since 2026-11-05: MODULES.services.
-      # claudeCode ships a bin/claude WRAPPER (ANTHROPIC_BASE_URL/AUTH_TOKEN
-      # exports for the OmniRoute gateway), and a plain package in this user's
-      # profile would shadow it (home profile precedes the system one) - the
-      # stale entry made claude boot into its expired stored-OAuth path.
+      # claude-code itself stays OUT of this list: while MODULES.services.
+      # claudeCode was enabled (until the 2026-11-19 harness consolidation) it
+      # shipped a bin/claude WRAPPER (gateway env exports) and a plain package
+      # here would have shadowed it (home profile precedes the system one).
+      # The acp adapter/monitor ride on top of whatever claude is on PATH.
       pkgs-unstable.claude-agent-acp
       pkgs-unstable.claude-monitor
       pkgs-unstable.cursor-cli

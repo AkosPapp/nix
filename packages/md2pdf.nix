@@ -4,12 +4,25 @@
   writeShellScriptBin,
   pandoc,
   chromium,
+  mermaid-cli,
   gnused,
   gnugrep,
   coreutils,
+  python3,
+  python3Packages,
 }:
 # md2pdf: Markdown -> PDF with real LaTeX rendering, via
-#   pandoc (md -> standalone HTML + MathJax) -> headless Chromium (print-to-pdf).
+#   [mermaid pre-pass: ```mermaid fences -> mmdc SVGs as <img>] ->
+#   pandoc (md -> standalone HTML + MathJax) -> headless Chromium
+#   (print-to-pdf) -> pypdf post-passes (trailing-blank trim, outline titles).
+#
+# A `---` thematic break is a PAGE separator in this pipeline (md2pdf.css:
+# break-after: page; owner ask 2026-11-21), and ```mermaid blocks render
+# through mermaid-cli as vector SVGs (packages/md2pdf_mermaid.py pre-pass -
+# why pre-pass, not inline SVG/filter, is documented in that file). A
+# document ending on a separator leaves one blank final page from Chromium;
+# packages/md2pdf_trim.py deletes trailing text-free AND drawing-free pages
+# (a diagram-only page carries drawing operators and always survives).
 #
 # Why this pipeline (iteratively verified on legion5 2026-10-27, 111.md's
 # worksheet raster-checked page by page):
@@ -42,6 +55,27 @@ let
   # Default print stylesheet (A4, page numbers, styled tables, formula break
   # rules). Lives in packages/md2pdf.css so it stays editable as plain CSS.
   defaultCss = builtins.toFile "md2pdf.css" (builtins.readFile ./md2pdf.css);
+
+  # Postprocessor that gives the chromium-generated outline clean bookmark
+  # titles (chromium derives them from layout text: wrap spaces vanish,
+  # MathJax glyphs contribute nothing; see the header of the .py file).
+  outlineTitles = builtins.toFile "outline_titles.py" (builtins.readFile ./outline_titles.py);
+
+  # Mermaid pre-pass: rewrites ```mermaid fences into <img> tags of
+  # mmdc-rendered SVGs BEFORE pandoc sees the file (see the .py header for
+  # why not a pandoc filter / inline SVG). mmdc's puppeteer launches the
+  # nixpkgs chromium wrapper exports (PUPPETEER_EXECUTABLE_PATH); the config
+  # passes the same --no-sandbox the print pass needs (no setuid helper in
+  # the agent sandboxes, and the input is a trusted local file).
+  mermaidPrepass = builtins.toFile "md2pdf_mermaid.py" (builtins.readFile ./md2pdf_mermaid.py);
+  mermaidPptr = builtins.toFile "md2pdf-pptr.json" (builtins.toJSON {
+    args = ["--no-sandbox" "--disable-gpu"];
+  });
+
+  # `---` is a page break now (see md2pdf.css), so a document can end on one
+  # and Chromium prints a final EMPTY page; this post-pass trims trailing
+  # blanks (text-free AND drawing-free pages only) before the outline pass.
+  trimBlank = builtins.toFile "md2pdf_trim.py" (builtins.readFile ./md2pdf_trim.py);
 in
   writeShellScriptBin "md2pdf" ''
           set -eu
@@ -57,20 +91,29 @@ in
           GREP="${gnugrep}/bin/grep"
           HEAD="${coreutils}/bin/head"
           TR="${coreutils}/bin/tr"
+          PYTHON="${python3}/bin/python3"
+          OUTLINE_TITLES="${outlineTitles}"
+          PYPDF="${python3Packages.pypdf}/lib/${python3.libPrefix}/site-packages"
+          MERMAID_PREPASS="${mermaidPrepass}"
+          MMDC="${mermaid-cli}/bin/mmdc"
+          MMDC_PPTR="${mermaidPptr}"
+          TRIM_BLANK="${trimBlank}"
 
           usage() {
-            echo "usage: md2pdf [-o out.pdf] [-t title] [-c extra.css]... [--no-probe] [--strict] input.md [out.pdf]" >&2
+            echo "usage: md2pdf [-o out.pdf] [-t title] [-c extra.css]... [--no-probe] [--no-outline] [--no-mermaid] [--strict] input.md [out.pdf]" >&2
           }
 
           src="" title="" out=""
           css_extra=()
-          probe=1 strict=0
+          probe=1 strict=0 outline=1 mermaid=1
           while [ "$#" -gt 0 ]; do
             case "$1" in
               -o) out="''${2?''$0: -o needs an argument}"; shift 2 ;;
               -t) title="''${2?''$0: -t needs an argument}"; shift 2 ;;
               -c) css_extra+=("''${2?''$0: -c needs an argument}"); shift 2 ;;
               --no-probe) probe=0; shift ;;
+              --no-outline) outline=0; shift ;;
+              --no-mermaid) mermaid=0; shift ;;
               --strict) strict=1; shift ;;
               -h) usage; exit 0 ;;
               -*) echo "md2pdf: unknown option $1" >&2; usage; exit 2 ;;
@@ -103,6 +146,17 @@ in
           # shellcheck disable=SC2064
           trap "$RM -rf ''$tmp" EXIT
 
+          # Mermaid pre-pass (see packages/md2pdf_mermaid.py): rewrite
+          # ```mermaid fences into raw <img> tags of mmdc-rendered SVGs;
+          # pandoc then sees plain markdown + raw HTML. A diagram that fails
+          # to render degrades to its literal code block (loud on stderr,
+          # fatal only with --strict). Without diagrams the pass is a copy.
+          pandoc_src="$src"
+          if [ "$mermaid" = 1 ]; then
+            "$PYTHON" "$MERMAID_PREPASS" "$src" "$tmp/input.md" "$tmp/mermaid" "$MMDC" "$MMDC_PPTR" "$strict" || exit $?
+            pandoc_src="$tmp/input.md"
+          fi
+
           # Absolute paths baked in at build time (nix-time ''${mathjax}); the fontURL
           # must be absolute because MathJax's injected @font-face rules resolve
           # against the page (the temp html), not against the script's location.
@@ -126,7 +180,7 @@ in
           # pandoc on 2026-10-27) every $...$ goes through texmath for a MathML
           # conversion, and whichever formulas texmath cannot parse - \Longleftrightarrow,
           # \tfrac, ... - leak into the PDF as literal "$\frac{a}{b}$" text.
-          "$PANDOC" "$src" \
+          "$PANDOC" "$pandoc_src" \
             --standalone \
             --mathjax="file://${mathjax}/es5/tex-mml-chtml.js" \
             --include-in-header "$tmp/mathjax-config.html" \
@@ -150,6 +204,9 @@ in
           # 2x18mm margins = 657.6px at 96dpi) and list elements that overflow
           # it. --strict turns the warning into an error (exit 3); --no-probe
           # skips the extra headless pass.
+          outline_flag="--generate-pdf-document-outline"
+          if [ "$outline" = 0 ]; then outline_flag=""; fi
+
           if [ "$probe" = 1 ]; then
             cat > "$tmp/probe.js" <<'PEOF'
     <script>
@@ -237,11 +294,16 @@ in
           # --allow-file-access-from-files: lets the store's MathJax woff fonts load
           # from a file:// page. --virtual-time-budget: headless waits for MathJax to
           # finish typesetting before printing (20 s budget, renders in ~1 s).
+          # --generate-pdf-document-outline: turns the document's h1-h6 into a
+          # PDF bookmark/outline tree (viewer sidebar) so long solution files
+          # are searchable by section; pandoc numbers the headings, no ids needed
+          # (verified with chromium 157 on 2026-11-17).
           "$CHROMIUM" --headless=new --disable-gpu --no-sandbox \
             --user-data-dir="$tmp/profile" \
             --allow-file-access-from-files --hide-scrollbars \
             --run-all-compositor-stages-before-draw --virtual-time-budget=20000 \
             --no-pdf-header-footer \
+            ''${outline_flag:+$outline_flag} \
             --print-to-pdf="$tmp/out.pdf" \
             "file://$($REALPATH "$tmp/render.html")" >/dev/null 2>&1
 
@@ -251,5 +313,18 @@ in
           fi
 
           "$CP" "$tmp/out.pdf" "$out"
+
+          # Trim the final EMPTY page Chromium prints when the document ends
+          # on a `---` page separator (see md2pdf.css + md2pdf_trim.py).
+          # BEFORE the outline pass; best-effort like it.
+          PYTHONPATH="$PYPDF" "$PYTHON" "$TRIM_BLANK" "$out" || true
+
+          # Replace chromium's mangled bookmark titles with ones derived from
+          # the markdown headings (unicode-transliterated math). PYTHONPATH
+          # points at the unpacked pypdf wheel dir; the rewrite is best-effort:
+          # any failure leaves chromium's outline in place.
+          if [ "$outline" = 1 ]; then
+            PYTHONPATH="$PYPDF" "$PYTHON" "$OUTLINE_TITLES" "$src" "$out" || true
+          fi
           echo "md2pdf: wrote $out"
   ''

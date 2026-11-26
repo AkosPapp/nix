@@ -25,10 +25,16 @@
 #     coroot-alert-configure.{service,timer}: an idempotent REST-API reconciler that
 #     registers the webhook integration (url + token header + JSON templates, alerts +
 #     incidents) and flips every project's category notification routing to deliver alerts
-#     and incidents to the webhook. The INTEGRATION lives in Coroot's DB, not its config
-#     file, on purpose: a `projects:` config block REPLACES api_keys and makes project
-#     settings read-only in the UI (config/bootstrap.go), which would break the fleet's
-#     keyless agent pushes and the UI-managed alert rules.
+#     and incidents to the webhook - EXCEPT the quiet categories
+#     (MODULES.services.corootAlerts.quietCategories, merged across every flake host that
+#     declares them, since the reconciler runs on the server while the quiet apps belong
+#     to whoever owns them): those are upserted with all notification kinds OFF and
+#     skipped by the routing loop, which is Coroot's only API-reachable per-app alert
+#     mute (see the quietCategories option; the 2026-11-13 audit's "API gap"). The
+#     INTEGRATION lives in Coroot's DB, not its config file, on purpose: a `projects:`
+#     config block REPLACES api_keys and makes project settings read-only in the UI
+#     (config/bootstrap.go), which would break the fleet's keyless agent pushes and the
+#     UI-managed alert rules.
 #
 # Why the diagnosis arrives via Matrix: the Hermes agent (hermes-agent.nix) only starts
 # agent turns from its Matrix platform - it treats this alert room as a DM (created with
@@ -106,9 +112,30 @@
 
   botId = "@${cfg.botUser}:${matrix.serverName}";
 
+  # Quiet categories declared on ANY flake host, merged for the server half: the
+  # reconciler runs where the SERVER is, but the quiet apps belong to whoever owns
+  # them (hp declares the UltraTrainer tunnels). Same cross-host-read doctrine as
+  # coroot.nix's serverHosts / SERVICE_GRAPH derivations; microVM guests see an empty
+  # nixosConfigurations and fold to {}. A name declared by two hosts with different
+  # patterns would merge silently - that's a bug, asserted below, not a feature.
+  quietDeclarations = builtins.attrValues (
+    lib.mapAttrs (
+      _: h: h.config.MODULES.services.corootAlerts.quietCategories
+    )
+    nixosConfigurations
+  );
+  quietFleet = builtins.foldl' (acc: d: acc // d) {} quietDeclarations;
+  quietCollisions = builtins.length (builtins.attrNames quietFleet) != builtins.foldl' (n: d: n + builtins.length (builtins.attrNames d)) 0 quietDeclarations;
+
   # Both python programs are stdlib-only; run them straight off pkgs.python3.
   receiverPy = ./coroot-alerts/receiver.py;
   configurePy = ./coroot-alerts/configure.py;
+
+  # The fleet-merged quiet categories, as the JSON document configure.py reads from its
+  # "quiet_categories" credential. A store path (not Environment=): the JSON carries
+  # double quotes and the patterns carry spaces, and systemd's Environment= quoting
+  # doesn't survive hand-escaping - a credential file sidesteps the whole hazard.
+  quietCategoriesJson = pkgs.writeText "coroot-alert-quiet-categories.json" (builtins.toJSON quietFleet);
 
   sandbox = {
     User = "coroot-alerts";
@@ -233,6 +260,30 @@ in {
       };
     };
 
+    quietCategories = mkOption {
+      type = types.attrsOf types.str;
+      default = {};
+      example = lib.literalExpression ''
+        { spawned-on-demand = "_/*ultra-trainer*"; }
+      '';
+      description = ''
+        Alert-quiet application categories the reconciler
+        (coroot-alert-configure, configure.py) upserts into every project and EXEMPTS
+        from the webhook routing it forces on everywhere else: name -> space-separated
+        custom glob patterns over "<namespace>/<app-name>" (systemd units live in the
+        "_" namespace). Coroot has no per-app alert switch (the 2026-11-13 audit's
+        "API gap": alerting rules are project-wide, the per-app SLO knob is UI-only),
+        but the notification pipeline drops every alert/incident whose app's category
+        has notifications off (notifications/alerts.go + incidents.go) - so a quiet
+        category silences the Matrix feed for intentionally-down-mostly apps (the
+        spawned UltraTrainer tunnels) while their alerts, incidents and telemetry stay
+        computed and visible in the Coroot UI. Apps are categorized by
+        CalcApplicationCategory (custom patterns first), and the hourly pass re-syncs
+        patterns and the off-flags, so the DB converges on this declaration - remove an
+        entry and its apps fall back to "application" and notify again.
+      '';
+    };
+
     diagnoseOn = mkOption {
       type = types.listOf types.str;
       default = [
@@ -277,6 +328,14 @@ in {
         {
           assertion = !receiverOn || !cfg.agent.enable || config.MODULES.services.hermes-agent.enable;
           message = "MODULES.services.corootAlerts.agent needs MODULES.services.hermes-agent on the receiver host (that IS the agent to wake).";
+        }
+        {
+          assertion = !quietCollisions;
+          message = ''
+            MODULES.services.corootAlerts.quietCategories: the same category name is
+            declared by two flake hosts with different patterns - the fleet merge would
+            silently pick one. Rename or agree on one patterns string.
+          '';
         }
       ];
 
@@ -462,9 +521,10 @@ in {
         description = "Reconcile Coroot's alert webhook integration + notification routing";
         after = ["coroot.service"];
         wants = ["coroot.service"];
-        # Apply Nix changes (new receiver URL, rotated token) immediately, not on the next
-        # timer tick: any rebuild whose store diff touches these paths restarts the pass.
-        restartTriggers = [receiverPy configurePy];
+        # Apply Nix changes (new receiver URL, rotated token, quiet-set edits) immediately,
+        # not on the next timer tick: any rebuild whose store diff touches these paths
+        # restarts the pass.
+        restartTriggers = [receiverPy configurePy quietCategoriesJson];
         # A failed boot-time pass (coroot still migrating) retries for a bit on its own;
         # the timer is the durable backstop, so no start-limit-hit wedging.
         unitConfig.StartLimitIntervalSec = 0;
@@ -481,6 +541,9 @@ in {
           LoadCredential = [
             "webhook_token:${config.sops.secrets.${cfg.tokenSecret}.path}"
             "admin_key:${config.sops.secrets.${cfg.configureKeySecret}.path}"
+            # Not a secret (patterns only), but the same stdlib-read path as the two
+            # above; a store path is fine for LoadCredential.
+            "quiet_categories:${quietCategoriesJson}"
           ];
           ExecStart = "${pkgs.python3}/bin/python3 ${configurePy}";
           NoNewPrivileges = true;

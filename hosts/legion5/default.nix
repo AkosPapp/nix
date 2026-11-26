@@ -68,8 +68,9 @@ in {
   #   active share keeps it usable even though most of it sits in RAM. It reasons before
   #   answering, so the first token takes noticeably longer.
   # - heretic: the Q6_K of p-e-w's decensored Qwen3-8B, 6.73 GB. 16384 context.
-  # - small-text: Qwen3-4B-2507 Q4_K_M. 8192, the cheap one, and what opencode uses for its side
-  #   jobs. receipt-vision is hp-only again - this host no longer carries a vision model.
+  # - small-text: Qwen3-4B-2507 Q4_K_M. 8192, the cheap one (was the side-job
+  #   model for opencode before the 2026-11-19 omp consolidation). receipt-vision
+  #   is hp-only again - this host no longer carries a vision model.
   MODULES.services.ollama.enable = true;
   # Keep ~1.5 GiB of the card out of Ollama's layer placement. It sizes a model to the memory free
   # at load time, but the desktop's share swings between ~0.9 and ~2.7 GiB and a vision model's
@@ -107,8 +108,9 @@ in {
     };
   };
 
-  # opencode itself (just the gateway providers, no local models) is configured once in
-  # users/akos.nix, not per-host.
+  # The coding agents ride the gateway providers only, configured once in
+  # users/akos.nix (omp), not per-host; omp's implicit local provider still
+  # sees these Ollama models over localhost.
 
   MODULES.nix.substituters.airlab-attic.enable = true;
   MODULES.system.printing.enable = true;
@@ -222,11 +224,14 @@ in {
       };
     };
   };
-  # Browser control from opencode shells: a Playwright MCP server driving Brave in its
-  # own automation profile (module defaults - see mcp.playwright in
-  # modules/services/opencode.nix). legion5-only for now: it opens a visible Brave,
-  # which only makes sense on a host with a desktop session.
-  MODULES.services.opencode.mcp.playwright.enable = true;
+  # Browser control for the agent: a Playwright MCP server driving Brave in
+  # its own automation profile (module defaults - see
+  # modules/services/playwright-mcp.nix). legion5-only for now: it opens a
+  # visible Brave, which only makes sense on a host with a desktop session.
+  # Since 2026-11-19 this is its own feed module (omp + opencode dialects);
+  # on omp it also ships browser.enabled=false in the settings overlay,
+  # because omp's native browser prelude would otherwise drop the server.
+  MODULES.services.playwrightMcp.enable = true;
   # The paseo cockpit machine lived here 2026-10-26..2026-10-29 (this block plus the
   # installer leftovers in akos's home). Retired by request: its whole purpose was writing
   # ~/.pi/agent/models.json, ~/.config/opencode/opencode.json and the daemon's

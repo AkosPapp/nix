@@ -172,6 +172,11 @@
     // lib.optionalAttrs (cfg.searxngEndpoint != null) {
       searxng.endpoint = cfg.searxngEndpoint;
     }
+    // lib.optionalAttrs (!cfg.browserNative) {
+      # MODULES.services.playwrightMcp's precondition: with the prelude on, omp
+      # drops the playwright MCP server at load (browserNative option docs).
+      browser.enabled = false;
+    }
     // lib.optionalAttrs (cfg.fallbackChains != {}) {retry.fallbackChains = cfg.fallbackChains;};
 
   # --- bootstrap installer (MODULES.services.omp.bootstrap) ---------------------------
@@ -191,7 +196,64 @@
   # providers ship (gateway-only by default: the futurelab DIRECT provider would hand a
   # raw Aqueduct key to every installed box, and direct calls bypass the gateway's
   # futurelab concurrency cap); retry.fallbackChains are NOT shipped (they name the
-  # direct provider; the gateway route itself is the installed box's resilience).
+  # direct provider; the gateway route itself is the installed box's resilience),
+  # plus one deviation of its own: bootstrap.defaultModel ships as a STATIC
+  # models.yml entry beside the provider's discovery block (bootstrapPinModels
+  # below), which the nix render does not need (its hosts reach omniroute.hp
+  # over the tailnet in milliseconds).
+  #
+  # The pinned role model -> one static models.yml entry, facts from the fleet
+  # catalogue via lookup (AGENTS.md Rule 2 - no restated numbers here). The
+  # shipped omniroute provider is discovery-only, and that discovery rides the
+  # PUBLIC funnel: measured on r4uai00 2026-11-23, the 800 KB /v1/models times
+  # out far more often than it answers from the lab wifi (four 30s timeouts,
+  # one 4.5s success; the box's ~/.omp/logs then carries "model discovery
+  # failed for provider omniroute ... operation timed out" and omp boots "No
+  # model selected" on an otherwise perfect install - the owner's screenshot).
+  # A static entry merges with discovery results (verified live on r4uai00 the
+  # same day: `omp models` listed all 1293 gateway models AND resolved the pin
+  # with both present), so the pin resolves whether discovery succeeds or not.
+  # A pin the catalogue does not list still ships as a bare {id,name} row -
+  # selectable, omp's own context defaults - so a custom defaultModel never
+  # breaks the hub's eval; add it to the catalogue to get its real facts.
+  bootstrapPinEntry = pname: modelName: let
+    m = config.MODULES.services.modelCatalog.lookup modelName;
+    hit = m != {};
+    wireId =
+      if !hit
+      then modelName
+      else if pname == "futurelab" && m.directName != null
+      then m.directName
+      else m.gatewayName;
+  in
+    {
+      id = wireId;
+      name = "${pname}/${modelName}";
+    }
+    //
+    # optionalAttrs per field like ompModel does: a wholesale
+    # ompModelFromCatalog would render `contextWindow: null` for a catalogue
+    # entry that leaves a fact unset (every field there is nullOr).
+    (
+      if !hit
+      then {}
+      else lib.filterAttrs (_: v: v != null && v != []) (ompModelFromCatalog m)
+    );
+
+  # The pin names (default + smol, deduped) routed through provider `pname`,
+  # as static entries for that provider - [] when the provider owns no pin.
+  bootstrapPinModels = pname: let
+    pins =
+      lib.unique
+      (lib.filter
+        (n: n != null && lib.hasPrefix "${pname}/" n)
+        [
+          cfg.bootstrap.defaultModel
+          cfg.bootstrap.smallModel
+        ]);
+  in
+    map (n: bootstrapPinEntry pname (lib.removePrefix "${pname}/" n)) pins;
+
   bootstrapProvidersYaml = lib.genAttrs cfg.bootstrap.providers (
     pname:
     # NOT `providersYaml.${pname} or throw ...`: a dynamic select followed by `or`
@@ -216,6 +278,19 @@
           if builtins.hasAttr pname cfg.bootstrap.baseUrlOverride
           then cfg.bootstrap.baseUrlOverride.${pname}
           else cfg.providers.${pname}.baseUrl;
+      }
+      # The pin entry merged into the provider's model list (empty for a
+      # provider that ships no pin, so a bare `// {}` never materialises an
+      # `models: []` key that would contradict the module's emit-only-when-set
+      # rule for providers with no static models).
+      // lib.optionalAttrs (bootstrapPinModels pname != []) {
+        models =
+          (
+            if providersYaml.${pname} ? models
+            then providersYaml.${pname}.models
+            else []
+          )
+          ++ bootstrapPinModels pname;
       }
   );
   bootstrapConfigYaml = lib.generators.toYAML {} {
@@ -315,8 +390,24 @@
       OMPI_MINT_TOKEN="''${OMPI_MINT_TOKEN:-${mintTokenDefault}}"
       OMPI_MINT_NAME="''${OMPI_MINT_NAME:-omp-$(hostname -s 2>/dev/null || hostname 2>/dev/null || echo unknown)}"
       OMPI_MINT_NAME="$(printf '%s' "$OMPI_MINT_NAME" | tr -c 'A-Za-z0-9._-' '-' | sed 's/^-*//;s/-\{2,\}/-/g;s/-*$//' | cut -c1-60)"
-      if have python3; then
-        OMPI_MINT_KEY="$(MINT_URL="$OMPI_MINT_URL" MINT_NAME="$OMPI_MINT_NAME" MINT_TOKEN="$OMPI_MINT_TOKEN" python3 - <<'OMPI_MINT_EOF'
+      # Retry loop (owner incident 2026-11-24, r4uai00): the mint daemon answers in
+      # milliseconds (hp journal: "adopted omp-r4uai00" logged instantly), but the
+      # funnel relay stalls the RESPONSE for wifi boxes - three consecutive "read
+      # operation timed out" client-side while the daemon had already answered 200.
+      # With omp-deploy's pre-clean wipe, a one-try mint means a re-deploy that
+      # loses this race leaves the box with NO omp at all, so the mint gets 3 tries
+      # (the daemon is idempotent per name - a retry just adopts). Inside the
+      # installer, not omp-deploy: the curl path retries the same way (owner rule:
+      # the ssh command has no behavior the curl path lacks).
+      OMPI_MINT_TRIES=0
+      while [ -z "$OMPI_MINT_KEY" ] && [ "$OMPI_MINT_TRIES" -lt 3 ]; do
+        OMPI_MINT_TRIES=$((OMPI_MINT_TRIES + 1))
+        if [ "$OMPI_MINT_TRIES" -gt 1 ]; then
+          log "mint attempt $((OMPI_MINT_TRIES - 1)) failed - retrying ($OMPI_MINT_TRIES of 3)"
+          sleep 5
+        fi
+        if have python3; then
+          OMPI_MINT_KEY="$(MINT_URL="$OMPI_MINT_URL" MINT_NAME="$OMPI_MINT_NAME" MINT_TOKEN="$OMPI_MINT_TOKEN" python3 - <<'OMPI_MINT_EOF'
     import json
     import os
     import sys
@@ -330,22 +421,23 @@
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
             print(json.loads(r.read().decode()).get("key", ""))
-    except Exception as e:  # noqa: BLE001 - the sh layer turns an empty key into a die
+    except Exception as e:  # noqa: BLE001 - the sh layer retries, then dies on an empty key
         print("omp-bootstrap: NOTE mint request failed (%s)" % e, file=sys.stderr)
     OMPI_MINT_EOF
     )" || OMPI_MINT_KEY=""
-      elif have curl; then
-        # compact JSON from the daemon (separators=(",",":")) - one sed grabs the key.
-        OMPI_MINT_KEY="$(curl -fsS --max-time 30 -H "X-Mint-Token: $OMPI_MINT_TOKEN" "$OMPI_MINT_URL?name=$OMPI_MINT_NAME" \
-          | sed -n 's/.*"key":"\([^"]*\)".*/\1/p' 2>/dev/null || true)"
-      fi
+        elif have curl; then
+          # compact JSON from the daemon (separators=(",",":")) - one sed grabs the key.
+          OMPI_MINT_KEY="$(curl -fsS --max-time 30 -H "X-Mint-Token: $OMPI_MINT_TOKEN" "$OMPI_MINT_URL?name=$OMPI_MINT_NAME" \
+            | sed -n 's/.*"key":"\([^"]*\)".*/\1/p' 2>/dev/null || true)"
+        fi
+      done
       if [ -n "$OMPI_MINT_KEY" ]; then
         log "per-device gateway key '$OMPI_MINT_NAME' minted/adopted at the hub"
       else
         # No baked fallback (owner ruling 2026-11-15): a box that cannot mint here
         # cannot reach the gateway either, so a shared fallback key would only ever
         # install a harness that 401s forever. Fail loudly instead.
-        die "could not mint a gateway key (endpoint unreachable, rate-limited, or no python3/curl) - install aborted; nothing to fall back to by design"
+        die "could not mint a gateway key in 3 tries (endpoint unreachable, rate-limited, or no python3/curl) - install aborted; nothing to fall back to by design"
       fi
     fi
 
@@ -717,6 +809,22 @@ in {
       '';
     };
 
+    browserNative = mkOption {
+      type = types.bool;
+      default = true;
+      description = ''
+        Whether omp's built-in browser prelude (`browser.*` settings, on by
+        default) stays enabled in the settings overlay. MODULES.services.playwrightMcp
+        sets it false: while the prelude is callable, omp QUIETLY DROPS every
+        recognized browser-automation MCP server (name `playwright`, the
+        @playwright/mcp package pattern) at config load - docs/mcp-config.md -
+        so a host that wires Playwright MCP must ship `browser.enabled: false`
+        in the overlay to keep it. The overlay layer outranks the user's own
+        config.yml, so the drop-filter stays off even if the user re-enabled
+        the prelude locally.
+      '';
+    };
+
     defaultApi = mkOption {
       type = types.enum ["openai-completions" "openai-responses" "anthropic-messages"];
       default = "openai-completions";
@@ -864,7 +972,12 @@ in {
           spells it). Names - never facts, per AGENTS.md Rule 2 - the fleet's interactive
           model, the same spelling users/akos.nix pins for declared hosts; null omits the
           pin (omp then boots on "first model with a valid key", the accident the pin
-          exists to prevent).
+          exists to prevent). Besides the role pin, the model is also written into the
+          shipped provider's static `models:` list (facts via
+          MODULES.services.modelCatalog.lookup), because the shipped omniroute entry is
+          discovery-only and the funnel's 800 KB /models listing is unreliable from wifi
+          boxes (r4uai00 2026-11-23: timed-out discovery => empty catalogue => "No model
+          selected" despite a perfect install).
         '';
       };
 

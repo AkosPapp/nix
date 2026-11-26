@@ -155,6 +155,13 @@
   # PDF and JSON tooling for the Hermes agent, its cron jobs, and admin shells. These land on
   # the units' PATH and in systemPackages; the tesseract language list stays pinned because the
   # wrapper's default is *every* language (~1 GB of traineddata).
+  #
+  # The capability modules that OWN agent-side tools feed theirs through options this module
+  # reads (a consumer writing `systemd.services.hermes-agent.path` directly would replace the
+  # whole list, and `path =` is already merged exactly once here): agentDocuments' office CLI
+  # set (the `python`/`office-python` shims the bundled document skills' probe needs, docx/xlsx/
+  # pdfdo/soffice) and hermes-desktop's X tools (xdotool/xclip/scrot = hands on the display).
+  # Both are inert while disabled.
   agentTools = with pkgs;
     [
       poppler-utils # pdftotext, pdfimages, pdfinfo (attr renamed from poppler_utils)
@@ -371,6 +378,22 @@ in {
       '';
     };
 
+    extraSandboxBinds = mkOption {
+      type = types.listOf types.str;
+      default = [];
+      example = ["/tmp/.X11-unix"];
+      description = ''
+        Extra systemd BindPaths specs (host:container[:flags]) applied to BOTH Hermes
+        units alongside the stateDir, notes share and apiKeyFile binds. The consumer is
+        modules/services/hermes-desktop.nix, which binds the X socket directory and the
+        desktop's runtime dir into the sandbox so the agent's terminal() can reach the
+        virtual display; it lives here (not as a direct serviceConfig edit from that
+        module) because two modules writing the same serviceConfig leaf is an eval-time
+        conflict, and BindPaths composition already belongs to this module's sandbox.
+        `-`-prefixed specs are allowed (keep the unit up when the source is absent).
+      '';
+    };
+
     extraAllowedUsers = mkOption {
       type = types.listOf types.str;
       default = [];
@@ -433,6 +456,28 @@ in {
       description = ''
         Packages appended to the agent's tool set (poppler-utils, pdfgrep, jq, tesseract,
         ffmpeg): put on the Hermes units' PATH and in environment.systemPackages.
+        Capability modules that OWN agent-side tools feed through it this way too
+        (agent-documents' office CLI set, hermes-desktop's X tools) - both are inert
+        while those modules are disabled.
+      '';
+    };
+
+    agentToolFeeds = mkOption {
+      type = types.listOf types.package;
+      default = [];
+      internal = true;
+      example = lib.literalExpression "config.MODULES.services.agentDocuments.unitToolFeeds";
+      description = ''
+        Packages on the UNITS' closed PATH (`path =`), NOT in agentTools/
+        environment.systemPackages - the escape hatch for tool names that
+        collide with an existing system-profile provider. That is not
+        theoretical: the akos profile ships a jupyter python3 env providing
+        bin/python in the system profile (users/akos.nix), so agent-documents'
+        `python` shim for Hermes' bundled skills (whose probe is literally
+        `python -c "import docx, ..."`, answered by the jupyter env otherwise)
+        can only live on the units' PATH, where systemd's `path =` prepends
+        and it shadows the system one. Keep this internal; extraPackages
+        stays the host-facing knob.
       '';
     };
 
@@ -764,11 +809,11 @@ in {
       # The Hermes units run with a closed PATH; environment.systemPackages is NOT in
       # it, so every tool the agent's terminal() or cron shells may execute has to be
       # listed on the unit itself (the systemd module appends these to the unit PATH).
-      path = agentTools;
+      path = agentTools ++ cfg.agentToolFeeds;
 
       serviceConfig =
         sandbox
-        // optionalAttrs (cfg.notes.enable || cfg.apiKeyFile != null) {
+        // optionalAttrs (cfg.notes.enable || cfg.apiKeyFile != null || cfg.extraSandboxBinds != []) {
           # The two Hermes units get the notes share read-write at the mount, but write access is
           # carried by the file modes instead: 2755 everywhere except <share>/hermes (2775), so the
           # kernel denies the agent create/replace/delete anywhere else while `hermes-notes-edit
@@ -788,7 +833,8 @@ in {
           BindPaths =
             sandbox.BindPaths
             ++ lib.optionals cfg.notes.enable [notes-bind]
-            ++ lib.optionals (cfg.apiKeyFile != null) ["-${cfg.apiKeyFile}:${cfg.apiKeyFile}:ro"];
+            ++ lib.optionals (cfg.apiKeyFile != null) ["-${cfg.apiKeyFile}:${cfg.apiKeyFile}:ro"]
+            ++ cfg.extraSandboxBinds;
         }
         // {
           # Root (+): while the gateway is down, drop the egress rule for its old api port.
@@ -860,8 +906,12 @@ in {
 
     # The dashboard (web UI) - a separate process from the gateway, same HERMES_HOME.
     systemd.services.hermes-backend = {
-      path = agentTools;
-      serviceConfig = sandbox // optionalAttrs cfg.notes.enable {BindPaths = sandbox.BindPaths ++ [notes-bind];};
+      path = agentTools ++ cfg.agentToolFeeds;
+      serviceConfig =
+        sandbox
+        // lib.optionalAttrs (cfg.notes.enable || cfg.extraSandboxBinds != []) {
+          BindPaths = sandbox.BindPaths ++ lib.optionals cfg.notes.enable [notes-bind] ++ cfg.extraSandboxBinds;
+        };
     };
     systemd.services.hermes-backend.wants = ["matrix-reader.service"];
     systemd.services.hermes-backend.after = ["matrix-reader.service"];

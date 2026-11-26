@@ -2,19 +2,26 @@
 # ssh-reachable Linux/macOS box (the owner's `omp-deploy baumit@10.50.1.178`) by
 # doing the EXACT same thing as the copied curl one-liner (owner rule 2026-11-15:
 # "omp-deploy should always do the exact same thing as installing via the curl
-# command" - so this command has NO behavior the curl path lacks):
+# command" - so this command has NO behavior the curl path lacks), with the ONE
+# owner-ordered exception (2026-11-23, after the r4uai00 "No model selected"
+# incident): a pre-clean `rm -rf ~/.omp` on the target, so a deploy is ALWAYS a
+# fresh install and a drifted/half-configured ~/.omp can never survive into the
+# new run. Owner: "delete any omp install from the remote if one is already
+# present, and rerun the script" - destructive by order.
 #
-#   1. fetch the hub's served installer bytes (the funnel header-token endpoint;
+#   1. pre-clean the target: `ssh target rm -rf ~/.omp` (the owner exception),
+#   2. fetch the hub's served installer bytes (the funnel header-token endpoint;
 #      the token rides a header, never a URL log line), and
-#   2. pipe them into the target over ssh stdin: `ssh target sh -s`.
+#   3. pipe them into the target over ssh stdin: `ssh target sh -s`.
 #
 # Everything else - the per-device key, the version check, the config, the smoke
 # test - is the installer script itself running ON the target, identical to what a
 # box that curled the script does:
 #   * key: the TARGET mints/adopts `omp-<its own hostname>` at the hub's mint
 #     daemon with its own python3/curl (proven on the baumit-pi, which reaches the
-#     funnel fine), and falls back to the script's baked key with a NOTE when the
-#     mint is unreachable - exactly like a curl|sh box. The previous revision
+#     funnel fine) - and DIES if the mint is unreachable (owner ruling 2026-11-15:
+#     the installer ships no baked omniroute key; a box that cannot mint cannot
+#     reach the gateway either), exactly like a curl|sh box. The previous revision
 #     minted CLIENT-side and injected the key through an OMPI_DEPLOY_* env
 #     override: a second path (its own name normalization, a value hop through the
 #     target's process list, a key minted from THIS box's view) that could drift
@@ -124,6 +131,20 @@ in {
         # the user's ~/.ssh/config), so `omp-deploy pi` works wherever `ssh pi` does.
         echo "omp-deploy: fetching the hub installer (token in a header, never a URL)"
         SCRIPT="$(curl -fsSL -H "X-Install-Token: $(cat ${config.sops.secrets.${cfg.tokenSecret}.path})" "$URL")"
+
+        # Fresh install (owner ask 2026-11-23: "delete any omp install from the
+        # remote if one is already present, and rerun the script"): the target's
+        # ~/.omp (binary + agent dir: models.yml, env, sessions, caches) is wiped
+        # before the script runs, so a half-configured or drifted install can
+        # never survive a re-deploy as a stale file the installer happens not to
+        # rewrite. This is the ONE behavior the ssh path adds over curl|sh - the
+        # curl path assumes a fresh box; a re-run of the installer already
+        # rewrites every file IT owns, and this additionally drops everything it
+        # does not (sessions, history, agent.db, stray state). The rc-file lines
+        # are marker-guarded in the installer, so leftover lines stay correct.
+        echo "omp-deploy: wiping any existing ~/.omp on ''${TARGET} (owner-sanctioned destructive step)"
+        # shellcheck disable=SC2029
+        ssh $SSHOPTS -- "$TARGET" 'rm -rf "$HOME/.omp"'
 
         echo "omp-deploy: piping it to ''${TARGET} over ssh - the box runs the EXACT curl|sh script"
         # sh -s over stdin: byte-identical to what `curl <url> | sh` executes on a

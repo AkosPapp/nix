@@ -924,6 +924,21 @@ in {
       extraOptions = ["--network=host" "--user=0:0"];
     };
 
+    # Incident 2026-11-20: the gateway hit its memory wall, the kernel OOM-killed the
+    # container's node process, and oci-containers' `docker run --rm` then exited 0 -
+    # so the stock `Restart = "on-failure"` saw a CLEAN exit and restarted nothing:
+    # https://omniroute.hp served Bad Gateway until a human noticed 29 min later. An
+    # exit-0-after-self-delete is the shape of EVERY death a docker-run container can
+    # take (OOM, SIGKILL, the app quitting on its own), so the fleet's gateway must
+    # restart on clean exits too. RestartSec=10s keeps a real crash-loop (image gone,
+    # dockerd down) off systemd's start-limit while the nightly pull or a fix lands -
+    # the leak itself is sized in LIMITS.omniroute (limits.nix). mkForce because
+    # nixpkgs' oci-containers sets this exact leaf at the same module priority.
+    systemd.services.omniroute.serviceConfig = {
+      Restart = lib.mkForce "always";
+      RestartSec = "10s";
+    };
+
     MODULES.networking.traefik.enable = true;
     # The gateway's own subdomain plus the aliases (see subdomainAliases: litellm.hp
     # &co). dns.nix and the step-ca cert follow automatically, they key off

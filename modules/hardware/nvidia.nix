@@ -67,6 +67,26 @@
       nvidia-container-toolkit.enable = true;
     };
 
+    # The nixpkgs CDI generator is a oneshot that NVMLs the store driver of
+    # THIS system - i.e. the userspace of a kernel module that is not the one
+    # loaded in the running kernel. Measured on legion5 2026-11-26: a switch
+    # that bumped the driver 595.71.05 -> 595.112.07 restarted the unit; the
+    # old module is still loaded (unreloadable, ~500 referrers), every NVML
+    # call dies "Driver/library version mismatch", the oneshot exits 1, and
+    # switch-to-configuration returns 4 on every switch until reboot. The
+    # same race exists cold, before udev has created /dev/nvidia* (nixpkgs's
+    # ExecStartPre is a `udevadm settle` it itself calls "essentially no
+    # better than a random sleep"). Guard generation with an ExecCondition
+    # probe: a non-zero condition skips the start and leaves the unit
+    # inactive, NOT failed (measured on systemd 260.5), so the switch stays
+    # clean; nixpkgs's own udev rule (KERNEL=="nvidia" -> restart this unit)
+    # regenerates the spec on the coldplug and on the reboot that finally
+    # swaps the module. Restart= is NOT an option: a unit that fails into
+    # auto-restart still has Failed=yes and is still counted by the switch
+    # (nixpkgs switch-test's autorestartServiceFailing asserts exactly that).
+    systemd.services.nvidia-container-toolkit-cdi-generator.serviceConfig.ExecCondition =
+      lib.getExe' config.hardware.nvidia.package "nvidia-smi";
+
     systemd.services.k3s.path = with pkgs; [libnvidia-container];
 
     boot.kernel.sysctl = {
