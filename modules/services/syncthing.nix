@@ -18,7 +18,14 @@
     phone = {
       id = "FFN5JPO-A6HOB7Z-YHKKFVG-YOVO5QD-HLXXIBQ-743QUQI-53REPOE-LGLFWQQ";
       name = "Phone";
-      addresses = ["tcp://phone.${config.MODULES.networking.tailscale.tailnetDnsName}:${toString config.PORTS.syncthingSync}"];
+      # Dynamic everywhere for the phone (owner's call 2026-11-26): accept the phone dialing
+      # in and dial back whatever address it was last seen at, instead of pinning a name.
+      # The old `tcp://phone.<tailnetDnsName>:<port>` pin made every host depend on that
+      # MagicDNS name resolving - hp's live config still resolves it today (2026-11-26) only
+      # through tailscale's own resolver (the short `phone.hp` form already gets no answer
+      # there), and with fleet-wide global/local discovery and relays off, a stale or
+      # unresolvable name means no route at all.
+      addresses = ["dynamic"];
     };
   };
 

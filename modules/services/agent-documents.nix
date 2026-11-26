@@ -226,6 +226,16 @@
 
   officeMcpPython = "${pythonEnv}/bin/python3";
   officeMcpScript = ./agent-documents/office_mcp.py;
+  # The script runs from an environment.etc mount (see the single definition at
+  # the bottom), NOT from its /nix/store path: both feeds reference it as a
+  # plain STRING in a config file (omp's mcp.json, Hermes' config.yaml), and a
+  # string reference keeps no GC root - the store copy of a flake path is only
+  # realized for the activation that first wrote it, then reclaimed (measured
+  # on hp 2026-11-26: `documents` MCP died "can't open file
+  # /nix/store/<old-source>/office_mcp.py" days after a deploy-rs GC). The /etc
+  # symlink lives in the toplevel closure, same toplevel-closure trick the
+  # skills mounts above already use, and survives every switch unchanged.
+  officeMcpPath = "/etc/agent-documents/office_mcp.py";
 
   # Fleet skill names the tmpfiles pass owns (must match the pack): L+
   # replaces exactly these, so a hand-made skill of the user's with any other
@@ -352,7 +362,7 @@ in {
       documents = {
         type = "stdio";
         command = officeMcpPython;
-        args = [(toString officeMcpScript)];
+        args = [officeMcpPath];
         timeout = 180000; # a first soffice conversion bootstraps its profile
       };
     };
@@ -380,7 +390,7 @@ in {
     services.hermes-agent.mcpServers = mkIf config.MODULES.services.hermes-agent.enable {
       documents = {
         command = officeMcpPython;
-        args = [(toString officeMcpScript)];
+        args = [officeMcpPath];
         timeout = 180;
       };
     };
@@ -390,6 +400,10 @@ in {
         # omp's user-skills mount (world-readable /etc is the toplevel-closure
         # trick described above; see the omp feed comment).
         "agent-skills".source = ompSkills;
+        # The documents MCP server script, mounted for BOTH feeds to exec by
+        # path (see officeMcpPath above for the GC incident that moved it out
+        # of the bare /nix/store flake path).
+        "agent-documents/office_mcp.py".source = officeMcpScript;
       }
       // lib.optionalAttrs config.MODULES.services.hermes-agent.enable {
         # ONE environment.etc definition for the whole module: a dotted

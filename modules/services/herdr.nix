@@ -1183,6 +1183,24 @@ in {
       };
     };
 
+    hermesIntegration = mkEnableOption ''
+      teach herdr to recognize the Hermes agent fork's CLI in herdr panes, via herdr's own
+      hermes plugin (`herdr integration install hermes`, run as the hermes service account so
+      it lands in $HERMES_HOME). Requires MODULES.services.hermes-agent.enable.
+
+      WHY this is needed at all: herdr identifies a pane's agent by the pane child's PROCESS
+      NAME (src/detect/mod.rs: "hermes" | "hermes-agent" => Agent::Hermes). The Nix package is
+      a venv install, and its `hermes` entry point is a bash wrapper that execs the venv's
+      python - so argv0 of the live process is `python3.14`, not `hermes`, and the name-based
+      detection can never match (measured on hp 2026-11-26: a `hermes` TUI in an hp pane shows
+      up as a plain shell). herdr's answer is its own integration plugin rather than a
+      re-spawn shim: the installed __init__.py registers fork hooks (on_session_start /
+      on_session_reset / pre_llm_call) and reports the pane's session identity by calling
+      `herdr pane report-agent-session` whenever HERDR_ENV=1 + HERDR_PANE_ID are set - i.e.
+      exactly for interactive `hermes` runs launched from herdr panes, and never for the
+      gateway/cron paths, which have no pane env.
+    '';
+
     machines = mkOption {
       type = types.attrsOf (types.submodule machineEntrySubmodule);
       # attrsOf-defaults-{} + field-wise merge (the attrsOf default trap, AGENTS.md):
@@ -1280,6 +1298,18 @@ in {
             {
               assertion = appPkg != null;
               message = "MODULES.services.herdr.installApp: pkgs-unstable.herdr-desktop is not in this flake's nixpkgs-unstable pin (same rev cutoff as herdr-core). Run 'nix flake update nixpkgs-unstable', or set installApp = false on a headless host that needs no GUI.";
+            }
+          ]
+          # The hermes integration writes into the hermes service's state dir as the hermes
+          # uid and runs herdr's installer binary - both must really exist here.
+          ++ lib.optionals cfg.hermesIntegration [
+            {
+              assertion = config.MODULES.services.hermes-agent.enable or false;
+              message = "MODULES.services.herdr.hermesIntegration needs MODULES.services.hermes-agent.enable (it installs the plugin into the hermes service's $HERMES_HOME as the hermes account).";
+            }
+            {
+              assertion = herdrPkg != null;
+              message = "MODULES.services.herdr.hermesIntegration: pkgs-unstable.herdr is missing from this flake's nixpkgs-unstable pin. Run 'nix flake update nixpkgs-unstable' (the hermes integration target needs herdr >= the release that ships it).";
             }
           ]
           ++ lib.optionals registryEnabled [
@@ -1456,6 +1486,45 @@ in {
           timerConfig = {
             OnBootSec = "15s";
             OnUnitInactiveSec = "10s";
+          };
+        };
+
+        # The hermes-CLI recognition plugin (see MODULES.services.herdr.hermesIntegration's
+        # option docs for WHY process-name detection cannot work under Nix - the venv exec
+        # chain makes argv0 `python3.14`, never `hermes`). herdr's OWN installer writes
+        # $HERMES_HOME/plugins/herdr-agent-state/{plugin.yaml,__init__.py} and ensures the
+        # `plugins: enabled:` entry in $HERMES_HOME/config.yaml. Verified against the v0.9.5
+        # source (src/integration/targets.rs install_hermes + env.rs hermes_dir):
+        #   - the hermes config dir is $HERMES_HOME when set, else ~/.hermes - we set it
+        #     explicitly to the hermes-agent module's ${stateDir}/.hermes;
+        #   - it REFUSES to run unless config.yaml exists there, hence after/wants
+        #     hermes-agent.service (the upstream activation writes config.yaml before the
+        #     gateway starts, so once that unit is active the file is guaranteed);
+        #   - it needs no other binary (writes files; the plugin itself calls back into
+        #     `herdr pane report-agent-session` at CLI runtime, from the pane's PATH, where
+        #     the herdr-server-hermes unit already carries /run/current-system/sw/bin).
+        # The command is idempotent (assets rewritten, config entry ensured), and
+        # sysinit-reactivation re-runs it on every switch - which is also the UPGRADE path:
+        # a newer pinned herdr re-copies newer assets at the switch that carries it.
+        # Runs as the service uid itself (no root anywhere near $HERMES_HOME); UMask 0077 +
+        # NoNewPrivileges follow the herdrServerUnits doctrine. ReadWritePaths is redundant
+        # (no ProtectSystem on this module's units) but states the one path the unit may
+        # touch.
+        systemd.services.herdr-hermes-integration = lib.mkIf cfg.hermesIntegration {
+          description = "Install herdr's hermes integration plugin into $HERMES_HOME";
+          after = ["systemd-tmpfiles-setup.service" "hermes-agent.service"];
+          wants = ["hermes-agent.service"];
+          wantedBy = ["multi-user.target" "sysinit-reactivation.target"];
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+            User = config.services.hermes-agent.user;
+            Group = config.services.hermes-agent.group;
+            Environment = "HERMES_HOME=${config.services.hermes-agent.stateDir}/.hermes";
+            ReadWritePaths = [config.services.hermes-agent.stateDir];
+            ExecStart = "${herdrPkg}/bin/herdr integration install hermes";
+            NoNewPrivileges = true;
+            UMask = "0077";
           };
         };
 

@@ -13,11 +13,6 @@
 
   hermesHome = "${hermes.stateDir}/.hermes";
 
-  # The catalogue row for the fallback wire id (cfg.fallbackModel, below): its
-  # contextLength is what the providers.futurelab block pins, exactly like
-  # modelContextLength does for the primary. {} when the catalogue doesn't list it.
-  fallbackCatalog = config.MODULES.services.modelCatalog.lookup cfg.fallbackModel;
-
   # The reader runs as its own singleton service (systemd.services.matrix-reader below) and both
   # Hermes units reach it as a URL-based MCP server over loopback. It must be a singleton: the
   # E2EE state is one device per account plus one sqlite crypto store per session, and two
@@ -105,6 +100,51 @@
   # slow gateway boot crash-looped hermes-agent on 2026-10-19.
   # Empty chain = no-op (falls through), so an absent/stale sync only degrades cron.
   gatewayApiEgressChain = "hermes-gateway-api";
+
+  # audit #7 (2026-11-14): refresh the minted gateway key into $HERMES_HOME/.env,
+  # root-side, before any reader loads it. Delete-then-append keeps the line
+  # unique (the fork rewrites .env from activation inputs at every switch, and
+  # its docs warn a secret file must not enter .env twice); a not-yet-minted file
+  # is a warning not a failure (the omniroute seed unit mints it in the same
+  # switch's start phase; the NEXT run picks it up). This is the restart-fresh
+  # channel the fork's .env semantics force: its loader makes .env OVERRIDE the
+  # process environment, so a systemd EnvironmentFile= would be masked by the
+  # stale activation-time line - rewrite the line instead.
+  #
+  # The apiKeyFile twin is a DOTENV file: its content is already the full
+  # `OMNIROUTE_API_KEY=sk-...` line (keys.<name>.envFilePath, omniroute.nix), so the
+  # line is appended VERBATIM. (Incident note, measured on hp 2026-11-26: an earlier
+  # version treated the file as a bare key and printf-prefixed it, double-keying the
+  # line into `OMNIROUTE_API_KEY=OMNIROUTE_API_KEY=sk-...` -> every omniroute request
+  # 401'd ("key_env set but variable empty" / custom rejected the API key); the
+  # interactive `hermes` CLI died with it.)
+  #
+  # It runs at EVERY hermes-agent start (ExecStartPre below) AND after every
+  # activation (the refresh service further down). The second hook is load-
+  # bearing, not belt-and-braces: the fork's activation rewrites .env from the
+  # sops template at each switch, and with apiKeyFile set that template carries
+  # no OMNIROUTE line - so any switch that does not restart the unit (a change
+  # to anything else in the config silently deletes the key line; measured on
+  # hp 2026-11-26 with a two-switch deploy: switch #2 dropped the line, the
+  # running gateway degraded, the CLI lost its provider until the next unit
+  # start). ExecStartPre alone only heals at the next restart.
+  gatewayKeyRefresh = pkgs.writeShellScript "hermes-gateway-key-refresh" ''
+    set -u
+    envf="${hermesHome}/.env"
+    [ -e "$envf" ] || exit 0
+    if ! k="$(cat '${cfg.apiKeyFile}' 2>/dev/null)"; then
+      echo "hermes-agent: minted gateway key '${cfg.apiKeyFile}' not readable yet - keeping the .env line from the last activation" >&2
+      exit 0
+    fi
+    grep -v '^OMNIROUTE_API_KEY=' "$envf" > "$envf.tmp" || true
+    # $k is the dotenv twin's full line ("$(…)" strips trailing newlines; %s\n
+    # re-adds exactly one). NEVER re-prefix it - see the incident note above.
+    printf '%s\n' "$k" >> "$envf.tmp"
+    # Keep the fork's owner/mode (it chowns .env to the service user).
+    chmod --reference="$envf" "$envf.tmp" 2>/dev/null || true
+    chown --reference="$envf" "$envf.tmp" 2>/dev/null || true
+    mv -f "$envf.tmp" "$envf"
+  '';
   gatewayApiEgressJump = ''
     # Never -F here: a firewall restart must keep the port the running gateway bound.
     # Only the sync service (fresh bind, fresh port) flushes and refills it.
@@ -257,50 +297,6 @@ in {
         wildcard route guesses (1M, which is also Aqueduct's max_model_len); the
         same entry is what opencode/paseo use, so Hermes stays in step with them.
         null omits the pin.
-      '';
-    };
-
-    fallbackModel = mkOption {
-      type = types.nullOr types.str;
-      default = (config.MODULES.services.modelCatalog.lookup cfg.model).directName or null;
-      defaultText = lib.literalExpression "the fleet model catalogue's directName for MODULES.services.hermes-agent.model (null when the catalogue lists no direct route for it)";
-      description = ''
-        Hermes' top-level `fallback_providers` chain (tried when the primary fails -
-        rate limit, server error, auth failure - mid-session, conversation kept): the
-        SAME model at its upstream DIRECT endpoint, so an OmniRoute outage degrades to
-        Aqueduct instead of ending the session. Mirrors the omp doctrine
-        (retry.fallbackChains in modules/services/omp.nix), with one spelling
-        difference: a Hermes fallback entry's `model` is the WIRE id sent to the
-        fallback endpoint, i.e. the catalogue's bare `directName`, not the gateway's
-        "futurelab/..." prefixed id. The default derives it from `model`, so the
-        standard setup fails over futurelab/qwen3.8-flash-next -> qwen3.8-flash-next
-        direct; null (the default whenever `model` has no direct route in the
-        catalogue, e.g. a subscription-only gateway connection) emits no fallback.
-      '';
-    };
-
-    fallbackBaseUrl = mkOption {
-      type = types.str;
-      default = "https://futurelab.robo4you.at/v1";
-      description = ''
-        The direct endpoint `fallbackModel` is served at - the same Aqueduct URL
-        omniroute.nix seeds as its futurelab connection and pi.nix/omp.nix declare as
-        their direct provider. Public-addressed, so it passes the hermes-egress chain
-        (only the private ranges are REJECTed). Only read when `fallbackModel` is set.
-      '';
-    };
-
-    fallbackApiKeySecret = mkOption {
-      type = types.str;
-      default = "futurelab_api_key1";
-      description = ''
-        sops key holding the Aqueduct key the fallback provider authenticates with
-        (mounted and exported as FUTURELAB_API_KEY by the env template). Only mounted
-        when `fallbackModel` is set. The fleet splits the three direct keys per harness
-        (pi/kilo 1, omp 2, opencode 3); key1 is deliberate here: it is the gateway's
-        OWN primary key for this endpoint (omniroute.nix's futurelab seed), and
-        Hermes' direct traffic exists only while the gateway is down - when that
-        rotation is stopped too - so it never stacks on an interactive harness's quota.
       '';
     };
 
@@ -602,67 +598,31 @@ in {
           provider = "custom:omniroute";
           default = cfg.model;
         };
-        # providers is built as ONE attribute: a second `{ providers.futurelab = ...; }`
-        # joined by `//` at the settings level would REPLACE the whole providers map
-        # (shallow `//`) and silently delete the gateway route the agent boots on.
-        providers =
-          {
-            omniroute =
-              {
-                name = "OmniRoute";
-                api = "http://127.0.0.1:${toString config.PORTS.omniroute}/v1";
-                key_env = "OMNIROUTE_API_KEY";
-                transport = "chat_completions";
-                default_model = cfg.model;
-                # What /model offers: whatever this key may use, straight from the gateway.
-                discover_models = true;
-              }
-              // lib.optionalAttrs (cfg.modelContextLength != null) {
-                # Wildcard routes can't all report context windows, so Hermes would guess from
-                # the name (1M, which is also Aqueduct's max_model_len). Pinned to the fleet model
-                # catalogue's window for cfg.model (default; see modelContextLength), so Hermes
-                # compresses before 262k instead of drifting toward the 1M ceiling - and describes the
-                # model exactly like opencode/paseo do.
-                models = {
-                  ${cfg.model}.context_length = cfg.modelContextLength;
-                };
+        # The single provider the owner wants (2026-11-26: the futurelab direct
+        # fallback chain was stripped from this module at the owner's request -
+        # OmniRoute is the only route Hermes may take).
+        providers = {
+          omniroute =
+            {
+              name = "OmniRoute";
+              api = "http://127.0.0.1:${toString config.PORTS.omniroute}/v1";
+              key_env = "OMNIROUTE_API_KEY";
+              transport = "chat_completions";
+              default_model = cfg.model;
+              # What /model offers: whatever this key may use, straight from the gateway.
+              discover_models = true;
+            }
+            // lib.optionalAttrs (cfg.modelContextLength != null) {
+              # Wildcard routes can't all report context windows, so Hermes would guess from
+              # the name (1M, which is also Aqueduct's max_model_len). Pinned to the fleet model
+              # catalogue's window for cfg.model (default; see modelContextLength), so Hermes
+              # compresses before 262k instead of drifting toward the 1M ceiling - and describes the
+              # model exactly like opencode/paseo do.
+              models = {
+                ${cfg.model}.context_length = cfg.modelContextLength;
               };
-          }
-          // lib.optionalAttrs (cfg.fallbackModel != null) {
-            # The direct Aqueduct route Hermes can fail over to (fallbackModel's docs). Its
-            # chain entry's `model` is the BARE wire id - unlike the primary, whose id carries
-            # the gateway's "futurelab/" prefix (agent/route_binding.py sends entry.model verbatim).
-            futurelab =
-              {
-                name = "FutureLab (Aqueduct)";
-                api = cfg.fallbackBaseUrl;
-                key_env = "FUTURELAB_API_KEY";
-                transport = "chat_completions";
-                default_model = cfg.fallbackModel;
-                # No discover_models: one-model endpoint, and discovery would re-add the
-                # gateway's prefixed spellings that only route through the gateway.
-              }
-              // lib.optionalAttrs ((fallbackCatalog.contextLength or null) != null) {
-                # Same catalogue pin as the omniroute block: route_binding clears
-                # _config_context_length on the fallback swap, so the window for the
-                # bare id comes from this per-model row (step 0c in
-                # agent/model_metadata.py), not from a probe.
-                models = {
-                  ${cfg.fallbackModel}.context_length = fallbackCatalog.contextLength;
-                };
-              };
-          };
-        # The chain itself, read by every fallback site (gateway, cron, credential
-        # resolution) via hermes_cli.fallback_config.get_fallback_chain.
-        fallback_providers = lib.optionals (cfg.fallbackModel != null) [
-          # `custom:` prefix = the durable key of the providers.futurelab block above
-          # (hermes_cli/providers.py custom_provider_slug), so the entry can never be
-          # shadowed by a built-in alias of the same word.
-          {
-            provider = "custom:futurelab";
-            model = cfg.fallbackModel;
-          }
-        ];
+            };
+        };
         # Commands run in this service's own sandbox (see serviceConfig below), not a container:
         # the Google skills work by running commands, and a rootless container
         # runtime would need the setuid helpers and user namespaces the sandbox takes away.
@@ -724,9 +684,6 @@ in {
     sops.secrets.${cfg.apiKeySecret} = mkIf (cfg.apiKeyFile == null) {};
     sops.secrets.${cfg.dashboardPasswordSecret} = {};
     sops.secrets.${cfg.dashboardSessionSecret} = {};
-    # The fallback endpoint's key, mounted only when a fallback exists (the primary
-    # block above is what gates it) - providers.futurelab.key_env reads it from .env.
-    sops.secrets.${cfg.fallbackApiKeySecret} = mkIf (cfg.fallbackModel != null) {};
     sops.templates."hermes.env" = {
       content =
         lib.concatStringsSep "\n"
@@ -738,9 +695,6 @@ in {
           # against a not-yet-minted file).
           lib.optionals (cfg.apiKeyFile == null) [
             ''OMNIROUTE_API_KEY=${config.sops.placeholder.${cfg.apiKeySecret}}''
-          ]
-          ++ lib.optionals (cfg.fallbackModel != null) [
-            ''FUTURELAB_API_KEY=${config.sops.placeholder.${cfg.fallbackApiKeySecret}}''
           ]
           ++ [
             ''MATRIX_PASSWORD=${config.sops.placeholder.${matrix.botPasswordSecret}}''
@@ -830,45 +784,52 @@ in {
           # ro + 0600-root means only that pre-step (running +root) ever reads it; the
           # gateway uid sees a path it cannot open. `-` prefix: absent yet = start anyway
           # (first boot before the mint; the pre-step logs it).
+          #
+          # It MUST be BindReadOnlyPaths, NOT `BindPaths=<src>:<dst>:ro`: systemd 260.5
+          # (measured hp 2026-11-26) parses the trailing field of a three-part BindPaths
+          # entry as flags it never accepts - "Invalid option string, ignoring setting:
+          # ro" - and DROPS THE WHOLE BIND (systemctl show -p BindPaths omits it; the
+          # sandbox's mountinfo has no omniroute line; the pre-step logged "key … not
+          # readable yet" on every start since at least Nov 24, so the rotation channel
+          # was dead and .env carried only activation-time values). BindReadOnlyPaths is
+          # the single-field form that survives, and the only BindPaths entries that ever
+          # mounted here are the flagless ones (stateDir, notes src:dst, X11, desktop).
           BindPaths =
             sandbox.BindPaths
             ++ lib.optionals cfg.notes.enable [notes-bind]
-            ++ lib.optionals (cfg.apiKeyFile != null) ["-${cfg.apiKeyFile}:${cfg.apiKeyFile}:ro"]
             ++ cfg.extraSandboxBinds;
+          BindReadOnlyPaths = lib.optionals (cfg.apiKeyFile != null) ["-${cfg.apiKeyFile}"];
         }
         // {
           # Root (+): while the gateway is down, drop the egress rule for its old api port.
           # Flush-only, instant, exit-0-always - nothing here may ever block a transition.
           ExecStopPost = "+${syncGatewayApiEgress}/bin/hermes-egress-sync-gateway-api flush";
         }
-        # audit #7 (2026-11-14): refresh the minted gateway key into $HERMES_HOME/.env at
-        # EVERY start, root-side, before the gateway's env loads. Delete-then-append keeps
-        # the line unique (the fork rewrites .env from activation inputs at every switch,
-        # and its docs warn a secret file must not enter .env twice); a not-yet-minted file
-        # is a warning not a failure (the omniroute seed unit mints it in the same switch's
-        # start phase; the NEXT start picks it up). This is the restart-fresh channel the
-        # fork's .env semantics force: its loader makes .env OVERRIDE the process
-        # environment, so a systemd EnvironmentFile= would be masked by the stale
-        # activation-time line - rewrite the line at start instead.
+        # audit #7: refresh the minted gateway key into $HERMES_HOME/.env at EVERY
+        # start, root-side, before the gateway's env loads (why start-time is not
+        # enough - and the whole incident history - see the gatewayKeyRefresh let
+        # binding). The apiKeyFile != null guard lives on the binding itself.
         // lib.optionalAttrs (cfg.apiKeyFile != null) {
-          ExecStartPre = "+${
-            pkgs.writeShellScript "hermes-env-refresh-gateway-key" ''
-              set -u
-              envf="${hermesHome}/.env"
-              [ -e "$envf" ] || exit 0
-              if ! k="$(cat '${cfg.apiKeyFile}' 2>/dev/null)"; then
-                echo "hermes-agent: minted gateway key '${cfg.apiKeyFile}' not readable yet - keeping the .env line from the last activation" >&2
-                exit 0
-              fi
-              grep -v '^OMNIROUTE_API_KEY=' "$envf" > "$envf.tmp" || true
-              printf 'OMNIROUTE_API_KEY=%s\n' "$k" >> "$envf.tmp"
-              # Keep the fork's owner/mode (it chowns .env to the service user).
-              chmod --reference="$envf" "$envf.tmp" 2>/dev/null || true
-              chown --reference="$envf" "$envf.tmp" 2>/dev/null || true
-              mv -f "$envf.tmp" "$envf"
-            ''
-          }";
+          ExecStartPre = "+${gatewayKeyRefresh}";
         };
+    };
+
+    # Re-assert the minted key line AFTER every activation. switch-to-configuration
+    # restarts sysinit-reactivation.target at the END of every successful switch
+    # (measured on hp 2026-11-10, doctrine documented in modules/services/herdr.nix:
+    # WantedBy + RemainAfterExit there re-runs units on every activation - same
+    # pattern here), and the fork's own activation - which REWRITES .env without
+    # the OMNIROUTE line on the apiKeyFile path - runs in the earlier activation
+    # script phase, so this unit always sees the file after the fork touched it.
+    # The running gateway re-reads .env per request, so no restart is needed.
+    systemd.services."hermes-gateway-key-refresh" = lib.mkIf (cfg.apiKeyFile != null) {
+      description = "Re-assert the minted gateway key in $HERMES_HOME/.env after activation";
+      wantedBy = ["multi-user.target" "sysinit-reactivation.target"];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = gatewayKeyRefresh;
+      };
     };
 
     # The gateway records its freshly-bound loopback api port in gateway_state.json on every

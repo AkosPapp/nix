@@ -260,24 +260,15 @@ in {
   MODULES.services.syncthing.shares =
     [
       {
-        path = "/home/akos/Pictures/dcim";
-        copyOwnershipFromParent = true;
-        extra_devices = ["phone"];
-      }
-      {
-        # Everything under ~/Pictures (including dcim, see above) mirrored to hp - moving a phone
-        # photo out of dcim into any other spot under here is how it stops being tied to the phone's
-        # camera roll: from then on it's just a plain legion5<->hp synced file, immune to whatever
-        # happens on the phone. dcim itself is excluded here since it's already its own folder above
-        # (synced with the phone too) - without excluding it, this folder and the dcim one above
-        # would both try to manage the same files, which Syncthing does not handle well.
-        path = "/home/akos/Pictures";
-        copyOwnershipFromParent = true;
-        ignorePatterns = ["/dcim"];
-      }
-      {
         path = "/home/akos/notes";
         copyOwnershipFromParent = true;
+        # notes is now the Obsidian vault for akos (legion5) and hermes (hp), synced through
+        # the same folder by the phone too. Obsidian keeps all its per-device state (plugins,
+        # themes, workspace, recent-vault list) in .obsidian/; syncing that would fight
+        # device-local settings, so each device's ignorePatterns keep .obsidian - and the
+        # vault's .git, which syncthing must not mirror either - fully local. Per-device
+        # semantics: this only blocks the files on THIS device's copy.
+        ignorePatterns = ["/.git" "/.obsidian"];
         extra_devices = ["phone"];
       }
     ]

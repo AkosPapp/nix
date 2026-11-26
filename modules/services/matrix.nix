@@ -103,6 +103,20 @@ in {
       Tunnel, with federation on.
     '';
 
+    element = {
+      enable = mkOption {
+        type = types.bool;
+        default = true;
+        description = ''
+          The Element web client at https://element.<host> (the baked nginx
+          vhost + its Traefik route only - the homeserver, MAS and the client
+          APIs on https://matrix.<host> are unaffected). Default true: the
+          stock pairing. hp switched it off 2026-11-26 (owner ask) since the
+          desktop app on the laptop and the mobile clients cover Element.
+        '';
+      };
+    };
+
     public = {
       enable = mkEnableOption ''
         public reachability and federation: a Cloudflare Tunnel route serves the client *and*
@@ -869,7 +883,7 @@ in {
 
     services.nginx = {
       enable = true;
-      virtualHosts.${traefik.hostOf "element"} = {
+      virtualHosts.${traefik.hostOf "element"} = lib.mkIf cfg.element.enable {
         root = element;
         listen = [
           {
@@ -885,10 +899,12 @@ in {
       };
     };
 
-    MODULES.networking.traefik.services = {
-      matrix = clientUrl;
-      element = "127.0.0.1:${toString config.PORTS.elementWeb}";
-    };
+    MODULES.networking.traefik.services = lib.mkMerge [
+      {matrix = clientUrl;}
+      (lib.mkIf cfg.element.enable {
+        element = "127.0.0.1:${toString config.PORTS.elementWeb}";
+      })
+    ];
 
     # m.<zone> is the public API (client + federation); the apex route exists for the
     # /.well-known/matrix/{client,server} delegations - and as a side effect akosp.app itself

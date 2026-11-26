@@ -86,6 +86,7 @@
   # public half lives in profiles/global.nix root authorizedKeys on every host.
   MODULES.services.herdr = {
     enable = true;
+    hermesIntegration = true;
     installApp = false;
     sshKeySecret = "herdr/hub_ssh_key";
     coreRegistry.user = "root";
@@ -267,9 +268,13 @@
       # 2755 setgid bit the hermes module's tmpfiles rules already give new files group=hermes
       # through kernel inheritance, which is all the agent's read access needs.
       extra_devices = ["phone"];
-      # git stays on legion5; hp only wants the markdown. Ignore patterns are per-device, so this
+      # git stays on legion5; hp only wants the markdown. Obsidian's .obsidian
+      # is per-device: workspace/UI churn on every keystroke would storm the
+      # graph, and hp's copy is written by the hermes uid while legion5's by
+      # akos (syncthing preserves no uids, so each device's file modes +
+      # content stay its own). Ignore patterns are per-device, so this
       # doesn't change what legion5 and the phone exchange with each other.
-      ignorePatterns = ["/.git"];
+      ignorePatterns = ["/.git" "/.obsidian"];
     }
   ];
 
@@ -695,6 +700,10 @@
   # (mattermost/password).
   MODULES.services.matrix = {
     enable = true;
+    # 2026-11-26 (owner ask): Element's web client is OFF on hp - the desktop
+    # element-desktop (users/akos.nix) and the phone clients cover it; the
+    # homeserver itself (https://matrix.hp, MAS, the bridges) is unaffected.
+    element.enable = false;
     # MAS delegation: browser/QR logins, per-device tokens, passwordless for humans. Legacy
     # clients (bridges, Hermes) keep working through the compat splitter. Costs double-puppeting
     # and bridge-side E2EE (appservice login is rejected by MAS) - see matrix.nix's mas option.
@@ -788,16 +797,12 @@
   # trusted with; see the option's caveat about Joplin plugins before widening the tail).
   # AI chat is not seeded the way Trilium's gateway provider is - if wanted, Options -> AI with
   # http://127.0.0.1:<PORTS.omniroute>/v1 and an inference key minted on the dashboard.
-  MODULES.services.joplin = {
-    enable = true;
-    # 2026-11-12: a streamed desktop with plugins is code execution; require
-    # the module's generated password even on the private overlay.
-    webUser = "akos";
-    # The W6400 (amdgpu, renderD128) moves Selkies' capture/encode off the CPU - measured
-    # 2026-10-27: software x264 readback under the cgroup quota felt laggy from the browser,
-    # the image's own README calls this flag the whole GPU setup on AMD.
-    driDevice = "/dev/dri";
-  };
+  # 2026-11-26 (owner ask): the streamed desktop is OFF - the notes job moved to the
+  # Obsidian vault synced by Syncthing (modules/services/syncthing.nix shares). The
+  # sftpgo /joplin WebDAV backend below stays: the laptop/phone joplin-desktop clients
+  # keep their sync target and the existing /var/lib/hermes/joplin data; flip that off
+  # too only once nobody syncs against it.
+  MODULES.services.joplin.enable = false;
 
   # paperless-ngx (https://paperless-ngx.com), the document archive - https://paperless.hp on
   # the tailnet. The third note-app sibling on this box (trilium.nix API, joplin.nix files) and

@@ -74,6 +74,17 @@
     xterm
     mousepad
     pcmanfm
+    # Obsidian for the notes vault (MODULES.services.hermes-agent.notes.shareDir
+    # synced via syncthing): the human edits the same vault inside Hermes'
+    # desktop that legion5 edits locally. Electron is proven ground in THIS
+    # unit family: hermes-playwright runs a headed Chromium under the same
+    # walls (CapabilityBoundingSet="", NoNewPrivileges, PrivateDevices,
+    # llvmpipe GL), and Obsidian ships the same escape - its OWN main process
+    # launches renderers with --no-sandbox --no-zygote (measured on legion5's
+    # live 1.13.7 process tree 2026-11-26), so no setuid chrome-sandbox and no
+    # user namespaces are needed; DISPLAY=:${toString cfg.display} is already
+    # exported on the units and through the fork's .env.
+    obsidian
     xdotool # keyboard/mouse onto real windows (computer use beyond the browser)
     xclip # clipboard bridge between the agent's shell and the desktop apps
     wmctrl
@@ -86,6 +97,85 @@
   # launcher script references; running it DynamicUser keeps it OUT of the
   # hermes uid's egress chain (see the header).
   novncLauncher = pkgs.novnc;
+
+  # --- the notes vault as Obsidian sees it (hermes-agent's notes.enable) --------------------
+  # The doctrine check (hermes-agent.nix): the share root is 2755 and ONLY
+  # <share>/hermes is 2775 - "outside hermes/ the agent can create or replace
+  # nothing" - and the hermes uid has no write bit on the share root at all.
+  # That is why the share-side .obsidian directory is NOT created by the
+  # oneshot below (which runs as hermes, mkdir would EACCES): a tmpfiles rule
+  # (root, pre-service) creates/re-asserts it at 2775, the one deliberate
+  # widening - .obsidian is Obsidian's per-device state (excluded from sync
+  # via the notes share's ignorePatterns), and 2775 grants exactly what the
+  # app needs from THIS uid, the same scope <share>/hermes already carries
+  # for the agent's own notes. Every other directory in the share stays 2755.
+  #
+  # The path the GUI registers is ${hermes.stateDir}/notes, NOT the raw
+  # ${notesCfg.shareDir}: inside the agent units' sandbox the share arrives
+  # as a BindPath at exactly that mount (hermes-agent's notes-bind), and
+  # /var/lib is otherwise masked (TemporaryFileSystem=/var/lib:ro) or read-only
+  # (ProtectSystem=strict on the plain desktop units), so the raw path is
+  # either invisible or unwritable to anything in the desktop's namespaces.
+  # This module binds the SAME `-<share>:<stateDir>/notes` mount into its own
+  # long-running units below (openbox/term/playwright), so every namespace the
+  # hermes uid runs an app in sees the vault at the same path - which is what
+  # obsidian.json below must name or the vault picker would show "does not
+  # exist". Writes stay mode-gated exactly like the agent's notes bind: the
+  # GUI runs as the hermes uid, so it can write precisely what the agent can
+  # (nothing wider: 2775 inside .obsidian, everything else 2755).
+  notesCfg = config.MODULES.services.hermes-agent.notes;
+  notesVaultMount = "${hermes.stateDir}/notes";
+  # Same spec hermes-agent.nix composes for the two Hermes units ("-" prefix:
+  # the folder may not exist yet on a fresh host; keep the unit up).
+  notesVaultBind = ["-${notesCfg.shareDir}:${notesVaultMount}"];
+  # Stable vault id: Obsidian's registry keys are arbitrary 16-hex strings;
+  # derived from the mount path so re-deploys reuse one entry.
+  notesVaultId = builtins.substring 0 16 (builtins.hashString "md5" notesVaultMount);
+
+  # Idempotent vault registration, run as the hermes uid OUTSIDE the fleet
+  # sandbox (its own serviceConfig below - the sandbox attrset masks /var/lib,
+  # so it could not reach the raw share path the tmpfiles modes are set for):
+  # seeds <share>/.obsidian/app.json and merges the vault into
+  # ~/.config/obsidian/obsidian.json. jq merges rather than replaces: the app
+  # itself may have added other vaults to that file by hand.
+  notesVaultSetup = pkgs.writeShellScript "hermes-notes-vault" ''
+    set -eu
+    share="${notesCfg.shareDir}"
+    vault="${notesVaultMount}"
+    reg="${hermes.stateDir}/.config/obsidian/obsidian.json"
+    JQ=${pkgs.jq}/bin/jq
+    CORE=${pkgs.coreutils}/bin
+
+    # <share>/.obsidian itself is created/re-asserted by the tmpfiles rules
+    # ABOVE, not here: the doctrine's 2755 share root gives the hermes uid no
+    # create bit ("outside hermes/ the agent can create or replace nothing" -
+    # measured hp 2026-11-26: drwxr-sr-x syncthing:hermes), so a User=hermes
+    # mkdir is EACCES by design. Seed app.json when present; only loudly
+    # complain when the whole dir is missing (fresh host: syncthing hasn't
+    # landed the folder yet - the next switch/sysinit re-run retries).
+    if [ -d "$share/.obsidian" ]; then
+      if [ ! -e "$share/.obsidian/app.json" ]; then
+        printf '{}\n' > "$share/.obsidian/app.json"
+        "$CORE/chmod" 0664 "$share/.obsidian/app.json"
+      fi
+    else
+      echo "hermes-notes-vault: $share/.obsidian missing (share not materialised?); tmpfiles + next activation will create it" >&2
+    fi
+
+    "$CORE/mkdir" -p "${hermes.stateDir}/.config/obsidian"
+    tmp="$("$CORE/mktemp")"
+    if [ -s "$reg" ]; then
+      "$CORE/cat" "$reg" > "$tmp"
+    else
+      printf '{"vaults":{}}\n' > "$tmp"
+    fi
+    # MERGE, never replace: the app itself may have registered other vaults
+    # by hand from the GUI (obsidian.json is its vault-switcher list).
+    $JQ -c --arg id "${notesVaultId}" --arg path "$vault" \
+      '.vaults[$id] = {path: $path, ts: 1}' "$tmp" > "$tmp.merged"
+    "$CORE/cat" "$tmp.merged" > "$reg"
+    "$CORE/rm" -f "$tmp" "$tmp.merged"
+  '';
 in {
   options.MODULES.services.hermes-desktop = {
     enable = mkEnableOption ''
@@ -181,19 +271,43 @@ in {
       mode = "0400";
     };
 
-    systemd.tmpfiles.rules = [
-      # The browser's XDG_RUNTIME_DIR (dbus/pulse sockets) + playwright's
-      # profile and output area under the state dir (both inside the
-      # sandbox's rw BindPaths, and the profile must survive restarts).
-      "d /run/hermes-desktop 0700 ${hermes.user} ${hermes.group} -"
-      "d ${hermesHome}/desktop 0700 ${hermes.user} ${hermes.group} -"
-      # The X socket rendezvous dir lives on the HOST /tmp (Xvfb runs
-      # without PrivateTmp so every unit's /tmp/.X11-unix BindPaths has a
-      # real source). tmpfiles pre-creates it 1777 - Xvfb could create it
-      # itself, but the other units' PrivateTmp namespaces expect the
-      # mountpoint regardless of unit start order.
-      "d /tmp/.X11-unix 1777 root root 30d"
-    ];
+    systemd.tmpfiles.rules =
+      [
+        # The browser's XDG_RUNTIME_DIR (dbus/pulse sockets) + playwright's
+        # profile and output area under the state dir (both inside the
+        # sandbox's rw BindPaths, and the profile must survive restarts).
+        "d /run/hermes-desktop 0700 ${hermes.user} ${hermes.group} -"
+        "d ${hermesHome}/desktop 0700 ${hermes.user} ${hermes.group} -"
+        # The X socket rendezvous dir lives on the HOST /tmp (Xvfb runs
+        # without PrivateTmp so every unit's /tmp/.X11-unix BindPaths has a
+        # real source). tmpfiles pre-creates it 1777 - Xvfb could create it
+        # itself, but the other units' PrivateTmp namespaces expect the
+        # mountpoint regardless of unit start order.
+        "d /tmp/.X11-unix 1777 root root 30d"
+      ]
+      ++ lib.optionals notesCfg.enable [
+        # Obsidian's per-user registry lives in $HOME/.config/obsidian (HOME IS
+        # stateDir on every desktop unit), 0700 like the hermes home around it.
+        "d ${hermes.stateDir}/.config/obsidian 0700 ${hermes.user} ${hermes.group} - -"
+        # The vault's per-device .obsidian INSIDE the share. tmpfiles (root) is
+        # the only actor that can create it: the doctrine leaves the share root
+        # 2755 with no hermes write bit (hp 2026-11-26: syncthing:hermes
+        # drwxr-sr-x), so a hermes-uid mkdir - the obvious oneshot move - is
+        # EACCES by design. 2775 = the ONE deliberate widening beyond
+        # <share>/hermes, scoped exactly to Obsidian's own state dir (its churn
+        # is excluded from sync by the share's ignorePatterns, so no other
+        # device ever sees it); every other directory keeps 2755, and the
+        # setgid bit + app.json 0664 let the hermes uid write in place. The `f`
+        # line seeds app.json with {} once and never touches existing content
+        # (tmpfiles writes the argument only at creation).
+        # Same share-root line hermes-agent.nix emits: tmpfiles runs one merged,
+        # ordered conf and a plain `d` silently skips when the parent is absent,
+        # so re-asserting it HERE (idempotent: same mode/owner as the agent's
+        # rule) makes the .obsidian line immune to inter-module ordering.
+        "d ${notesCfg.shareDir} 2755 ${notesCfg.shareOwner} ${hermes.group} - -"
+        "d ${notesCfg.shareDir}/.obsidian 2775 ${notesCfg.shareOwner} ${hermes.group} - -"
+        "f ${notesCfg.shareDir}/.obsidian/app.json 0664 ${notesCfg.shareOwner} ${hermes.group} - {}"
+      ];
 
     # --- the display ------------------------------------------------------------------
     # Xvfb runs WITHOUT PrivateTmp: its /tmp/.X11-unix/X99 socket IS the
@@ -243,6 +357,17 @@ in {
         DISPLAY = ":${toString cfg.display}";
         HOME = hermes.stateDir;
         XDG_RUNTIME_DIR = "/run/hermes-desktop";
+        # Electron apps launched from anywhere on this desktop (WM menu, the
+        # term below, pcmanfm) inherit it: the SUID sandbox helper cannot work
+        # against the read-only store (chrome-sandbox can never be root:4755
+        # here, and NoNewPrivileges/RestrictNamespaces close both fallbacks),
+        # so without this Electron ABORTS ("The SUID sandbox helper binary was
+        # found, but is not configured correctly" - measured on hp 2026-11-26
+        # running obsidian on :${toString cfg.display}). Disabling it is the
+        # documented opt-out and the same trust model the module already
+        # applies to Chromium (playwright launches with chromiumSandbox=false:
+        # only trusted local apps run here).
+        ELECTRON_DISABLE_SANDBOX = "1";
       };
       serviceConfig = {
         User = hermes.user;
@@ -254,7 +379,12 @@ in {
         Restart = "always";
         RestartSec = "5s";
         PrivateTmp = true;
-        BindPaths = ["/tmp/.X11-unix"];
+        # Notes-vault bind, same spec hermes-agent composes for its own units:
+        # every namespace the hermes uid runs desktop apps in must see the
+        # vault at the SAME mount path the registry names (see notesVaultBind;
+        # writes stay mode-gated - this grants nothing the agent's bind
+        # doesn't already carry for this uid).
+        BindPaths = ["/tmp/.X11-unix"] ++ lib.optionals notesCfg.enable notesVaultBind;
         ProtectSystem = "strict";
         # ProtectSystem=strict makes HOME read-only too (see the hermes-xvfb
         # unit's correction), and openbox DIES without its session cache dir
@@ -287,6 +417,10 @@ in {
         DISPLAY = ":${toString cfg.display}";
         HOME = hermes.stateDir;
         XDG_RUNTIME_DIR = "/run/hermes-desktop";
+        # Same Electron story as hermes-openbox above: this xterm is where
+        # the human (and the agent's terminal()) launch apps, and their
+        # children inherit the var.
+        ELECTRON_DISABLE_SANDBOX = "1";
       };
       serviceConfig = {
         User = hermes.user;
@@ -295,10 +429,71 @@ in {
         Restart = "on-failure";
         RestartSec = "10s";
         PrivateTmp = true;
-        BindPaths = ["/tmp/.X11-unix" "/run/hermes-desktop"];
-        ReadWritePaths = ["/run/hermes-desktop"];
+        # The human's (and the agent's) shell: `obsidian` launched here edits
+        # the vault, so it gets the same notes bind as openbox/playwright.
+        BindPaths =
+          ["/tmp/.X11-unix" "/run/hermes-desktop"]
+          ++ lib.optionals notesCfg.enable notesVaultBind;
+        # stateDir joins the rw set for the Obsidian GUI launched from this
+        # shell: Electron's user-data dir is ~/.config/obsidian (registry,
+        # IndexedDB, GPU cache), and ProtectSystem=strict alone would make
+        # every write there EROFS - same opening hermes-openbox already
+        # carries for the same reason (its ~/.cache lesson above).
+        ReadWritePaths = ["/run/hermes-desktop" hermes.stateDir];
         ProtectSystem = "strict";
         NoNewPrivileges = true;
+        CapabilityBoundingSet = "";
+        RestrictAddressFamilies = ["AF_UNIX"];
+        RestrictNamespaces = true;
+        LockPersonality = true;
+        SystemCallArchitectures = "native";
+        SystemCallFilter = ["@system-service"];
+      };
+    };
+
+    # Registers the notes vault with Obsidian for the hermes uid: seeds
+    # <share>/.obsidian/app.json and merges the vault (path = the sandbox-
+    # visible mount, see notesVaultMount) into ~/.config/obsidian/obsidian.json.
+    # Runs OUTSIDE the fleet sandbox ON PURPOSE: it touches the RAW share path
+    # (/var/lib/notes), which the sandbox masks via TemporaryFileSystem=
+    # /var/lib:ro; the hardening below is the module's own light shape, like
+    # hermes-novnc's. Re-runs on every switch via sysinit-reactivation: the
+    # 26.05 switcher's "start new units" pass skips fresh oneshots after a
+    # deploy (the herdr.nix/datalab-harness.nix lesson), and re-running on
+    # every activation is the correct semantic - the script is idempotent.
+    # Ordering is wants/after on hermes-openbox, never requires: a vault that
+    # cannot be registered (share not synced yet) must not take the desktop
+    # down, and Obsidian reads obsidian.json at LAUNCH, so the merge only has
+    # to precede a human/agent actually opening the app.
+    systemd.services.hermes-notes-vault = mkIf notesCfg.enable {
+      description = "Seed the Obsidian vault state in the notes share and register it for ${hermes.user}";
+      # multi-user = boot (sysinit-reactivation.target is only RESTARTED by
+      # the switcher, never pulled in at boot - the datalab-harness.nix pair
+      # this copies); sysinit-reactivation = every switch.
+      wantedBy = ["multi-user.target" "sysinit-reactivation.target"];
+      after = ["systemd-tmpfiles-setup.service" "hermes-openbox.service"];
+      wants = ["hermes-openbox.service"];
+      serviceConfig = {
+        Type = "oneshot";
+        User = hermes.user;
+        Group = hermes.group;
+        ExecStart = "${notesVaultSetup}";
+        # stateDir is the hermes uid's own home (the tmpfiles obsidian dir
+        # lives under it); /nix/store is read-only by default and reachable
+        # (no TemporaryFileSystem here). The share paths it writes are
+        # mode-gated (2775 .obsidian); ProtectSystem=strict keeps everything
+        # else read-only, so this unit can change exactly the two files the
+        # script names.
+        ReadWritePaths = [hermes.stateDir];
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        PrivateTmp = true;
+        PrivateDevices = true;
+        NoNewPrivileges = true;
+        # The share-side file must land group-writable/0664 per the doctrine
+        # (hermes writes, syncthing-owner reads); the fleet Hermes units'
+        # UMask=0077 would make it 0600 and invisible to `other`.
+        UMask = "0022";
         CapabilityBoundingSet = "";
         RestrictAddressFamilies = ["AF_UNIX"];
         RestrictNamespaces = true;
@@ -482,7 +677,13 @@ in {
             ++ [
               "/tmp/.X11-unix"
               "/run/hermes-desktop"
-            ];
+            ]
+            # The notes vault for Chromium's world too (same spec as the
+            # agent's bind): playwright's file tooling and the
+            # browser-side "save into vault" flows need the share visible at
+            # the mount path the registry names - under the sandbox,
+            # TemporaryFileSystem=/var/lib:ro masks the raw path.
+            ++ lib.optionals notesCfg.enable notesVaultBind;
           RestrictAddressFamilies = sandbox.RestrictAddressFamilies ++ ["AF_NETLINK"];
           ProcSubset = "all";
           ProtectProc = "default";
@@ -499,6 +700,10 @@ in {
     # the two units' own process env; .env is the fork's documented channel and
     # outranks stale shell exports by design).
     services.hermes-agent.environment.DISPLAY = ":${toString cfg.display}";
+    # And the Electron opt-out on the same channel, so an `obsidian` the
+    # agent starts through its own terminal() inherits it too (see the
+    # hermes-openbox unit for why Electron cannot keep its sandbox here).
+    services.hermes-agent.environment.ELECTRON_DISABLE_SANDBOX = "1";
 
     # Attach order mirrors matrix-reader (wants/after, not requires: the
     # gateway must boot even if a desktop unit is wedged).
