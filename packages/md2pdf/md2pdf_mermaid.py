@@ -28,7 +28,11 @@ import subprocess
 import sys
 
 FENCE = re.compile(r"^( {0,3})(`{3,}|~{3,})[ \t]*mermaid[ \t]*$")
-VIEWBOX = re.compile(r'viewBox="0 0 ([0-9.]+) ([0-9.]+)"')
+# Root SVG viewBox = "min-x min-y width height" — min-x/min-y are often
+# negative or fractional (edge labels, dot-nodes), e.g.
+# viewBox="0.039 -0.5 164.477 333.453". Take the FIRST viewBox in the
+# document (the root <svg>); markers like arrows carry their own "0 0 10 10".
+VIEWBOX = re.compile(r'<svg[^>]*\bviewBox="[-0-9.]+ [-0-9.]+ ([0-9.]+) ([0-9.]+)"')
 
 
 def main() -> int:

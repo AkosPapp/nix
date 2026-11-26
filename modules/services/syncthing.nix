@@ -18,14 +18,16 @@
     phone = {
       id = "FFN5JPO-A6HOB7Z-YHKKFVG-YOVO5QD-HLXXIBQ-743QUQI-53REPOE-LGLFWQQ";
       name = "Phone";
-      # Dynamic everywhere for the phone (owner's call 2026-11-26): accept the phone dialing
-      # in and dial back whatever address it was last seen at, instead of pinning a name.
-      # The old `tcp://phone.<tailnetDnsName>:<port>` pin made every host depend on that
-      # MagicDNS name resolving - hp's live config still resolves it today (2026-11-26) only
-      # through tailscale's own resolver (the short `phone.hp` form already gets no answer
-      # there), and with fleet-wide global/local discovery and relays off, a stale or
-      # unresolvable name means no route at all.
-      addresses = ["dynamic"];
+      # Pinned to the phone's tailnet IP (owner's call 2026-11-26, superseding the
+      # morning's "dynamic"): a bare IP beats both earlier spellings. The old
+      # `tcp://phone.<tailnetDnsName>` form made every host depend on MagicDNS
+      # resolving (hp only managed it through tailscale's own resolver; the short
+      # `phone.hp` answer was hp's wildcard record, never the phone's), and
+      # "dynamic" cannot work alone either - fleet-wide global/local discovery and
+      # relays are off, so a host that has never seen the phone has no address to
+      # dial. Tailscale keeps a device's IP stable, so this is the reliable pin;
+      # if the phone ever gets a new tailnet IP, update the literal here.
+      addresses = ["tcp://100.113.16.42:${toString config.PORTS.syncthingSync}"];
     };
   };
 
